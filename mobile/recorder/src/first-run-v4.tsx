@@ -3,7 +3,7 @@
 // Reduce Motion: Reanimated's entering animations follow the system setting, and the drawn lines appear whole.
 import { DEVICE_NAME, isIpad } from './device-layout';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -182,6 +182,9 @@ function WelcomeStep({ onContinue, onHaveAccount }: { onContinue: () => void; on
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { reduceMotion } = useMotionPreferences();
+  // The dealt cards are sized for a phone; on iPad they grow with the window.
+  const { width: windowWidth } = useWindowDimensions();
+  const deckScale = isIpad() ? Math.min(2.4, Math.max(1.6, windowWidth / 520)) : 1;
   const push = useSharedValue(reduceMotion ? 1 : 1.14);
   useEffect(() => { if (!reduceMotion) push.value = withTiming(1, { duration: 7000, easing: Easing.bezier(0.2, 0.7, 0.2, 1) }); }, [push, reduceMotion]);
   const photo = useAnimatedStyle(() => ({ transform: [{ scale: push.value }] }));
@@ -190,7 +193,7 @@ function WelcomeStep({ onContinue, onHaveAccount }: { onContinue: () => void; on
       <ExpoImage accessible={false} source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" style={StyleSheet.absoluteFill} />
     </Animated.View>
     <LinearGradient pointerEvents="none" colors={[withAlpha(c.page, 0.35), withAlpha(c.page, 0.08), withAlpha(c.page, 0.92), c.page]} locations={[0, 0.35, 0.68, 1]} style={StyleSheet.absoluteFill} />
-    <View pointerEvents="none" style={[styles.deck, { top: insets.top + 70 }]}>
+    <View pointerEvents="none" style={[styles.deck, { top: insets.top + 70 + (deckScale - 1) * CARD_H / 2, transform: [{ scale: deckScale }] }]}>
       {DECK.map((card, index) => <DealtCard key={card.place} card={card} index={index} />)}
     </View>
     <View style={[styles.welcomeCopy, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
@@ -284,12 +287,13 @@ function SyncStep({ onBack, onContinue, signedIn, signingIn, onSignIn, onSync }:
     <Progress stage="sync" onBack={onBack} />
     <Title delay={80}>Sign in and sync</Title>
     <Body delay={220}>JourneyDeck records drives on your iPhone. Sign in with the same Apple Account and iCloud on this iPad, and your journeys, memories and soundtracks appear here.</Body>
-    <Animated.View entering={rise(380)} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-      <View style={styles.cardHead}>
-        <SymbolView name={signedIn ? 'checkmark.icloud.fill' : 'icloud.fill'} tintColor={c.accent} size={26} />
-        <Text style={[styles.cardTitle, { color: c.text }]}>{signedIn ? 'Signed in with Apple' : 'Private iCloud sync'}</Text>
+    <View style={styles.spacer} />
+    <Animated.View entering={rise(380)} style={styles.syncHero}>
+      <View style={[styles.syncBadge, { backgroundColor: withAlpha(c.accent, 0.16), borderColor: withAlpha(c.accent, 0.45) }]}>
+        <SymbolView name={signedIn ? 'checkmark.icloud.fill' : 'icloud.fill'} tintColor={c.accent} size={44} />
       </View>
-      <Text style={[styles.optionDetail, { color: c.textSecondary }]}>{signedIn ? 'Tap Sync now to pull your latest drives from iCloud.' : 'Your library stays in your own iCloud account. JourneyDeck never sees it.'}</Text>
+      <Text style={[styles.syncHeadline, { color: c.text }]}>{signedIn ? 'Signed in with Apple' : 'Private iCloud sync'}</Text>
+      <Text style={[styles.syncDetail, { color: c.textSecondary }]}>{signedIn ? 'Tap Sync now to bring your latest drives from iCloud.' : 'Your library stays in your own iCloud account. JourneyDeck never sees it.'}</Text>
     </Animated.View>
     <View style={styles.spacer} />
     {!signedIn && !signingIn ? <Animated.View entering={rise(520)}><AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
@@ -640,6 +644,10 @@ const styles = StyleSheet.create({
   hidden: { opacity: 0 },
   center: { textAlign: 'center' },
   spacer: { flexGrow: 1, minHeight: 12 },
+  syncHero: { alignItems: 'center', gap: 12, paddingHorizontal: 12 },
+  syncBadge: { width: 104, height: 104, borderRadius: 52, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  syncHeadline: { fontSize: 22, lineHeight: 28, fontWeight: '700', textAlign: 'center' },
+  syncDetail: { fontSize: 15, lineHeight: 21, textAlign: 'center' },
   progressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   back: { width: 40, height: 40, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   bars: { flexDirection: 'row', gap: 5 },

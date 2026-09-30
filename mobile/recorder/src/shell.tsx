@@ -405,6 +405,18 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     return () => { alive = false; };
   }, []);
 
+  // iPad doesn't record, so it never asks for a music source or recording mode; mark both set up.
+  useEffect(() => {
+    if (!isIpad()) return;
+    if (preferences && !preferences.onboardingCompleted) {
+      const next = { provider: preferences.provider ?? 'apple-music' as MusicProvider, onboardingCompleted: true };
+      void saveMusicPreferences(next).then(() => setPreferences(next)).catch(() => undefined);
+    }
+    if (recordingPreferences && !recordingPreferences.onboardingCompleted) {
+      setRecordingPreferences(saveRecordingModePreferences({ mode: 'manual', onboardingCompleted: true }));
+    }
+  }, [preferences, recordingPreferences]);
+
   useEffect(() => {
     if (!preferences || !recordingPreferences || firstRunProgress) return;
     if (preferences.onboardingCompleted && recordingPreferences.onboardingCompleted) return;

@@ -142,6 +142,9 @@ export async function deletePrivateCloudDataForUser(user: LocalUser): Promise<vo
   return deletion;
 }
 
+/** Extra pulls per zone while downloaded records still wait on records that arrive later in the same library. */
+const DEFERRED_PULL_RETRIES = 3;
+
 export async function syncCurrentUserWithPrivateICloud(options: { force?: boolean } = {}): Promise<PrivateICloudSyncResult> {
   const user = getCurrentUser();
   assertSyncProfileCurrent(user);
@@ -238,12 +241,19 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
       try {
         assertSyncProfileCurrent(user);
         if (recoverPhotos) await resetCloudKitChangeToken(scope);
-        const pulled = await pullCloudKitChanges(scope);
-        assertSyncProfileCurrent(user);
-        engine.ingestRemoteDeletions(pulled.deletedRecordNames);
-        deletedRecordNames.push(...pulled.deletedRecordNames);
-        const ingested = await engine.ingestRemoteRecords(pulled.records, () => assertSyncProfileCurrent(user));
-        downloaded += ingested.updatedCount;
+        // A large first download can reach a Journey before its Place or route: those records are deferred and the
+        // cursor stays put. Pulling again from that cursor ingests them once their dependencies have landed, so a
+        // fresh iPad finishes in one sync instead of reporting items that only needed another pass.
+        let ingested: Awaited<ReturnType<typeof engine.ingestRemoteRecords>>;
+        for (let pass = 0; ; pass++) {
+          const pulled = await pullCloudKitChanges(scope);
+          assertSyncProfileCurrent(user);
+          engine.ingestRemoteDeletions(pulled.deletedRecordNames);
+          deletedRecordNames.push(...pulled.deletedRecordNames);
+          ingested = await engine.ingestRemoteRecords(pulled.records, () => assertSyncProfileCurrent(user));
+          downloaded += ingested.updatedCount;
+          if (ingested.deferredCount === 0 || pass >= DEFERRED_PULL_RETRIES) break;
+        }
         failedUploads += ingested.deferredCount;
         // Keep a zone's old cursor when a dependent record has not arrived yet.
         if (ingested.deferredCount === 0) await commitCloudKitChangeToken(scope);

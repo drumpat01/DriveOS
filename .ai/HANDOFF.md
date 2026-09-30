@@ -22,7 +22,9 @@
 - Annual `com.journeydeck.recorder.pro.annual` (Apple ID `6807180473`) is currently $24.99 U.S. A $39.99 U.S. price is scheduled for October 14 across its 175 pricing regions; App Store Connect confirms **existing annual subscriber prices preserved**. Three-day free introductory offers on weekly and annual are scheduled October 14, 2026 to October 13, 2027 in 148 sale regions. The current live monthly product remains on sale for V3.
 - Verification: `npm run typecheck` passed; focused membership, Ask, and public-release tests passed (54/54); `git diff --check` passed. Swift changes have not been compiled on a Mac or device, and no new build was made.
 
-## V4 on iPad (uncommitted, 2026-09-30)
+## V4 on iPad (merged to main in PR 212; OTA published 2026-09-30)
+
+- OTA: xprem `v4-testflight`, runtime `4.0.0-preview.3`, ios update id `17907870405411`, publish group `4564feac-dc3f-4014-a3a0-f3b4b00dfb69`, deployed Sep 30 2026 16:50 GMT, commit `d255017` (main `8b2d4c9`). Reaches iPhone and iPad builds on that runtime; cold-launch twice to load it.
 
 - Owner decision: iPad cannot be turned off and must ship feature-complete with V4. The `!isIpad()` gates were removed (`REDESIGN_PHONE` in shell, `V4_PHONE`, Ask, Journey Studio, Year on the Road), so iPad gets Today (trial banner), Memories (long-press Delete), Soundtrack, Atlas, Search, V4 paywall, V4 onboarding, Replay onboarding, Restore Purchases and the V4 Settings hub. Settings opens from the profile button, as on iPhone.
 - Native tabs: iPad uses the V4 tab set with `sidebarAdaptable` and the recorder bottom accessory (`native-navigation.tsx`). Non-V4 builds keep the old iPad tabs/`Ipad*` screens, so V3 is unchanged.
