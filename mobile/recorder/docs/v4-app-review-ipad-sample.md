@@ -9,10 +9,12 @@ new iPad has an empty library. To let App Review see every screen on either devi
 - Six fictional-looking drives with routes, songs and places, and three Memories, dated relative to today so Today, This week and
   On this day are populated.
 - Each Memory has a bundled cover photo (`src/demo-photos.ts`, credits in `assets/demo/CREDITS.md`, Unsplash License).
-- Removes itself: the sample lives for one launch. A sample left over from an earlier launch is deleted at startup, so the real profile
-  (where iCloud data can sync in) comes back. The trial banner is hidden while the sample is open; the recorder bar stays (it is part of the app).
+- Instant: the sample (drives, songs, four Memories with photos) is built quietly in the background about six seconds after launch
+  and rebuilt daily so its dates stay current. Turning it on only switches profiles. If it is still being built, an alert says so.
+- Steps aside: a sample left open from an earlier launch returns to the real profile at startup (its data stays prepared), so the real
+  profile, where iCloud data can sync in, comes back. The trial banner is hidden while the sample is open; the recorder bar stays (it is part of the app).
 - Never uploaded: every row is written as already synced, `syncPrivateCloud` pauses for sandbox profiles, and the profile is
-  deleted when the user leaves it. The user's own profile is not touched.
+  kept prepared when the user leaves it. The user's own profile is not touched.
 - Onboarding is skipped inside the sample.
 
 ## Where reviewers find it

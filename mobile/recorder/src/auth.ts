@@ -22,12 +22,14 @@ import {
   linkLocalUserToAppleIdentity,
   deleteLocalUserData,
   listJourneys,
+  listMemories,
+  listPhotos,
   setActiveLocalUserId,
 } from './local-store';
 import { isInternalTestingBuild } from './internal-testing';
-import { DEMO_PROFILE_NAME, demoJourneyCount, seedDemoLibrary } from './demo-library';
+import { DEMO_PROFILE_NAME, demoJourneyCount, demoMemoryCount, seedDemoLibrary } from './demo-library';
 import { notifyLocalArchiveChanged } from './local-archive-events';
-import { seedDemoPhotos } from './demo-photos';
+import { DEMO_PHOTO_COUNT, seedDemoPhotos } from './demo-photos';
 import * as FileSystem from 'expo-file-system/legacy';
 
 export { listLocalUsers };
@@ -64,12 +66,11 @@ export function initializeAuth(): LocalUser {
   const users = listLocalUsers();
   if (users.length > 0) {
     const savedUserId = getActiveLocalUserId();
-    activeUser = users.find(user => user.id === savedUserId) ?? users[0]!;
+    activeUser = users.find(user => user.id === savedUserId) ?? users.find(user => !isDemoProfile(user)) ?? users[0]!;
     if (isDemoProfile(activeUser) && !demoOpenedThisLaunch) {
-      // Real data can only sync into the real profile, so the sample steps aside on the next launch.
-      const real = users.find(user => !isDemoProfile(user));
-      removeDemoProfileData(activeUser.id);
-      activeUser = real ?? ensureLocalUser({ displayName: 'Primary Driver' });
+      // Real data can only sync into the real profile, so a sample left open from an earlier launch steps aside.
+      // Its data stays prepared, so turning it on again is instant.
+      activeUser = users.find(user => !isDemoProfile(user)) ?? ensureLocalUser({ displayName: 'Primary Driver' });
     }
   } else {
     activeUser = ensureLocalUser({ displayName: 'Primary Driver' });
@@ -181,18 +182,43 @@ export function isSandboxProfile(user = getCurrentUser()): boolean {
   return isIsolationTestProfile(user) || isDemoProfile(user);
 }
 
-/** Opens the sample library, creating it on first use. The real profile is left untouched. */
-export async function enterDemoProfile(): Promise<LocalUser> {
-  let user = listLocalUsers().find(candidate => isDemoProfile(candidate));
-  // A sample left half-written (the app stopped while it was being created) is rebuilt rather than shown empty.
-  if (user && listJourneys(user.id, { limit: 100 }).items.length < demoJourneyCount()) { removeDemoProfileData(user.id); user = undefined; }
-  if (!user) {
+/** A sample built long ago would show stale dates (Today, This week), so it is rebuilt in the background after a day. */
+const DEMO_STALE_MS = 20 * 60 * 60 * 1000;
+
+function completeDemoProfile(candidate: LocalUser | undefined): boolean {
+  return Boolean(candidate && Date.now() - Date.parse(candidate.createdAt) < DEMO_STALE_MS
+    && listJourneys(candidate.id, { limit: 100 }).items.length >= demoJourneyCount()
+    && listMemories(candidate.id).length >= demoMemoryCount() && listPhotos(candidate.id).length >= DEMO_PHOTO_COUNT);
+}
+
+/** True when the sample is already built and fresh, so turning it on is instant. */
+export function isDemoProfileReady(): boolean {
+  return completeDemoProfile(listLocalUsers().find(candidate => isDemoProfile(candidate)));
+}
+
+let demoPreparation: Promise<void> | null = null;
+
+/**
+ * Builds the sample library, its photos and Memories ahead of time in its own profile, without opening it. The real
+ * profile stays active; a failure is thrown so it is reported rather than shown half-empty.
+ */
+export function prepareDemoProfile(): Promise<void> {
+  demoPreparation ??= (async () => {
+    const existing = listLocalUsers().find(candidate => isDemoProfile(candidate));
+    if (completeDemoProfile(existing) || (existing && getCurrentUser().id === existing.id)) return;
+    if (existing) removeDemoProfileData(existing.id);
     const created = ensureLocalUser({ displayName: DEMO_PROFILE_NAME });
-    try { seedDemoLibrary(created.id); } catch (error) { removeDemoProfileData(created.id); throw error; }
-    user = created;
-    // Cover photos copy in the background so the sample opens at once; they appear as they land.
-    void seedDemoPhotos(created.id).then(() => notifyLocalArchiveChanged()).catch(() => undefined);
-  }
+    try { await seedDemoLibrary(created.id); await seedDemoPhotos(created.id); }
+    catch (error) { removeDemoProfileData(created.id); throw error; }
+  })().finally(() => { demoPreparation = null; });
+  return demoPreparation;
+}
+
+/** Opens the sample library. It is normally already prepared, so this only switches profiles. */
+export async function enterDemoProfile(): Promise<LocalUser> {
+  if (!isDemoProfile()) await prepareDemoProfile();
+  const user = listLocalUsers().find(candidate => isDemoProfile(candidate));
+  if (!user) throw new Error('The sample library could not be prepared.');
   activeUser = user;
   demoOpenedThisLaunch = true;
   setActiveLocalUserId(user.id);
@@ -205,12 +231,11 @@ function removeDemoProfileData(userId: LocalUserId): void {
   if (base) void FileSystem.deleteAsync(`${base}journeydeck-private-photos/${encodeURIComponent(userId)}/`, { idempotent: true }).catch(() => undefined);
 }
 
-/** Deletes the sample library and returns to the real profile. */
+/** Returns to the real profile. The sample stays prepared so it can be turned on again instantly. */
 export function exitDemoProfile(): LocalUser {
   const demo = getCurrentUser();
   if (!isDemoProfile(demo)) return demo;
   const next = listLocalUsers().find(candidate => !isDemoProfile(candidate)) ?? ensureLocalUser({ displayName: 'Local Driver' });
-  removeDemoProfileData(demo.id);
   activeUser = next;
   setActiveLocalUserId(next.id);
   return next;
@@ -229,7 +254,8 @@ export function finalizeActiveProfileDeletion(userId: LocalUserId): LocalUser {
   if (getCurrentUser().id !== userId) throw new Error('The active profile changed before deletion finished.');
   deleteLocalUserData(userId);
   const remaining = listLocalUsers();
-  const next = remaining.find(user => !isIsolationTestProfile(user)) ?? remaining[0] ?? ensureLocalUser({ displayName: 'Local Driver' });
+  // After deleting an account, land on a real profile, never the prepared sample or a test profile.
+  const next = remaining.find(user => !isSandboxProfile(user)) ?? ensureLocalUser({ displayName: 'Local Driver' });
   activeUser = next;
   setActiveLocalUserId(next.id);
   return next;
