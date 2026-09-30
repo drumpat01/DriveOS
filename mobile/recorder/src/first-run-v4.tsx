@@ -113,6 +113,67 @@ function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boo
 
 // --- 1 · Welcome -----------------------------------------------------------------------------------------------
 
+// Sample memories dealt onto the welcome photo: the last card lands on top in the middle, then lifts.
+const DECK = [
+  { place: 'Big Sur', song: 'Dreams', route: 'M8 70 C 36 16, 64 84, 118 16', x: -76, y: 22, rotate: -13, tint: 0.55 },
+  { place: 'Lake Tahoe', song: 'Holocene', route: 'M10 18 C 56 26, 46 74, 116 70', x: 76, y: 22, rotate: 12, tint: 0.35 },
+  { place: 'Route 66', song: 'Golden Hour', route: 'M8 54 C 32 8, 84 84, 118 26', x: 0, y: 0, rotate: 0, tint: 0.8 },
+] as const;
+const CARD_W = 146;
+const CARD_H = 188;
+
+/** A centered pill above the headline that cycles through the deck's songs and places. */
+function NowPlaying() {
+  const c = useRedesignColors();
+  const { reduceMotion } = useMotionPreferences();
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    const timer = setInterval(() => setIndex((value) => (value + 1) % DECK.length), 2600);
+    return () => clearInterval(timer);
+  }, [reduceMotion]);
+  const card = DECK[index]!;
+  return <Animated.View entering={rise(1500)} style={[styles.nowPlaying, { backgroundColor: withAlpha(c.page, 0.7), borderColor: withAlpha(c.accent, 0.4) }]}>
+    <SymbolView name="music.note" tintColor={c.accent} size={12} weight="semibold" />
+    <Animated.Text key={index} entering={FadeIn.duration(400)} numberOfLines={1} style={[styles.nowPlayingText, { color: c.text }]}>
+      Now playing · {card.song} near {card.place}
+    </Animated.Text>
+  </Animated.View>;
+}
+
+function DealtCard({ card, index }: { card: (typeof DECK)[number]; index: number }) {
+  const c = useRedesignColors();
+  const { reduceMotion } = useMotionPreferences();
+  const top = index === DECK.length - 1;
+  const delay = 250 + index * 230;
+  const dealt = useSharedValue(reduceMotion ? 1 : 0);
+  const lift = useSharedValue(0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    dealt.value = withDelay(delay, withSpring(1, { damping: 15, stiffness: 120 }));
+    const landed = setTimeout(() => { void haptics.selection(); }, delay + 320);
+    if (top) lift.value = withDelay(delay + 650, withSpring(1, SPRING));
+    return () => clearTimeout(landed);
+  }, [dealt, delay, lift, reduceMotion, top]);
+  const style = useAnimatedStyle(() => ({
+    opacity: Math.min(1, dealt.value * 2),
+    transform: [
+      { translateX: card.x * dealt.value },
+      { translateY: card.y * dealt.value + (1 - dealt.value) * 460 - lift.value * 12 },
+      { rotate: `${card.rotate * dealt.value + (1 - dealt.value) * 28}deg` },
+      { scale: 0.85 + dealt.value * 0.15 + lift.value * 0.04 },
+    ],
+  }));
+  return <Animated.View style={[styles.dealtCard, { backgroundColor: c.surfaceStrong, borderColor: withAlpha(c.accent, 0.5) }, style]}>
+    <View style={[styles.cardMap, { backgroundColor: c.page }]}>
+      <Svg width={CARD_W - 16} height={88}><Path d={card.route} stroke={c.accent} strokeWidth={3} strokeLinecap="round" fill="none" /></Svg>
+      <View style={[styles.cardArt, { backgroundColor: withAlpha(c.accent, card.tint) }]}><SymbolView name="music.note" tintColor={c.onAccent} size={14} weight="semibold" /></View>
+    </View>
+    <Text numberOfLines={1} style={[styles.cardPlace, { color: c.text }]}>{card.place}</Text>
+    <Text numberOfLines={1} style={[styles.cardSong, { color: c.textSecondary }]}>{card.song}</Text>
+  </Animated.View>;
+}
+
 function WelcomeStep({ onContinue, onHaveAccount }: { onContinue: () => void; onHaveAccount: () => void }) {
   const c = useRedesignColors();
   const theme = useAppTheme();
@@ -126,10 +187,11 @@ function WelcomeStep({ onContinue, onHaveAccount }: { onContinue: () => void; on
       <ExpoImage accessible={false} source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" style={StyleSheet.absoluteFill} />
     </Animated.View>
     <LinearGradient pointerEvents="none" colors={[withAlpha(c.page, 0.35), withAlpha(c.page, 0.08), withAlpha(c.page, 0.92), c.page]} locations={[0, 0.35, 0.68, 1]} style={StyleSheet.absoluteFill} />
-    <View pointerEvents="none" style={styles.welcomeRoute}>
-      <DrawnRoute d="M-10 100 C 70 90, 110 40, 190 52 S 320 96, 400 30" length={520} width={390} height={120} color={c.accent} delay={300} />
+    <View pointerEvents="none" style={[styles.deck, { top: insets.top + 70 }]}>
+      {DECK.map((card, index) => <DealtCard key={card.place} card={card} index={index} />)}
     </View>
     <View style={[styles.welcomeCopy, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+      <NowPlaying />
       <Animated.Text entering={rise(1100)} style={[styles.kicker, { color: c.accent }]}>JOURNEYDECK</Animated.Text>
       <Animated.Text entering={rise(1100)} accessibilityRole="header" style={[styles.welcomeTitle, { color: c.text }]}>Your journey, remembered.</Animated.Text>
       <Animated.Text entering={rise(1350)} style={[styles.welcomeBody, { color: c.textSecondary }]}>Every route and song, all private.</Animated.Text>
@@ -554,7 +616,14 @@ const styles = StyleSheet.create({
   link: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
   linkText: { fontSize: 15, fontWeight: '600' },
   fine: { fontSize: 12, lineHeight: 16, textAlign: 'center' },
-  welcomeRoute: { position: 'absolute', left: 0, right: 0, top: '51%' },
+  nowPlaying: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1, marginBottom: 20 },
+  nowPlayingText: { fontSize: 12, fontWeight: '600' },
+  deck: { position: 'absolute', left: '50%', width: 0, height: CARD_H },
+  dealtCard: { position: 'absolute', left: -CARD_W / 2, width: CARD_W, height: CARD_H, padding: 8, borderRadius: 16, borderWidth: 1 },
+  cardMap: { height: 88, borderRadius: 10, overflow: 'hidden' },
+  cardArt: { position: 'absolute', right: 6, bottom: 6, width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  cardPlace: { fontFamily: SERIF, fontSize: 17, fontWeight: '600', marginTop: 10 },
+  cardSong: { fontSize: 12, marginTop: 2 },
   welcomeCopy: { position: 'absolute', left: 24, right: 24, bottom: 0, gap: 16 },
   welcomeTitle: { fontFamily: SERIF, fontSize: 40, lineHeight: 44, fontWeight: '600', letterSpacing: -0.4 },
   welcomeBody: { fontSize: 16, lineHeight: 22 },
