@@ -301,7 +301,7 @@ test('supporting records are revalidated before navigation and deleted records c
 test('old installed runtimes and non-V3 routes fail closed; the native close control dismisses the prompt', async () => {
   const old = await screen({ available: false });
   try {
-    assert.equal(old.button().props.disabled, true); assert.match(old.text(), /needs the V3 native question engine/);
+    assert.equal(old.button().props.disabled, true); assert.match(old.text(), /Update JourneyDeck to use Ask JourneyDeck/);
     const done = old.tree.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === 'Close Ask JourneyDeck');
     await act(() => done.props.onPress()); assert.deepEqual(old.pushes, ['back']);
   } finally { await old.close(); }

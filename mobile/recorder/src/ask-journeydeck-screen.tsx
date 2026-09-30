@@ -227,7 +227,7 @@ function AskJourneyDeckChat() {
         ...(canShowSiriTesting ? [{ id: 'siri', title: 'Siri AI testing', image: 'waveform' as const, onSelect: () => router.push('/siri-testing') }] : []),
       ]} />
       {!V3_ASK_JOURNEYDECK_ENABLED
-        ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: v4c.text }]}>Ask JourneyDeck is available in V3.</Text></View>
+        ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: v4c.text }]}>Ask JourneyDeck isn’t available in this version.</Text></View>
         : <View style={styles.chat}>
           <KeyboardChatScrollView ref={scroll as never} offset={insets.bottom} keyboardLiftBehavior="always"
             contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
@@ -257,7 +257,7 @@ function AskJourneyDeckChat() {
               <SymbolView name="exclamationmark.circle.fill" tintColor={v4c.accent} size={17} />
               <Text selectable style={[styles.errorText, { color: v4c.text }]}>{visibleError}</Text>
             </View> : null}
-            {!isAskJourneyDeckAvailable ? <Text selectable style={[styles.availability, { color: v4c.textSecondary }]}>This installed version needs the V3 native question engine.</Text> : null}
+            {!isAskJourneyDeckAvailable ? <Text selectable style={[styles.availability, { color: v4c.textSecondary }]}>Update JourneyDeck to use Ask JourneyDeck.</Text> : null}
           </KeyboardChatScrollView>
           <ChatComposer value={visibleQuestion} onChange={setQuestion} onSubmit={submit} canSend={canSend} busy={busy} error={Boolean(visibleError)} reduceMotion={reduceMotion} bottomInset={insets.bottom} onHeight={setComposerHeight} />
         </View>}
@@ -272,7 +272,7 @@ function AskJourneyDeckChat() {
       </Pressable>
     </View>
     {!V3_ASK_JOURNEYDECK_ENABLED
-      ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: c.text }]}>Ask JourneyDeck is available in V3.</Text></View>
+      ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: c.text }]}>Ask JourneyDeck isn’t available in this version.</Text></View>
       : <View style={styles.chat}>
         <ScrollView ref={scroll} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
           automaticallyAdjustKeyboardInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
@@ -306,7 +306,7 @@ function AskJourneyDeckChat() {
             <View style={[styles.thinkingBubble, { backgroundColor: c.card, borderColor: c.line }]}><ActivityIndicator color={c.accent} size="small" /><Text style={[styles.thinkingText, { color: c.muted }]}>Reading your road history…</Text></View>
           </View>}
           {visibleError && <View accessibilityRole="alert" style={[styles.errorBubble, { backgroundColor: c.inset, borderColor: c.line }]}><SymbolView name="exclamationmark.circle.fill" tintColor={c.accent} size={17} /><Text selectable style={[styles.errorText, { color: c.text }]}>{visibleError}</Text></View>}
-          {!isAskJourneyDeckAvailable && <Text selectable style={[styles.availability, { color: c.muted }]}>This installed version needs the V3 native question engine.</Text>}
+          {!isAskJourneyDeckAvailable && <Text selectable style={[styles.availability, { color: c.muted }]}>Update JourneyDeck to use Ask JourneyDeck.</Text>}
           {messages.length > 0 && !busy && <Text style={[styles.followUp, { color: c.muted }]}>Ask a follow-up or start a new question below.</Text>}
           {canShowSiriTesting && <Pressable accessibilityRole="button" onPress={() => router.push('/siri-testing')} style={styles.testingLink}><Text style={[styles.testingText, { color: c.accent }]}>Open Siri AI testing</Text><SymbolView name="chevron.right" tintColor={c.accent} size={13} /></Pressable>}
         </ScrollView>

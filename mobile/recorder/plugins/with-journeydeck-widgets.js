@@ -21,10 +21,10 @@ function addWidgetTarget(project, config) {
     const target = project.addTarget(targetName, 'app_extension', targetName, bundleIdOf(config));
     targetID = target.uuid;
     project.addBuildPhase([`${targetName}/JourneyDeckWidgets.swift`], 'PBXSourcesBuildPhase', 'Sources', targetID);
-    project.addBuildPhase([`${targetName}/Assets.xcassets`], 'PBXResourcesBuildPhase', 'Resources', targetID);
+    project.addBuildPhase([`${targetName}/Assets.xcassets`, `${targetName}/PrivacyInfo.xcprivacy`], 'PBXResourcesBuildPhase', 'Resources', targetID);
     project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', targetID);
     // References already include JourneyDeckWidgets/, so anchor the group at root.
-    const group = project.addPbxGroup([`${targetName}/JourneyDeckWidgets.swift`, `${targetName}/Info.plist`, `${targetName}/Assets.xcassets`, `${targetName}/${targetName}.entitlements`], targetName, '""', 'SOURCE_ROOT');
+    const group = project.addPbxGroup([`${targetName}/JourneyDeckWidgets.swift`, `${targetName}/Info.plist`, `${targetName}/Assets.xcassets`, `${targetName}/PrivacyInfo.xcprivacy`, `${targetName}/${targetName}.entitlements`], targetName, '""', 'SOURCE_ROOT');
     project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
     // addTarget already embeds an app_extension product in the app's PlugIns folder.
   }
@@ -61,6 +61,11 @@ async function writeWidgetFiles(projectRoot, platformRoot, config) {
     CFBundleShortVersionString: '$(MARKETING_VERSION)', CFBundleVersion: '$(CURRENT_PROJECT_VERSION)',
     NSExtension: { NSExtensionPointIdentifier: 'com.apple.widgetkit-extension' },
     JourneyDeckAppGroup: appGroupOf(config),
+  }));
+  // The widget reads the last drive from the App Group's UserDefaults, a required-reason API (1C8F.1).
+  fs.writeFileSync(path.join(destination, 'PrivacyInfo.xcprivacy'), plist.default.build({
+    NSPrivacyTracking: false, NSPrivacyTrackingDomains: [], NSPrivacyCollectedDataTypes: [],
+    NSPrivacyAccessedAPITypes: [{ NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryUserDefaults', NSPrivacyAccessedAPITypeReasons: ['1C8F.1'] }],
   }));
   fs.writeFileSync(path.join(destination, `${targetName}.entitlements`), plist.default.build({
     'com.apple.security.application-groups': [appGroupOf(config)],
