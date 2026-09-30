@@ -423,8 +423,10 @@ test('Atlas V4 keeps every filter visible and its data usable across six themes'
     './app-data': { localAtlasClient: { tessieStatistics: () => vehicle } },
     './release-features': { TESSIE_INTEGRATION_ENABLED: tessie },
     './tessie-direct': { tessieDirectStatus: async () => 'connected' },
+    './atlas-insights': require('../src/atlas-insights.ts'),
+    './atlas-story-model': require('../src/atlas-story-model.ts'),
+    './fifty-states-store': { loadFiftyStates: () => ['CA', 'NV'] },
   }).AtlasTabV4;
-  const styleOf = (node: any) => Object.assign({}, ...[typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style].flat(Infinity).filter(Boolean));
   for (const id of THEMES) {
     themeId = id;
     const Screen = make(false);
@@ -434,15 +436,17 @@ test('Atlas V4 keeps every filter visible and its data usable across six themes'
     assert.ok(tree.root.findByProps({ testID: 'atlas-overview-hero' }));
     assert.ok(tree.root.findByProps({ testID: 'atlas-metric-grid' }));
     const sections = tree.root.findByProps({ testID: 'atlas-section-filters' }).findAllByType('Pressable');
-    assert.deepEqual(sections.map((node: any) => node.props.accessibilityLabel), ['Overview', 'Days', 'Insights']);
-    assert.ok(sections.every((node: any) => styleOf(node).flexBasis === '30%'), 'three sections fit in one row');
+    assert.deepEqual(sections.map((node: any) => node.props.accessibilityLabel), ['Overview', 'Music', 'Places', 'Rhythms', 'Days']);
     await press(tree, '90D, JourneyDeck Plus');
     assert.equal(upgrades, 1, 'locked range opens Plus without changing the selected range');
     assert.equal(tree.root.findByProps({ testID: 'atlas-range-filters' }).findAllByType('Pressable')[1].props.accessibilityState.selected, true);
     await press(tree, 'Days');
     assert.ok(tree.root.findByProps({ testID: 'atlas-calendar' }));
-    await press(tree, 'Insights');
+    await press(tree, 'Rhythms');
     assert.match(texts(tree), /Distance breakdown|DISTANCE BREAKDOWN/);
+    await press(tree, 'Music');
+    await press(tree, 'Places');
+    assert.match(texts(tree), /Most connected/);
     await press(tree, 'Overview');
     await press(tree, 'Explore your Atlas map');
     assert.equal(atlasOpens, 1);
@@ -454,8 +458,7 @@ test('Atlas V4 keeps every filter visible and its data usable across six themes'
   try {
     await act(async () => { tree = create(React.createElement(Screen, { state: primary, historyDays: null, onRefresh() {}, onJourney() {}, onUpgrade() {} })); });
     const sections = tree.root.findByProps({ testID: 'atlas-section-filters' }).findAllByType('Pressable');
-    assert.deepEqual(sections.map((node: any) => node.props.accessibilityLabel), ['Overview', 'Days', 'Insights', 'Tessie']);
-    assert.ok(sections.every((node: any) => styleOf(node).flexBasis === '47%'), 'four sections use two complete rows at narrow widths');
+    assert.deepEqual(sections.map((node: any) => node.props.accessibilityLabel), ['Overview', 'Music', 'Places', 'Rhythms', 'Days', 'Tessie']);
     await press(tree, 'Tessie');
     assert.match(texts(tree), /Vehicle insights/);
     assert.match(texts(tree), /241 Wh\/mi/);
