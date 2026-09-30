@@ -625,7 +625,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     ]);
   }, [dashboard.data.recorder.state, onProfileChanged]);
 
+  const sampleBusy = useRef(false);
   const toggleSampleData = useCallback(() => {
+    if (sampleBusy.current) return;
     const leaving = isDemoProfile();
     if (dashboard.data.recorder.state !== 'ready') {
       Alert.alert('Finish the active journey first', 'Profile switching is disabled while the recorder is active.');
@@ -633,16 +635,20 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     }
     Alert.alert(leaving ? 'Leave the sample data?' : 'Try sample data?',
       leaving ? 'The sample library is removed from this device and JourneyDeck returns to your own data.'
-        : 'JourneyDeck opens a fictional library so you can look around. Your own data stays untouched, and nothing in the sample is uploaded to iCloud. You can leave it at any time.', [
+        : 'JourneyDeck opens a fictional library so you can look around. Your own data stays untouched, and nothing in the sample is uploaded to iCloud. Creating it may take a minute. You can leave it at any time.', [
       { text: 'Cancel', style: 'cancel' },
       { text: leaving ? 'Leave sample' : 'Open sample', onPress: () => void (async () => {
+        if (sampleBusy.current) return;
+        sampleBusy.current = true;
+        // Building the library and its photos can take a while; say so as soon as the work starts.
+        if (!leaving) Alert.alert('Creating your sample', 'This may take a minute. Sample drives and Memories will appear as they are ready.');
         try {
           await prepareForProfileSwitch();
           if (leaving) exitDemoProfile(); else await enterDemoProfile();
           onProfileChanged();
         } catch (error) {
           Alert.alert('Sample data was not changed', error instanceof Error ? error.message : 'No data was changed.');
-        } finally { finishProfileSwitch(); }
+        } finally { sampleBusy.current = false; finishProfileSwitch(); }
       })() },
     ]);
   }, [dashboard.data.recorder.state, onProfileChanged]);
