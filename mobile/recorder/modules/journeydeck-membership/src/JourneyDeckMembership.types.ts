@@ -18,6 +18,8 @@ export type JourneyDeckMembershipProduct = {
   periodUnit: 'day' | 'week' | 'month' | 'year' | null;
   periodValue: number | null;
   isFamilyShareable: boolean;
+  /** Eligible free introductory offer duration, if Apple currently offers one. */
+  introTrialDays: number | null;
 };
 
 export type JourneyDeckMembershipPurchaseResult = {

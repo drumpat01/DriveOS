@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import {
   addMembershipChangeListener,
   getMembershipProducts,
+  JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS,
   getMembershipStatus,
   isJourneyDeckMembershipNativeAvailable,
   purchaseMembership,
@@ -13,7 +14,7 @@ import {
 } from '../modules/journeydeck-membership';
 import { entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, sameMembershipEntitlements, withPlusTrial, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { loadOrStartPlusTrial, plusTrialEndsAt } from './plus-trial';
-import { PREVIEW_ATLAS_UNLOCKED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED } from './release-features';
+import { PREVIEW_ATLAS_UNLOCKED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED, V4_REDESIGN_ENABLED } from './release-features';
 import { publishProEntitlement } from './pro-entitlement-sync';
 
 const unavailableStatus: JourneyDeckMembershipStatus = {
@@ -90,7 +91,7 @@ export function useJourneyDeckMembership() {
     setProductsLoading(true);
     setMessage(null);
     try {
-      const availableProducts = await getMembershipProducts();
+      const availableProducts = await getMembershipProducts(V4_REDESIGN_ENABLED ? JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS : undefined);
       if (productLoadGeneration.current !== generation) return false;
       setProducts(availableProducts);
       if (!availableProducts.length) setMessage('JourneyDeck memberships are not available from the App Store yet.');
@@ -194,7 +195,8 @@ export function useJourneyDeckMembership() {
   // consumers' callbacks/effects (archive reloads, private iCloud sync) do not rerun.
   const entitlementsRef = useRef<JourneyDeckMembershipEntitlements | null>(null);
   const entitlements = useMemo(() => {
-    const next = withPreviewAtlasAccess(withPlusTrial(entitlementsForTestFlightMembership(status, TESTFLIGHT_PLUS_UNLOCKED, TESSIE_INTEGRATION_ENABLED), trialEndsAt, trialClock), PREVIEW_ATLAS_UNLOCKED);
+    const verified = entitlementsForTestFlightMembership(status, TESTFLIGHT_PLUS_UNLOCKED, TESSIE_INTEGRATION_ENABLED);
+    const next = withPreviewAtlasAccess(withPlusTrial(verified, trialEndsAt, trialClock), PREVIEW_ATLAS_UNLOCKED);
     const previous = entitlementsRef.current;
     if (previous && sameMembershipEntitlements(previous, next)) return previous;
     entitlementsRef.current = next;

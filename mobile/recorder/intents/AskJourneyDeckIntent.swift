@@ -18,6 +18,7 @@ private let plusRequiredAnswer = "Ask JourneyDeck is part of JourneyDeck Plus. O
 /// Must match the product IDs in JourneyDeckMembershipModule.swift.
 private let journeyDeckPlusProductIDs: Set<String> = [
   "com.journeydeck.recorder.pro.monthly",
+  "com.journeydeck.recorder.pro.weekly",
   "com.journeydeck.recorder.pro.annual",
 ]
 
@@ -34,7 +35,8 @@ private func plusTrialActive(now: Date = Date()) -> Bool {
     guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data,
           let text = String(data: data, encoding: .utf8), let started = Double(text) else { continue }
     let startedAt = Date(timeIntervalSince1970: started / 1000)
-    return now >= startedAt && now < startedAt.addingTimeInterval(7 * 86_400)
+    let days = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckPlusTrialDays") as? Int ?? 7
+    return now >= startedAt && now < startedAt.addingTimeInterval(Double(days) * 86_400)
   }
   return false
 }
@@ -43,7 +45,8 @@ private func plusTrialActive(now: Date = Date()) -> Bool {
 /// TestFlight Plus unlock is a build-time Info.plist flag, never a user setting.
 private func hasJourneyDeckPlus() async -> Bool {
   if Bundle.main.object(forInfoDictionaryKey: "JourneyDeckPlusUnlocked") as? Bool == true { return true }
-  if plusTrialActive() { return true }
+  if Bundle.main.object(forInfoDictionaryKey: "JourneyDeckPlusTrialFromFirstLaunch") as? Bool != false,
+     plusTrialActive() { return true }
   for await result in StoreKit.Transaction.currentEntitlements {
     if case .verified(let transaction) = result, journeyDeckPlusProductIDs.contains(transaction.productID),
        transaction.revocationDate == nil { return true }

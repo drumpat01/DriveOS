@@ -27,22 +27,25 @@ function deferred<T>() {
 
 async function harness(overrides: Record<string, any> = {}) {
   let control: any, tree: any, listener: any, appStateListener: any;
+  let trialLoads = 0;
+  let requestedProducts: readonly string[] | undefined;
   const timers = new Map<number, { callback: () => void; delay: number }>();
   let nextTimer = 0;
   const mocks = {
     'react-native': { AppState: { addEventListener: (_event: string, handler: any) => { appStateListener = handler; return { remove() { appStateListener = null; } }; } } },
     './membership-entitlements': entitlements,
     './pro-entitlement-sync': { publishProEntitlement: async () => {} },
-    './release-features': { PREVIEW_ATLAS_UNLOCKED: false },
+    './release-features': { PREVIEW_ATLAS_UNLOCKED: false, V4_REDESIGN_ENABLED: overrides.v4 === true },
     // Trial expired by default so these tests exercise StoreKit alone.
     './plus-trial': {
-      loadOrStartPlusTrial: async () => overrides.trialStartedAt ?? 1,
+      loadOrStartPlusTrial: async () => { trialLoads++; return overrides.trialStartedAt ?? 1; },
       plusTrialEndsAt: (startedAt: number, now: number) => now < startedAt ? null : startedAt + 7 * 86_400_000,
     },
     '../modules/journeydeck-membership': {
       isJourneyDeckMembershipNativeAvailable: true,
+      JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS: ['com.journeydeck.recorder.pro.weekly', 'com.journeydeck.recorder.pro.annual'],
       getMembershipStatus: async () => free,
-      getMembershipProducts: async () => [],
+      getMembershipProducts: async (productIds?: readonly string[]) => { requestedProducts = productIds; return []; },
       purchaseMembership: async () => ({ outcome: 'purchased', status: paid }),
       restoreMembershipPurchases: async () => paid,
       ...overrides,
@@ -64,11 +67,23 @@ async function harness(overrides: Record<string, any> = {}) {
   await act(async () => { tree = create(React.createElement(Content)); });
   return {
     get control() { return control; }, timers,
+    get trialLoads() { return trialLoads; },
+    get requestedProducts() { return requestedProducts; },
     emit: async (status: any) => { await act(async () => { listener(status); }); },
     foreground: async () => { await act(async () => { appStateListener('active'); }); },
     dispose: async () => { await act(async () => { tree.unmount(); }); assert.equal(listener, null); assert.equal(appStateListener, null); assert.equal(timers.size, 0); },
   };
 }
+
+test('V4 offers weekly and annual, with Plus free for the first days after the app first opens', async () => {
+  const h = await harness({ v4: true, trialStartedAt: Date.now() });
+  try {
+    assert.equal(h.trialLoads, 1, 'V4 starts its trial the first time the app opens');
+    assert.equal(h.control.state.entitlements.tier, 'paid', 'Plus is unlocked during the trial');
+    await act(async () => { await h.control.loadProducts(); });
+    assert.deepEqual(h.requestedProducts, ['com.journeydeck.recorder.pro.weekly', 'com.journeydeck.recorder.pro.annual']);
+  } finally { await h.dispose(); }
+});
 
 test('an older startup read cannot undo an approved transaction event', async () => {
   const initial = deferred<any>();

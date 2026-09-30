@@ -110,7 +110,7 @@ test('V2 disables Tessie while V3 requires an explicit variant flag and verified
 test('public membership uses verified StoreKit products without hardcoded pricing', () => {
   assert.match(shell, /membershipTier=\{membership\.tier\}/);
   assert.match(membershipStore, /entitlementsForVerifiedMembership/);
-  assert.match(membershipStore, /const availableProducts = await getMembershipProducts\(\)/);
+  assert.match(membershipStore, /const availableProducts = await getMembershipProducts\(/);
   assert.match(membershipStore, /productLoadGeneration/);
   assert.match(membershipStore, /setProducts\(\[\]\)/);
   assert.match(membershipPaywall, /product\.displayPrice/);

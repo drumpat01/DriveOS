@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS,
+  JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS,
   type JourneyDeckMembershipProduct,
 } from '../modules/journeydeck-membership';
 import type { JourneyDeckMembershipState } from './membership-store';
@@ -29,9 +30,11 @@ import { journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journ
 
 const MONTHLY_PRODUCT_ID = JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS[0];
 const ANNUAL_PRODUCT_ID = JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS[1];
+const WEEKLY_PRODUCT_ID = JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS[0];
 
 function planName(product: JourneyDeckMembershipProduct) {
   if (product.id === ANNUAL_PRODUCT_ID) return 'Annual';
+  if (product.id === WEEKLY_PRODUCT_ID) return 'Weekly';
   if (product.id === MONTHLY_PRODUCT_ID) return 'Monthly';
   return product.displayName || 'JourneyDeck';
 }
@@ -43,7 +46,7 @@ function periodSuffix(product: JourneyDeckMembershipProduct) {
 }
 
 function productOrder(product: JourneyDeckMembershipProduct) {
-  if (product.id === MONTHLY_PRODUCT_ID) return 0;
+  if (product.id === WEEKLY_PRODUCT_ID || product.id === MONTHLY_PRODUCT_ID) return 0;
   if (product.id === ANNUAL_PRODUCT_ID) return 1;
   return 2;
 }
@@ -138,7 +141,7 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
   if (V4_PHONE) return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
     <MembershipPaywallV4
       hero={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)}
-      plans={orderedProducts.map(product => ({ product, name: planName(product), period: periodSuffix(product) || 'App Store price', badge: product.id === ANNUAL_PRODUCT_ID ? 'BEST VALUE' : undefined }))}
+      plans={orderedProducts.map(product => ({ product, name: planName(product), period: periodSuffix(product) || 'App Store price', trialDays: product.introTrialDays, badge: product.id === ANNUAL_PRODUCT_ID ? 'BEST VALUE' : undefined }))}
       selectedId={selectedProductId}
       onSelect={setSelectedProductId}
       loading={state.productsLoading}
@@ -263,6 +266,7 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
                 <Text style={[styles.planName, { color: colors.textSecondary }, selected && { color: colors.accent }]}>{planName(product)}</Text>
                 <Text adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={[styles.planPrice, { color: colors.text }]}>{product.displayPrice}</Text>
                 <Text style={[styles.planPeriod, { color: colors.textSecondary }]}>{suffix || 'App Store price'}</Text>
+                {V4_REDESIGN_ENABLED && !!product.introTrialDays && <Text style={[styles.planPeriod, { color: colors.accent }]}>{product.introTrialDays} days free for eligible subscribers</Text>}
               </Pressable>;
             })}
           </View>}
@@ -276,7 +280,7 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={selectedProduct
-            ? (V4_REDESIGN_ENABLED ? 'Unlock JourneyDeck Plus with ' : 'Unlock Atlas with ') + planName(selectedProduct) + ' for ' + selectedProduct.displayPrice + (periodSuffix(selectedProduct) ? ' ' + periodSuffix(selectedProduct) : '')
+            ? (V4_REDESIGN_ENABLED && selectedProduct.introTrialDays ? `Start ${selectedProduct.introTrialDays}-day free trial, then ` : V4_REDESIGN_ENABLED ? 'Unlock JourneyDeck Plus with ' : 'Unlock Atlas with ') + planName(selectedProduct) + ' for ' + selectedProduct.displayPrice + (periodSuffix(selectedProduct) ? ' ' + periodSuffix(selectedProduct) : '')
             : V4_REDESIGN_ENABLED ? 'Unlock JourneyDeck Plus' : 'Unlock Atlas'}
           accessibilityState={{ disabled: purchaseDisabled }}
           disabled={purchaseDisabled}
@@ -285,8 +289,10 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
         >
           {state.purchasePending
             ? <ActivityIndicator color={colors.onAccent} />
-            : <Text style={[styles.ctaText, { color: colors.onAccent }]}>{(V4_REDESIGN_ENABLED ? 'Unlock Plus' : 'Unlock Atlas') + (selectedProduct ? ' · ' + selectedProduct.displayPrice : '')}</Text>}
+            : <Text style={[styles.ctaText, { color: colors.onAccent }]}>{V4_REDESIGN_ENABLED && selectedProduct?.introTrialDays ? `Start ${selectedProduct.introTrialDays}-day free trial` : (V4_REDESIGN_ENABLED ? 'Unlock Plus' : 'Unlock Atlas') + (selectedProduct ? ' · ' + selectedProduct.displayPrice : '')}</Text>}
         </Pressable>
+
+        {V4_REDESIGN_ENABLED && !!selectedProduct?.introTrialDays && <Text style={[styles.legal, { color: colors.textSecondary }]}>Then {selectedProduct.displayPrice} {periodSuffix(selectedProduct)}. Renews automatically unless cancelled.</Text>}
 
         {V4_PHONE && <Pressable accessibilityRole="button" accessibilityLabel="No thanks, keep the free plan" onPress={onClose} style={({ pressed }) => [styles.noThanks, pressed && styles.pressed]}>
           <Text style={[styles.noThanksText, { color: colors.textSecondary }]}>No thanks, keep the free plan</Text>

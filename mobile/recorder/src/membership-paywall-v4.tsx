@@ -16,7 +16,7 @@ const PERKS: readonly { symbol: SFSymbol; title: string; detail: string }[] = [
   { symbol: 'infinity', title: 'Complete history', detail: 'Every journey, not just today' },
 ];
 
-export type PaywallPlan = { product: JourneyDeckMembershipProduct; name: string; period: string; badge?: string };
+export type PaywallPlan = { product: JourneyDeckMembershipProduct; name: string; period: string; trialDays: number | null; badge?: string };
 
 /**
  * V4 iPhone paywall. It uses the same pieces as Today and Memories: a photo card with its
@@ -88,6 +88,7 @@ export function MembershipPaywallV4({ hero, plans, selectedId, onSelect, loading
             </View>
             <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.8} style={[styles.planPrice, { color: c.text }]}>{plan.product.displayPrice}</Text>
             <Text style={[styles.planPeriod, { color: c.textSecondary }]}>{plan.period}</Text>
+            {plan.trialDays ? <Text style={[styles.planPeriod, { color: c.accent }]}>{plan.trialDays} days free</Text> : null}
             {plan.badge ? <View style={[styles.badge, { backgroundColor: c.highlightSoft }]}><Text style={[styles.badgeText, { color: c.text }]}>{plan.badge}</Text></View> : null}
           </Pressable>;
         })}
@@ -98,10 +99,11 @@ export function MembershipPaywallV4({ hero, plans, selectedId, onSelect, loading
 
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPurchase}
-          accessibilityLabel={selected ? `Unlock JourneyDeck Plus, ${selected.name}, ${selected.product.displayPrice} ${selected.period}` : 'Unlock JourneyDeck Plus'}
+          accessibilityLabel={selected ? `${selected.trialDays ? `Start ${selected.trialDays}-day free trial, then` : 'Unlock JourneyDeck Plus,'} ${selected.name}, ${selected.product.displayPrice} ${selected.period}` : 'Unlock JourneyDeck Plus'}
           style={({ pressed }) => [styles.cta, { backgroundColor: disabled ? withAlpha(c.accent, 0.45) : c.accent }, pressed && styles.pressed]}>
-          {pending ? <ActivityIndicator color={c.onAccent} /> : <Text style={[styles.ctaText, { color: c.onAccent }]}>{selected ? `Continue · ${selected.product.displayPrice}` : 'Continue'}</Text>}
+          {pending ? <ActivityIndicator color={c.onAccent} /> : <Text style={[styles.ctaText, { color: c.onAccent }]}>{selected?.trialDays ? `Start ${selected.trialDays}-day free trial` : selected ? `Continue · ${selected.product.displayPrice}` : 'Continue'}</Text>}
         </Pressable>
+        {selected?.trialDays ? <Text style={[styles.fine, { color: c.textSecondary }]}>Then {selected.product.displayPrice} {selected.period}. Renews automatically unless cancelled.</Text> : null}
         {message && plans.length ? <Text accessibilityLiveRegion="polite" style={[styles.fine, { color: c.danger }]}>{message}</Text> : null}
         <Pressable accessibilityRole="button" accessibilityLabel="No thanks, keep the free plan" onPress={onClose} style={({ pressed }) => [styles.noThanks, pressed && styles.pressed]}>
           <Text style={[styles.noThanksText, { color: c.textSecondary }]}>No thanks, keep the free plan</Text>

@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
+import { V4_REDESIGN_ENABLED } from './release-features';
 
-export const PLUS_TRIAL_DAYS = 7;
+// V4: three days of Plus from the first time the app opens. V3 keeps its seven.
+export const PLUS_TRIAL_DAYS = V4_REDESIGN_ENABLED ? 3 : 7;
 const DAY_MS = 86_400_000;
 
 // The Keychain outlives a reinstall, so deleting the app does not restart the trial.
