@@ -92,6 +92,15 @@ async function invalidateExpiredConnection(error: unknown, profileId: string) {
   }
 }
 
+/** Why automatic recording can't run: Plus is required, then a connected Tessie account; null when neither blocks it. */
+export async function tessieAutomaticBlocker(): Promise<'plus' | 'tessie' | null> {
+  if (!(await paidTessieAccess())) return 'plus';
+  const context = connectionContext();
+  if (!context.current()) return 'tessie';
+  const [accessToken, vehicleCount] = await Promise.all([storedToken(), storedVerifiedVehicleCount()]);
+  return accessToken && vehicleCount > 0 ? null : 'tessie';
+}
+
 export async function tessieAutomaticRecordingEligible() {
   const context = connectionContext();
   if (!(await paidTessieAccess())) return false;

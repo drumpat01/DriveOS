@@ -6,6 +6,8 @@ export type RecorderAccessoryInput = {
   clockTracking: boolean;
   automaticMode: boolean;
   automaticDetectionActive: boolean;
+  /** Why Automatic can't run; the bar then offers a manual Start and names what is missing. */
+  automaticBlocker?: 'plus' | 'tessie' | null;
   justSaved: boolean;
   elapsed: string;
   miles: number;
@@ -45,7 +47,9 @@ export function recorderAccessoryState(input: RecorderAccessoryInput): RecorderA
       ? state('idle', 'Watching for your next drive', 'Automatic recording is on', null)
       : state('attention', 'Automatic detection paused', 'Check Always Allow location access', null);
   }
-  return state('idle', 'Ready for your next drive', 'Private and on this iPhone', 'start');
+  const hint = input.automaticBlocker === 'plus' ? 'Automatic drives need Plus'
+    : input.automaticBlocker === 'tessie' ? 'Connect Tessie for automatic drives' : 'Private and on this iPhone';
+  return state('idle', 'Ready for your next drive', hint, 'start');
 }
 
 /** iOS 26 introduced the tab bar bottom accessory; earlier systems show the bar on Today. */

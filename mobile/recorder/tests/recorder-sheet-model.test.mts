@@ -28,3 +28,21 @@ test('an active journey wins over setup states and Tesla automation', () => {
   assert.equal(state({ automaticMode: true, automaticDetectionActive: true }).primary, null);
   assert.match(state({ automaticMode: true }).title, /paused/);
 });
+
+test('Automatic that cannot run says what is missing and offers a manual Start instead of blaming location', async () => {
+  const { recorderAccessoryState } = await import('../src/recorder-accessory-model.ts');
+  const base = { startupPending: false, permissionsReady: true, status: null, clockTracking: false, automaticMode: false, automaticDetectionActive: false, justSaved: false, elapsed: '00:00:00', miles: 0 } as const;
+  const plus = recorderAccessoryState({ ...base, automaticBlocker: 'plus' });
+  assert.equal(plus.action, 'start');
+  assert.equal(plus.detail, 'Automatic drives need Plus');
+  const tessie = recorderAccessoryState({ ...base, automaticBlocker: 'tessie' });
+  assert.equal(tessie.action, 'start');
+  assert.equal(tessie.detail, 'Connect Tessie for automatic drives');
+  assert.equal(recorderAccessoryState({ ...base }).detail, 'Private and on this iPhone');
+  const sheet = recorderSheetState({ startupPending: false, permissionsReady: true, status: null, clockTracking: false, automaticMode: false, automaticDetectionActive: false, automaticBlocker: 'tessie' });
+  assert.equal(sheet.primary, 'start');
+  assert.match(sheet.body, /Connect Tessie/);
+  // A working Automatic that is simply not running yet still points at location.
+  const paused = recorderAccessoryState({ ...base, automaticMode: true, automaticDetectionActive: false });
+  assert.match(paused.detail, /Always Allow location/);
+});
