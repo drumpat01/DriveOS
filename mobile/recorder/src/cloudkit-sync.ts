@@ -58,6 +58,7 @@ import {
   deletePlace,
   isEditorManagedJourney,
   isEditorManagedMusic,
+  repairPhotoLocalUri,
 } from './local-store';
 import { PRIVATE_PLACE_PREFIX, parsePrivatePlace } from './private-place-record';
 import { resolvePrivatePhotoFile } from './private-photo-file';
@@ -815,7 +816,17 @@ export class CloudKitSyncEngine {
         const remote = ckRecordToPhoto(record, this.userId), local = getPhotoIncludingDeleted(this.userId, remote.id);
         if (remote.source !== 'memory' || !isDirectJourneyMemoryId(remote.memoryId)) continue;
         if (remote.memoryId && !getMemoryIncludingDeleted(this.userId, remote.memoryId)) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
-        if ((!local && !remote.deletedAt && !remote.localUri) || (local && resolvePrivateConflict(local, remote) !== remote)) continue;
+        if (!local && !remote.deletedAt && !remote.localUri) continue;
+        if (local && resolvePrivateConflict(local, remote) !== remote) {
+          // The local record wins, but its file may be gone from this device. iCloud just downloaded the same photo:
+          // point the record at that file. A path change is not an edit, so revision and sync state stay as they are.
+          if (!local.deletedAt && remote.localUri && remote.localUri !== local.localUri && (await resolvePrivatePhotoFile(local)).status !== 'available'
+            && await FileSystem.getInfoAsync(remote.localUri).then(info => info.exists && !info.isDirectory && Boolean(info.size)).catch(() => false)) {
+            assertProfileCurrent();
+            if (repairPhotoLocalUri(this.userId, local.id, local.localUri, remote.localUri)) count++;
+          }
+          continue;
+        }
         if (!remote.localUri && local) remote.localUri = local.localUri;
         upsertPhoto(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
         count++;

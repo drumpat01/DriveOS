@@ -966,6 +966,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     spotifyOwnerState={spotifyOwnerState}
     onDataHealth={() => openMore('health')}
     onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
+    onRestoreMembership={membershipStore.restore}
     onSpotifyOwnerConnect={() => void connectSpotifyOwner()}
     onSpotifyOwnerSync={() => void syncSpotifyOwner()}
     onAppleSignIn={() => void connectAppleIdentity()}
@@ -3168,7 +3169,7 @@ function ConnectionsScreen({
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, journeys, memories, onMembership,
   onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible,
-  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange, onTessieChanged,
+  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange, onTessieChanged, onRestoreMembership,
 }: {
   provider: MusicProvider;
   connectionCapabilities: ConnectionCapabilities;
@@ -3179,6 +3180,8 @@ function ConnectionsScreen({
   privateCloud: PrivateCloudUiState;
   membershipTier: 'free' | 'paid';
   membershipExpirationDate: string | null;
+  /** App Store Restore Purchases, reachable from Settings as well as the paywall. */
+  onRestoreMembership?: () => Promise<void>;
   journeys: JourneySummary[];
   memories: JourneyMemory[];
   lastFmUsername: string;
@@ -3338,7 +3341,7 @@ function ConnectionsScreen({
     <SectionHeading title="Membership" />
     <View style={[styles.selectedProvider, styles.staticWidgetGlow, !REDESIGN_PHONE && { borderColor: theme.color(membershipTier === 'paid' ? '#ff795b' : '#6d4a78', 'border') }]}>
       {membershipTier === 'paid' ? <Image source={theme.isLight ? require('../assets/icon-light-plum-v1.png') : require('../assets/icon.png')} resizeMode="cover" style={styles.membershipSettingsLogo} /> : <LinearGradient colors={theme.gradient(['#4a285d', '#26152f'])} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>45</Text></LinearGradient>}
-      <View style={styles.flex}><Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE · LATEST 45 DAYS'}</Text><Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text><Text style={styles.connectionDetail}>{membershipTier === 'paid' ? `Atlas and complete history unlocked${membershipExpirationDate ? ` through ${new Date(membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>
+      <View style={styles.flex}><Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE'}</Text><Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text><Text style={styles.connectionDetail}>{membershipTier === 'paid' ? `Atlas and complete history unlocked${membershipExpirationDate ? ` through ${new Date(membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Plus for Atlas, themes and icons, and every past Journey and Memory.'}</Text></View>
       <TouchPressable accessibilityRole="button" onPress={onMembership} style={styles.changeButton}><Text style={styles.changeButtonText}>{membershipTier === 'paid' ? 'Manage' : 'Unlock'}</Text></TouchPressable>
     </View>
   </>;
@@ -3411,7 +3414,7 @@ function ConnectionsScreen({
       music: <>{providerCard}{tessieContent}{lastFmControls}{internalMusicControls}<View style={styles.settingsInsetNote}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music and vehicle connections are optional. A connection or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View></>,
       account: <>{profileCard}{cloudCard}<View style={styles.settingsCompactList}>{compactActionRow({ label: 'Read Privacy Policy', detail: 'How JourneyDeck protects your data', symbol: 'hand.raised.fill', accessibilityLabel: 'Privacy Policy', onPress: () => void Linking.openURL('https://journeydeck.me/privacy') })}</View><Text style={styles.settingsSectionLabel}>ACCOUNT ACTIONS</Text>{accountActions}</>,
       places: <><Text style={styles.settingsDetailIntro}>Name familiar places automatically and protect their exact locations when sharing.</Text>{placesCard}</>,
-      membership: <>{membershipCard}{supportCard}</>,
+      membership: <>{membershipCard}{onRestoreMembership ? <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Restore Purchases', detail: 'Already subscribed? Restore JourneyDeck Plus', symbol: 'arrow.clockwise', accessibilityLabel: 'Restore Purchases', onPress: () => { void onRestoreMembership().then(() => Alert.alert('Restore Purchases', 'JourneyDeck checked the App Store for your purchases.')).catch(error => Alert.alert('Restore Purchases', error instanceof Error ? error.message : 'The App Store could not restore purchases.')); } })}</View> : null}{supportCard}</>,
     };
     return <SettingsEditorScaffold eyebrow="SETTINGS" title={category.title} onBack={closeEditor}><View style={styles.settingsCategoryStack}>{categoryContent[destination.category]}</View></SettingsEditorScaffold>;
   }

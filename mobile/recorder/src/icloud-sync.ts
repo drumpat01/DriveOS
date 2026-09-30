@@ -9,9 +9,12 @@ import {
   getCloudKitPrivateZoneScopes,
   isJourneyDeckCloudKitAvailable,
   pullCloudKitChanges,
+  resetCloudKitChangeToken,
   pushCloudKitRecords,
   type CloudKitAccountStatus,
 } from '../modules/journeydeck-cloudkit';
+import { notifyLocalArchiveChanged } from './local-archive-events';
+import { completeMissingPhotoRecovery, missingPhotoRecoveryRequested, onMissingPhotoRecovery } from './photo-recovery';
 import { getCurrentUser } from './auth';
 import { isPrivateCloudDeletionPending, setPrivateCloudDeletionPending, type LocalUser } from './local-store';
 import { CloudKitSyncEngine, type SyncState } from './cloudkit-sync';
@@ -227,11 +230,14 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     let downloaded = 0;
     let uploaded = 0;
     let failedUploads = 0;
+    // A saved photo is missing on this device: read every zone from the start so iCloud's copies download again.
+    const recoverPhotos = missingPhotoRecoveryRequested();
     // Existing V2/V3 profile, editor and marker zones remain readable. Only the
     // account-stable canonical zone receives new writes.
     for (const scope of [...new Set([...zones.existingScopes, canonicalScope])]) {
       try {
         assertSyncProfileCurrent(user);
+        if (recoverPhotos) await resetCloudKitChangeToken(scope);
         const pulled = await pullCloudKitChanges(scope);
         assertSyncProfileCurrent(user);
         engine.ingestRemoteDeletions(pulled.deletedRecordNames);
@@ -247,6 +253,7 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
         console.warn('CloudKit zone pull failed', { code: cloudKitErrorCode(error) });
       }
     }
+    if (recoverPhotos) { completeMissingPhotoRecovery(); notifyLocalArchiveChanged(); }
     let retryAfterSeconds: number | null = null;
     const failedThisPass = new Set<string>();
     for (let batch = 0; batch < 5; batch++) {
@@ -346,3 +353,5 @@ function result(
 ): PrivateICloudSyncResult {
   return { available, accountStatus, downloaded, uploaded, failedUploads, issueDetails: engine.getIssueDetails(), retryAfterSeconds, deletedRecordNames, privateContentVersion, state: engine.getSyncState() };
 }
+
+onMissingPhotoRecovery(() => { void syncCurrentUserWithPrivateICloud({ force: true }).catch(() => undefined); });

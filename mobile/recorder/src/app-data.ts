@@ -20,6 +20,7 @@ import {
   SAVED_PLACE_MATCH_RADIUS_METERS,
 } from './place-matching';
 import { notifyLocalArchiveChanged } from './local-archive-events';
+import { requestMissingPhotoRecovery } from './photo-recovery';
 import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId, mergeMemoryJourneySelection } from './memory-model';
 import { loadSavedPlaces } from './saved-places';
 import { resolvePrivatePhotoFile } from './private-photo-file';
@@ -746,6 +747,7 @@ export const appDataClient = {
     if (local && !local.deletedAt) {
       const file = await resolvePrivatePhotoFile(local);
       if (file.status === 'available') return file.localUri;
+      if (local.syncedToCloud) requestMissingPhotoRecovery();
       throw new Error('This saved photo is unavailable on this device.');
     }
     const cached = readAppCache<string>(photoCacheKey(photo.id));

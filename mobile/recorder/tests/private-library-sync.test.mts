@@ -1167,3 +1167,24 @@ test('an older successful sync cannot mask a later failed or partial forced sync
   await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), (error: any) => error.name === 'PrivateICloudSyncDeferredError' && error.backoff.category === 'partial_upload');
   assert.equal(pulls, pullsAfterPartial);
 }));
+
+test('a photo whose file vanished from this device is pointed at the copy iCloud downloads again', async () => {
+  const phone = device(); seed(phone);
+  const records = await phone.engine.preparePushPayload();
+  phone.engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
+  const photoRecord = records.find((record: any) => record.recordType === 'Photo');
+  // This device's copy is newer than iCloud's (edited after the last upload), so the local record wins the merge.
+  phone.db.prepare("UPDATE local_photos SET sync_revision=2, updated_at='2026-09-02T00:00:00Z' WHERE id=?").run('fixture-photo');
+  files.delete('fixture://photo');
+  files.set('file:///icloud-download/photo.jpg', 'photo-bytes');
+  const updated = await phone.engine.ingestRemoteRecords([{ ...photoRecord, assetFilePath: 'file:///icloud-download/photo.jpg' }]);
+  assert.equal(updated.updatedCount, 1);
+  const repaired = phone.store.getPhotoIncludingDeleted(phone.user.id, 'fixture-photo');
+  assert.equal(repaired.localUri, 'file:///icloud-download/photo.jpg');
+  assert.equal(repaired.syncRevision, 2, 'a new file location is not an edit');
+
+  files.set('fixture://photo-2', 'still-here');
+  phone.db.prepare('UPDATE local_photos SET local_uri=? WHERE id=?').run('fixture://photo-2', 'fixture-photo');
+  await phone.engine.ingestRemoteRecords([{ ...photoRecord, assetFilePath: 'file:///icloud-download/photo.jpg' }]);
+  assert.equal(phone.store.getPhotoIncludingDeleted(phone.user.id, 'fixture-photo').localUri, 'fixture://photo-2', 'a photo whose file is present is left alone');
+});
