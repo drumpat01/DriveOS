@@ -37,6 +37,7 @@ async function harness(overrides: Record<string, any> = {}) {
     './pro-entitlement-sync': { publishProEntitlement: async () => {} },
     './release-features': { PREVIEW_ATLAS_UNLOCKED: false, V4_REDESIGN_ENABLED: overrides.v4 === true },
     // Trial expired by default so these tests exercise StoreKit alone.
+    './auth': { isDemoProfile: () => false },
     './plus-trial': {
       loadOrStartPlusTrial: async () => { trialLoads++; return overrides.trialStartedAt ?? 1; },
       plusTrialEndsAt: (startedAt: number, now: number) => now < startedAt ? null : startedAt + 7 * 86_400_000,
