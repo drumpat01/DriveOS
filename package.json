@@ -39,6 +39,9 @@
     "typescript-eslint": "^8.44.1",
     "wrangler": "^4.131.2"
   },
+  "overrides": {
+    "undici": "7.29.1"
+  },
   "engines": {
     "node": ">=24.0.0"
   }
