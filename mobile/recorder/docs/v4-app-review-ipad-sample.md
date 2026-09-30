@@ -10,7 +10,7 @@ new iPad has an empty library. To let App Review see every screen on either devi
   On this day are populated.
 - Each Memory has a bundled cover photo (`src/demo-photos.ts`, credits in `assets/demo/CREDITS.md`, Unsplash License).
 - Removes itself: the sample lives for one launch. A sample left over from an earlier launch is deleted at startup, so the real profile
-  (where iCloud data can sync in) comes back. Recording is hidden while the sample is open.
+  (where iCloud data can sync in) comes back. The trial banner is hidden while the sample is open; the recorder bar stays (it is part of the app).
 - Never uploaded: every row is written as already synced, `syncPrivateCloud` pauses for sandbox profiles, and the profile is
   deleted when the user leaves it. The user's own profile is not touched.
 - Onboarding is skipped inside the sample.

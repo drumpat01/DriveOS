@@ -66,7 +66,7 @@ import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_FIFTY_STATES_ENABLED } from './src/release-features';
 import { configureJourneyDeckObservability, observeJourneyDeckEvent, observeJourneyDeckEventOnce } from './src/observability';
-import { tessieAutomaticRecordingEligible } from './src/tessie-direct';
+import { tessieAutomaticBlocker } from './src/tessie-direct';
 import { manualRecordingFailsafeNotice } from './src/manual-recording-failsafe';
 import { recorderClockRunning, recorderDurationLabel, updateRecorderClock, type RecorderClock } from './src/recorder-clock';
 import type { ActiveJourneyProgress } from './src/tessie-home-widgets';
@@ -183,6 +183,8 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const [trackingActive, setTrackingActive] = useState(false);
   const [recorderClock, setRecorderClock] = useState<RecorderClock | null>(null);
   const [automaticDetectionActive, setAutomaticDetectionActive] = useState(false);
+  // Why Automatic can't run (Plus or Tessie missing); the recorder then behaves as manual and says so.
+  const [automaticBlocker, setAutomaticBlocker] = useState<'plus' | 'tessie' | null>(null);
   const [recorderInitialized, setRecorderInitialized] = useState(false);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences>(() => loadRecordingModePreferences());
   const operation = useRef<Promise<void>>(Promise.resolve());
@@ -426,9 +428,10 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
 
   const reconcileAutomaticRecorder = useCallback(async () => {
     if (!deviceId || isIpad()) return false;
-    const tessieEligible = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic'
-      ? await tessieAutomaticRecordingEligible()
-      : false;
+    const wantsAutomatic = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
+    const blocker = wantsAutomatic ? await tessieAutomaticBlocker() : null;
+    setAutomaticBlocker(blocker);
+    const tessieEligible = wantsAutomatic && blocker === null;
     const current = activeSession();
     const automaticState = loadAutomaticDriveState();
     const finishingExistingAutomaticJourney = Boolean(current && automaticState.automaticSessionId === current.id);
@@ -730,7 +733,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const metrics = [
     ['TIME', elapsedLabel], ['POINTS', String(summary?.pointCount ?? 0)], [connection ? 'GPS QUEUED' : 'GPS SAVED', String(summary?.queuedCount ?? 0)], [connection ? 'MUSIC QUEUED' : 'MUSIC SAVED', String(summary?.musicQueuedCount ?? 0)],
   ];
-  const automaticMode = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
+  const automaticMode = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic' && !automaticBlocker;
 
   if (presentation === 'ipad-home') {
     const startupPending = !deviceId || !recorderInitialized;
@@ -806,7 +809,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     const liveStatus = summary && summary.status !== 'completed' ? summary.status : null;
     const accessoryState = recorderAccessoryState({
       startupPending: !deviceId || !recorderInitialized, permissionsReady, status: liveStatus, clockTracking,
-      automaticMode, automaticDetectionActive, justSaved: Boolean(completionMoment), elapsed: elapsedLabel, miles: distanceMiles,
+      automaticMode, automaticDetectionActive, automaticBlocker, justSaved: Boolean(completionMoment), elapsed: elapsedLabel, miles: distanceMiles,
     });
     const runAction = () => {
       if (accessoryState.action === 'start') void start();
@@ -814,7 +817,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       else if (accessoryState.action === 'end') finish();
       else if (accessoryState.action === 'resume') void resume();
     };
-    const sheetState = recorderSheetState({ startupPending: !deviceId || !recorderInitialized, permissionsReady, status: liveStatus, clockTracking, automaticMode, automaticDetectionActive });
+    const sheetState = recorderSheetState({ startupPending: !deviceId || !recorderInitialized, permissionsReady, status: liveStatus, clockTracking, automaticMode, automaticDetectionActive, automaticBlocker });
     return <>
       <RecorderAccessoryBar state={accessoryState} busy={busy} framed={presentation === 'accessory-inline'} onAction={runAction} onOpen={() => setRecorderSheetOpen(true)} />
       <Modal visible={recorderSheetOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setRecorderSheetOpen(false)}>

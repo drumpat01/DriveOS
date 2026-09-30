@@ -1031,8 +1031,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
 
   // V4 iPhone: one recorder instance, in the tab bar accessory on iOS 26+ and on Today before that.
   // iPad never records; it shows what the iPhone syncs through iCloud.
-  const accessoryRecorder = REDESIGN_PHONE && canRecordDrives() && !isDemoProfile(currentUser) && supportsTabAccessory(Platform.OS, Platform.Version);
-  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() && !isDemoProfile(currentUser) ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
+  const accessoryRecorder = REDESIGN_PHONE && canRecordDrives() && supportsTabAccessory(Platform.OS, Platform.Version);
+  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
   const loadTodayProfile = useCallback(() => {
     const appearance = loadProfileAppearance(currentUser);
     return { initials: profileInitialsFor(appearance.displayName), avatarUri: appearance.avatarDataUri ?? null };

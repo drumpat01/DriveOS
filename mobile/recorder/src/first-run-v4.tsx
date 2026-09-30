@@ -229,9 +229,12 @@ function ModeOption({ symbol, title, detail, selected, onPress, delay }: { symbo
 
 function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void; onContinue: (mode: RecordingMode, drivesTesla: boolean | null) => Promise<void>; initialMode: RecordingMode | null }) {
   const c = useRedesignColors();
-  // A replay keeps the mode already chosen; a first run suggests automatic on iPhone and Start-by-tap on iPad.
-  const [mode, setMode] = useState<RecordingMode>(initialMode ?? (isIpad() ? 'manual' : 'automatic'));
+  // Automatic recording works through Tessie, so it is offered once the driver says they have a Tesla (or already chose it).
+  // A replay keeps the mode already chosen; everyone else starts on Start-by-tap.
+  const [mode, setMode] = useState<RecordingMode>(initialMode ?? 'manual');
   const [tesla, setTesla] = useState<boolean | null>(null);
+  const offerAutomatic = tesla === true || initialMode === 'automatic';
+  const answerTesla = (value: boolean) => { setTesla(value); if (!value && initialMode !== 'automatic') setMode('manual'); };
   const [busy, setBusy] = useState(false);
   const allow = async () => {
     if (busy) return;
@@ -243,7 +246,7 @@ function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void;
     <Title delay={80}>How should drives be recorded?</Title>
     <Body delay={220}>{`JourneyDeck uses your location only while you drive. Routes stay on your ${DEVICE_NAME} and in your iCloud.`}</Body>
     <View accessibilityRole="radiogroup" style={styles.options}>
-      <ModeOption symbol="location.fill" title="Automatically" detail="Starts when you start driving" selected={mode === 'automatic'} onPress={() => setMode('automatic')} delay={380} />
+      {offerAutomatic ? <ModeOption symbol="location.fill" title="Automatically" detail="Starts when you start driving, with Tessie" selected={mode === 'automatic'} onPress={() => setMode('automatic')} delay={380} /> : null}
       <ModeOption symbol="record.circle" title="When I tap Start" detail="You choose which drives to keep" selected={mode === 'manual'} onPress={() => setMode('manual')} delay={500} />
     </View>
     <Animated.View entering={rise(660)} layout={LinearTransition.springify().damping(16)} style={[styles.divider, { backgroundColor: c.separator }]} />
@@ -252,7 +255,7 @@ function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void;
       <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: c.surface, borderColor: c.border }]}>
         {([['Yes', true], ['No', false]] as const).map(([label, value]) => {
           const on = tesla === value;
-          return <Pressable key={label} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => { void haptics.selection(); setTesla(value); }}
+          return <Pressable key={label} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => { void haptics.selection(); answerTesla(value); }}
             style={[styles.segmentItem, on && { backgroundColor: value ? c.accent : c.surfaceStrong }]}>
             <Text style={[styles.segmentText, { color: on ? (value ? c.onAccent : c.text) : c.textSecondary }]}>{label}</Text>
           </Pressable>;

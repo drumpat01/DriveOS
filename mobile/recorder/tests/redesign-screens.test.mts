@@ -571,3 +571,16 @@ test('Sample data: Today shows a bar to leave it, and the empty iPad card offers
   assert.deepEqual(calls, ['exit', 'sample']);
   await act(async () => { tree.unmount(); });
 });
+
+test('The trial banner shows on Today normally and is hidden while the sample library is open', async () => {
+  themeId = 'redline';
+  let tree: any;
+  const render = (sampleActive: boolean) => React.createElement(TodayScreen, { primary, memories, loadProfile: () => ({ initials: 'PS', avatarUri: null }), trialEndsAt: Date.now() + 86_400_000, onPlus() {}, sampleActive, onExitSample() {},
+    onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} });
+  await act(async () => { tree = create(render(false)); });
+  assert.equal(tree.root.findAllByType('PlusTrialBanner').length, 1);
+  await act(async () => { tree.update(render(true)); });
+  assert.equal(tree.root.findAllByType('PlusTrialBanner').length, 0);
+  assert.match(texts(tree), /viewing sample data/i);
+  await act(async () => { tree.unmount(); });
+});

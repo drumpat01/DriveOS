@@ -154,7 +154,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
       <Text style={[styles.sampleText, { color: colors.text }]}>You’re viewing sample data</Text>
       <Text style={[styles.sampleAction, { color: colors.accent }]}>Leave</Text>
     </TouchPressable> : null}
-    {onPlus ? <PlusTrialBanner trialEndsAt={trialEndsAt} onPress={onPlus} now={now} /> : null}
+    {onPlus && !sampleActive ? <PlusTrialBanner trialEndsAt={trialEndsAt} onPress={onPlus} now={now} /> : null}
     {recorder ? <View testID="today-inline-recorder">{recorder}</View> : null}
     {primary.status === 'error' && !primary.data ? <Surface style={styles.notice}><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{primary.message ?? 'Your library could not load. Pull down to try again.'}</Text></Surface> : null}
     <View style={canvas.wide ? styles.cardGrid : styles.cardColumn}>

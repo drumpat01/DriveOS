@@ -8,6 +8,8 @@ export type RecorderSheetInput = {
   clockTracking: boolean;
   automaticMode: boolean;
   automaticDetectionActive: boolean;
+  /** Why Automatic can't run; the sheet then offers a manual Start and names what is missing. */
+  automaticBlocker?: 'plus' | 'tessie' | null;
 };
 
 export type RecorderSheetState = {
@@ -40,5 +42,5 @@ export function recorderSheetState(input: RecorderSheetInput): RecorderSheetStat
       ? { phase: 'automatic', kicker: 'Tesla automation', title: 'Drives start on their own.', body: 'Journeys are detected automatically. Your active drive will appear here.', primary: null, secondary: null, live: false }
       : { phase: 'automatic', kicker: 'Tesla automation', title: 'Automatic detection is paused.', body: 'Check Always Allow location access in Settings.', primary: null, secondary: null, live: false };
   }
-  return { phase: 'ready', kicker: 'Ready', title: 'Ready for your next drive.', body: 'Start when you begin driving. You can lock your phone.', primary: 'start', secondary: null, live: false };
+  return { phase: 'ready', kicker: 'Ready', title: 'Ready for your next drive.', body: input.automaticBlocker === 'plus' ? 'Start when you begin driving. Automatic drives need JourneyDeck Plus.' : input.automaticBlocker === 'tessie' ? 'Start when you begin driving. Connect Tessie in Settings for automatic drives.' : 'Start when you begin driving. You can lock your phone.', primary: 'start', secondary: null, live: false };
 }
