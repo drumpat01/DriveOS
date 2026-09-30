@@ -28,7 +28,8 @@ export function glassSoftSceneSource(mode: ThemeId): ImageSourcePropType | null 
 export function headerImageSource(source: ImageSourcePropType, mode: ThemeId): ImageSourcePropType {
   if (typeof source === 'number' && customArtwork.has(source)) {
     // Aurora Glass: full scenery on Home, a real aurora photo on Journeys, the calm blurred scene elsewhere.
-    if (mode === 'aurora-glass' && source === require('../assets/cinematic-journey-photo-v1.jpg')) return require('../assets/theme-aurora-glass-journey-v1.jpg');
+    // Drive artwork (Journey header and the time-of-day drive cards) gets the real aurora road photo, not the blur.
+    if (mode === 'aurora-glass' && journeyArtwork.has(source)) return require('../assets/theme-aurora-glass-journey-v1.jpg');
     if (mode === 'aurora-glass') return source === require('../assets/cinematic-home-main-photo-v1.jpg')
       ? require('../assets/theme-aurora-glass-scene-v1.jpg')
       : require('../assets/theme-aurora-glass-scene-soft-v1.jpg');
