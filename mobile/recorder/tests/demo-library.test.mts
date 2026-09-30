@@ -59,3 +59,12 @@ test('routes are continuous and haversine miles are sane', () => {
   for (let i = 1; i < route.length; i++) assert.ok(demo.haversineMiles(route[i - 1], route[i]) < 0.6, 'no jumps between points');
   assert.ok(Math.abs(demo.haversineMiles([0, 0], [0, 1]) - 69.09) < 0.2);
 });
+
+test('sample Memories use the id prefix the app reads, so they actually appear', async () => {
+  const { isDirectJourneyMemoryId } = await import('../src/memory-model.ts');
+  calls.length = 0;
+  await demo.seedDemoLibrary('user_demo', Date.UTC(2026, 8, 30, 12));
+  const ids = of('memory').map(call => call.input.id);
+  assert.equal(ids.length, 4);
+  for (const id of ids) assert.equal(isDirectJourneyMemoryId(id), true, id);
+});

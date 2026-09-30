@@ -2,6 +2,7 @@
 // required; see assets/demo/CREDITS.md) and copied into the sample profile's private photo folder like any added photo.
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
+import { demoMemoryId } from './demo-library';
 import { getMemoryIncludingDeleted, upsertMemory, upsertPhoto, type LocalUserId } from './local-store';
 
 type DemoPhoto = { fileName: string; source: number };
@@ -41,7 +42,7 @@ export async function seedDemoPhotos(userId: LocalUserId): Promise<number> {
   let added = 0;
   let firstError: unknown = null;
   for (const [memoryKey, photos] of Object.entries(MEMORY_PHOTOS)) {
-    const memory = getMemoryIncludingDeleted(userId, `demo_memory_${memoryKey}`);
+    const memory = getMemoryIncludingDeleted(userId, demoMemoryId(memoryKey));
     if (!memory || memory.deletedAt) continue;
     let coverId: string | null = null;
     for (const [index, photo] of photos.entries()) {

@@ -72,6 +72,9 @@ export function demoRoute(path: readonly Waypoint[]): Waypoint[] {
 
 export const DEMO_PROFILE_NAME = 'JourneyDeck Sample';
 
+/** The app only reads Memories whose id carries the direct-journey prefix (memory-model.ts), so sample ids use it too. */
+export const demoMemoryId = (key: string) => `memory_v1_demo_${key}`;
+
 export function demoJourneyCount() { return DRIVES.length; }
 export function demoMemoryCount() { return MEMORIES.length; }
 
@@ -123,7 +126,7 @@ export async function seedDemoLibrary(userId: LocalUserId, nowMs = Date.now()): 
 
   for (const memory of MEMORIES) {
     upsertMemory({
-      id: `demo_memory_${memory.key}`, userId, name: memory.name, notes: memory.notes, artworkKey: null, coverPhotoId: null, coverPhotoLocalPath: null,
+      id: demoMemoryId(memory.key), userId, name: memory.name, notes: memory.notes, artworkKey: null, coverPhotoId: null, coverPhotoLocalPath: null,
       journeyIds: JSON.stringify(memory.drives.map(key => ids.get(key)).filter(Boolean)),
     }, { syncedToCloud: 1 });
   }

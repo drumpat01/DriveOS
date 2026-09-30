@@ -12,8 +12,9 @@ import {
   type JourneyDeckMembershipProduct,
   type JourneyDeckMembershipStatus,
 } from '../modules/journeydeck-membership';
-import { entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, sameMembershipEntitlements, withPlusTrial, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import { entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, sameMembershipEntitlements, withPlusTrial, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { loadOrStartPlusTrial, plusTrialEndsAt } from './plus-trial';
+import { isDemoProfile } from './auth';
 import { PREVIEW_ATLAS_UNLOCKED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED, V4_REDESIGN_ENABLED } from './release-features';
 import { publishProEntitlement } from './pro-entitlement-sync';
 
@@ -196,7 +197,10 @@ export function useJourneyDeckMembership() {
   const entitlementsRef = useRef<JourneyDeckMembershipEntitlements | null>(null);
   const entitlements = useMemo(() => {
     const verified = entitlementsForTestFlightMembership(status, TESTFLIGHT_PLUS_UNLOCKED, TESSIE_INTEGRATION_ENABLED);
-    const next = withPreviewAtlasAccess(withPlusTrial(verified, trialEndsAt, trialClock), PREVIEW_ATLAS_UNLOCKED);
+    // The sample library is a fixed demo: show all of it, never Plus-gated, whatever the device's membership.
+    const next = isDemoProfile()
+      ? { ...entitlementsForMembershipTier('paid'), tessieAccess: false }
+      : withPreviewAtlasAccess(withPlusTrial(verified, trialEndsAt, trialClock), PREVIEW_ATLAS_UNLOCKED);
     const previous = entitlementsRef.current;
     if (previous && sameMembershipEntitlements(previous, next)) return previous;
     entitlementsRef.current = next;

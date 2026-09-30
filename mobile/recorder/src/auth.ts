@@ -30,6 +30,7 @@ import { isInternalTestingBuild } from './internal-testing';
 import { DEMO_PROFILE_NAME, demoJourneyCount, demoMemoryCount, seedDemoLibrary } from './demo-library';
 import { notifyLocalArchiveChanged } from './local-archive-events';
 import { DEMO_PHOTO_COUNT, seedDemoPhotos } from './demo-photos';
+import { isDirectJourneyMemoryId } from './memory-model';
 import * as FileSystem from 'expo-file-system/legacy';
 
 export { listLocalUsers };
@@ -188,7 +189,9 @@ const DEMO_STALE_MS = 20 * 60 * 60 * 1000;
 function completeDemoProfile(candidate: LocalUser | undefined): boolean {
   return Boolean(candidate && Date.now() - Date.parse(candidate.createdAt) < DEMO_STALE_MS
     && listJourneys(candidate.id, { limit: 100 }).items.length >= demoJourneyCount()
-    && listMemories(candidate.id).length >= demoMemoryCount() && listPhotos(candidate.id).length >= DEMO_PHOTO_COUNT);
+    // Count only Memories the app actually shows; an older sample with unreadable ids is rebuilt.
+    && listMemories(candidate.id).filter(memory => isDirectJourneyMemoryId(memory.id)).length >= demoMemoryCount()
+    && listPhotos(candidate.id).length >= DEMO_PHOTO_COUNT);
 }
 
 /** True when the sample is already built and fresh, so turning it on is instant. */
