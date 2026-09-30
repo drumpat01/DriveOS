@@ -1,3 +1,4 @@
+import { DEVICE_NAME } from './device-layout';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Image, Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
 import { SymbolView } from 'expo-symbols';
@@ -7,7 +8,6 @@ import { useAppTheme } from './app-theme';
 import { getCurrentUser } from './auth';
 import { ASK_CANNOT_COMPUTE, ASK_EXAMPLES, askJourneyDeck, askJourneyDeckModelAvailability, isAskJourneyDeckAvailable, resolveJourneyDeckAnswer, type AskAnswer, type AskEvidence } from './ask-journeydeck';
 import { V3_ASK_JOURNEYDECK_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
-import { isIpad } from './device-layout';
 import { useRedesignColors } from './redesign-ui';
 import { ChatComposer, MessageEntrance } from './ask-chat-motion';
 import { KeyboardChatScrollView, KeyboardProvider } from 'react-native-keyboard-controller';
@@ -15,7 +15,7 @@ import { useMotionPreferences } from './motion';
 import { AskHeaderV4, AssistantBubbleV4, BubbleText, DayLabel, EvidenceCardsV4, SuggestionChipsV4, TypingBubbleV4, UserBubbleV4 } from './ask-journeydeck-v4';
 
 /** The V4 iPhone redesign draws Ask with the V4 chat components. */
-const ASK_V4 = V4_REDESIGN_ENABLED && !isIpad();
+const ASK_V4 = V4_REDESIGN_ENABLED;
 import { canShowSiriTesting } from './siri-testing';
 import { useJourneyDeckNavigation } from './native-navigation-context';
 import type { ThemeId } from './theme-catalog';
@@ -73,7 +73,7 @@ function AskJourneyDeckUpgrade({ onUpgrade }: { onUpgrade: () => void }) {
     <View style={{ flex: 1, justifyContent: 'center', gap: 16 }}>
       <BotAvatar themeID={theme.id} size={72} />
       <Text accessibilityRole="header" style={{ color: c.text, fontSize: 30, fontWeight: '700' }}>Ask anything about your drives.</Text>
-      <Text style={{ color: c.muted, fontSize: 16, lineHeight: 22 }}>Miles, music, places and Memories, answered privately on this iPhone and with Siri. Included with JourneyDeck Plus.</Text>
+      <Text style={{ color: c.muted, fontSize: 16, lineHeight: 22 }}>Miles, music, places and Memories, answered privately on this {DEVICE_NAME} and with Siri. Included with JourneyDeck Plus.</Text>
       <Pressable accessibilityRole="button" testID="ask-upgrade-button" onPress={onUpgrade} style={{ padding: 18, backgroundColor: c.accent, borderRadius: 18, alignItems: 'center' }}>
         <Text style={{ color: c.onAccent, fontWeight: '800', fontSize: 16 }}>Explore Plus</Text>
       </Pressable>
@@ -239,7 +239,7 @@ function AskJourneyDeckChat() {
             <DayLabel>Today</DayLabel>
             <AssistantBubbleV4 avatar={avatar}>
               <BubbleText>Hi! Ask me about your drives, music, Memories, markers and places.</BubbleText>
-              <BubbleText secondary>I answer from this profile’s history, saved on this iPhone.</BubbleText>
+              <BubbleText secondary>{`I answer from this profile’s history, saved on this ${DEVICE_NAME}.`}</BubbleText>
             </AssistantBubbleV4>
             {!messages.length && !busy ? <SuggestionChipsV4 suggestions={ASK_EXAMPLES} disabled={!canSend} onPick={submitValue} /> : null}
             {messages.map(message => <View key={message.id} testID={`ask-message-${message.id}`}
@@ -348,21 +348,21 @@ function AssistantMessage({ message, themeID, colors: c, busy, onEvidence }: { m
 /** Short status for the V4 header; the on-device promise stays visible. */
 function shortModelStatus(status: string): string {
   switch (status) {
-  case 'available': return 'On this iPhone · Ready';
+  case 'available': return `On this ${DEVICE_NAME} · Ready`;
   case 'appleIntelligenceNotEnabled': return 'Turn on Apple Intelligence';
   case 'modelNotReady': return 'Preparing the on-device model';
-  case 'deviceNotEligible': return 'Needs a supported iPhone';
+  case 'deviceNotEligible': return `Needs a supported ${DEVICE_NAME}`;
   case 'unsupportedOS': return 'Needs iOS 26 or later';
-  default: return 'On this iPhone';
+  default: return `On this ${DEVICE_NAME}`;
   }
 }
 
 function modelStatusLabel(status: string): string {
   switch (status) {
-  case 'available': return 'Apple Intelligence ready on this iPhone';
-  case 'appleIntelligenceNotEnabled': return 'Turn on Apple Intelligence in iPhone Settings';
+  case 'available': return `Apple Intelligence ready on this ${DEVICE_NAME}`;
+  case 'appleIntelligenceNotEnabled': return `Turn on Apple Intelligence in ${DEVICE_NAME} Settings`;
   case 'modelNotReady': return 'Apple Intelligence is preparing its on-device model';
-  case 'deviceNotEligible': return 'On-device Apple Intelligence needs a supported iPhone';
+  case 'deviceNotEligible': return `On-device Apple Intelligence needs a supported ${DEVICE_NAME}`;
   case 'unsupportedOS': return 'On-device Apple Intelligence needs iOS 26 or later';
   default: return 'Your private road companion';
   }

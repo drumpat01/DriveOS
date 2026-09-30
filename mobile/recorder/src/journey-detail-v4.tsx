@@ -1,5 +1,6 @@
 import { useMemo, useRef, type ReactNode } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { readingColumnStyle } from './device-layout';
 import { SymbolView } from 'expo-symbols';
 import type { JourneyDetail, JourneyMemory } from './app-data';
 import { compactArtistCredit } from './artist-credit';
@@ -97,7 +98,7 @@ export function JourneyDetailV4({
   const vehicle = journey.vehicleName || journey.startingBatteryPercent != null || journey.energyUsedKwh != null;
   return <View testID="journey-detail-v4" style={[styles.screen, { backgroundColor: colors.page }]}>
     <ScrollView ref={scroller} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
-      keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+      keyboardShouldPersistTaps="handled" contentContainerStyle={[readingColumnStyle, { paddingBottom: insets.bottom + 40 }]}>
       <JourneyMarkerRoute key={journey.id} journeyId={journey.id} layout="v4" v4TopInset={insets.top + 64} v4Header={header} v4Middle={middle}
         coordinates={journey.route?.coordinates ?? []} routeSamples={journey.route?.points} photos={replayPhotos} songMoments={songMoments}
         totalSongCount={songCount} startedAt={journey.startedAt} endedAt={journey.endedAt}

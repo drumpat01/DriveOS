@@ -11,6 +11,7 @@ import Animated, {
   withSequence, withSpring, withTiming,
 } from 'react-native-reanimated';
 import { SymbolView } from 'expo-symbols';
+import { DEVICE_NAME } from './device-layout';
 import { haptics } from './haptics';
 import { redesignStyles, useRedesignColors } from './redesign-ui';
 import { TouchPressable } from './touch-feedback';
@@ -107,7 +108,7 @@ export function ChatComposer({ value, onChange, onSubmit, canSend, busy, error, 
   const submit = () => { if (!ready) return; void haptics.selection(); onSubmit(); };
   return <KeyboardStickyView offset={{ closed: 0, opened: bottomInset }} style={styles.sticky}>
     <View onLayout={(event: LayoutChangeEvent) => onHeight(event.nativeEvent.layout.height)} style={[styles.dock, { paddingBottom: Math.max(bottomInset, 12), backgroundColor: colors.photoScrim[3] }]}>
-      <Text style={[styles.privacy, { color: colors.textTertiary }]}>Questions stay on this iPhone and aren’t saved.</Text>
+      <Text style={[styles.privacy, { color: colors.textTertiary }]}>{`Questions stay on this ${DEVICE_NAME} and aren’t saved.`}</Text>
       <View style={[styles.card, { backgroundColor: colors.surfaceStrong, borderColor: error ? colors.accent : colors.border, boxShadow: `0 12px 30px ${colors.shadow}` }]}>
         <TextInput ref={input} testID="ask-question" value={value} onChangeText={onChange} multiline placeholder="Ask about your road history"
           placeholderTextColor={colors.textTertiary} selectionColor={colors.accent} maxLength={500} editable={canSend || busy}

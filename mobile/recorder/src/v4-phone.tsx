@@ -1,11 +1,10 @@
 import { useMemo } from 'react';
 import { useAppTheme } from './app-theme';
-import { isIpad } from './device-layout';
 import { redesignColors } from './redesign-palette';
 import { V4_REDESIGN_ENABLED } from './release-features';
 
-/** The V4 redesign applies to iPhone only; iPad and earlier variants keep their layouts. */
-export const V4_PHONE = V4_REDESIGN_ENABLED && !isIpad();
+/** The V4 redesign applies to iPhone and iPad; earlier variants keep their layouts. */
+export const V4_PHONE = V4_REDESIGN_ENABLED;
 /** Serif display face: New York on iOS. */
 export const V4_SERIF = 'ui-serif';
 

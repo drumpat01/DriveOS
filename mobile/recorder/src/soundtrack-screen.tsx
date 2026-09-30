@@ -12,9 +12,11 @@ import {
   SOUNDTRACK_RANGES, type SoundtrackRange,
 } from './redesign-model';
 import {
-  Artwork, Kicker, LargeTitle, RedesignPage, SectionHeader, Segmented, StatGrid, Surface, redesignStyles, SERIF,
+  Artwork, Kicker, LargeTitle, RedesignPage, CANVAS_READING_WIDTH, SectionHeader, Segmented, StatGrid, Surface, redesignStyles, SERIF,
   useRedesignColors,
 } from './redesign-ui';
+import { IphoneRequiredCard } from './iphone-required';
+import { isIpad } from './device-layout';
 import { TouchPressable } from './touch-feedback';
 
 const PROVIDER_LABEL: Record<MusicProvider, string> = {
@@ -43,7 +45,7 @@ export function SoundtrackScreen({ status, message, music, provider, journeys, d
   const maxDaypart = Math.max(1, ...summary.dayparts.map(part => part.plays));
   const maxTrackPlays = Math.max(1, ...summary.topTracks.map(track => track.plays));
 
-  return <RedesignPage testID="soundtrack-screen" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.accent} />}>
+  return <RedesignPage maxWidth={CANVAS_READING_WIDTH} testID="soundtrack-screen" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.accent} />}>
     <LargeTitle title="Soundtrack" trailing={<View accessible accessibilityLabel={`Music source: ${PROVIDER_LABEL[provider]}`} style={[styles.source, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
       <View style={[styles.sourceDot, { backgroundColor: colors.accent }]} />
       <Text style={[styles.sourceText, { color: colors.text }]}>{PROVIDER_LABEL[provider]}</Text>
@@ -68,7 +70,7 @@ export function SoundtrackScreen({ status, message, music, provider, journeys, d
         <SymbolView name="play.fill" tintColor={colors.page} size={13} />
         <Text style={[styles.playText, { color: colors.page }]}>Play in {PROVIDER_LABEL[provider]}</Text>
       </TouchPressable> : null}
-    </View> : status !== 'loading' ? <Surface style={styles.message}>
+    </View> : status !== 'loading' && !journeys.length && isIpad() ? <IphoneRequiredCard subject="Your soundtrack and top songs" /> : status !== 'loading' ? <Surface style={styles.message}>
       <SymbolView name="music.note" tintColor={colors.accent} size={24} />
       <Text style={[styles.emptyTitle, { color: colors.text }]}>No songs {period}</Text>
       <Text style={[redesignStyles.caption, styles.center, { color: colors.textSecondary }]}>{range === 'all' ? 'Songs matched to your drives will build your soundtrack here.' : 'Try a longer time range, or take a drive with music playing.'}</Text>

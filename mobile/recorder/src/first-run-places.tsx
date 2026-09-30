@@ -1,3 +1,4 @@
+import { DEVICE_NAME } from './device-layout';
 import { useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
@@ -106,7 +107,7 @@ export function FirstRunPlacesStep({ header, onDone }: { header: ReactNode; onDo
         })}
       </View>
       {message ? <Text accessibilityRole="alert" style={[styles.message, { color: c.text }]}>{message}</Text> : null}
-      <Text style={[styles.fine, { color: c.textTertiary }]}>Stored only on this iPhone and in your private iCloud. Change them anytime in Settings → Saved Places.</Text>
+      <Text style={[styles.fine, { color: c.textTertiary }]}>Stored only on this {DEVICE_NAME} and in your private iCloud. Change them anytime in Settings → Saved Places.</Text>
       <View style={styles.spacer} />
       <Pressable accessibilityRole="button" onPress={onDone} style={({ pressed }) => [styles.primary, { backgroundColor: c.accent }, pressed && styles.pressed]}>
         <Text style={[styles.primaryText, { color: c.onAccent }]}>{any ? 'Continue' : 'Skip for now'}</Text>

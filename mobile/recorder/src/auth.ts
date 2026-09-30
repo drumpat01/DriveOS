@@ -24,6 +24,9 @@ import {
   setActiveLocalUserId,
 } from './local-store';
 import { isInternalTestingBuild } from './internal-testing';
+import { DEMO_PROFILE_NAME, seedDemoLibrary } from './demo-library';
+import { seedDemoPhotos } from './demo-photos';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export { listLocalUsers };
 
@@ -48,6 +51,8 @@ export type AppleIdentityStatus = 'unavailable' | 'signed_out' | 'authorized' | 
 const ISOLATION_TEST_PROFILE_PREFIX = 'Isolation Test';
 
 let activeUser: LocalUser | null = null;
+/** The sample lives for one launch: a demo profile left over from an earlier launch is removed at startup. */
+let demoOpenedThisLaunch = false;
 
 /**
  * Initializes the auth session with the most recent local user or creates a default anonymous user.
@@ -58,6 +63,12 @@ export function initializeAuth(): LocalUser {
   if (users.length > 0) {
     const savedUserId = getActiveLocalUserId();
     activeUser = users.find(user => user.id === savedUserId) ?? users[0]!;
+    if (isDemoProfile(activeUser) && !demoOpenedThisLaunch) {
+      // Real data can only sync into the real profile, so the sample steps aside on the next launch.
+      const real = users.find(user => !isDemoProfile(user));
+      removeDemoProfileData(activeUser.id);
+      activeUser = real ?? ensureLocalUser({ displayName: 'Primary Driver' });
+    }
   } else {
     activeUser = ensureLocalUser({ displayName: 'Primary Driver' });
   }
@@ -156,6 +167,46 @@ export function createIsolationTestProfile(): LocalUser {
 
 export function isIsolationTestProfile(user = getCurrentUser()): boolean {
   return Boolean(user.displayName?.startsWith(ISOLATION_TEST_PROFILE_PREFIX));
+}
+
+/** The sample library's profile: separate from the real one, never synced, deleted when the user leaves it. */
+export function isDemoProfile(user: LocalUser = getCurrentUser()): boolean {
+  return user.displayName === DEMO_PROFILE_NAME && !user.appleSubject;
+}
+
+/** Profiles that must never touch iCloud or the Keychain-backed legacy stores. */
+export function isSandboxProfile(user = getCurrentUser()): boolean {
+  return isIsolationTestProfile(user) || isDemoProfile(user);
+}
+
+/** Opens the sample library, creating it on first use. The real profile is left untouched. */
+export async function enterDemoProfile(): Promise<LocalUser> {
+  let user = listLocalUsers().find(candidate => isDemoProfile(candidate));
+  if (!user) {
+    user = ensureLocalUser({ displayName: DEMO_PROFILE_NAME });
+    try { seedDemoLibrary(user.id); await seedDemoPhotos(user.id); } catch (error) { deleteLocalUserData(user.id); throw error; }
+  }
+  activeUser = user;
+  demoOpenedThisLaunch = true;
+  setActiveLocalUserId(user.id);
+  return user;
+}
+
+function removeDemoProfileData(userId: LocalUserId): void {
+  deleteLocalUserData(userId);
+  const base = FileSystem.documentDirectory;
+  if (base) void FileSystem.deleteAsync(`${base}journeydeck-private-photos/${encodeURIComponent(userId)}/`, { idempotent: true }).catch(() => undefined);
+}
+
+/** Deletes the sample library and returns to the real profile. */
+export function exitDemoProfile(): LocalUser {
+  const demo = getCurrentUser();
+  if (!isDemoProfile(demo)) return demo;
+  const next = listLocalUsers().find(candidate => !isDemoProfile(candidate)) ?? ensureLocalUser({ displayName: 'Local Driver' });
+  removeDemoProfileData(demo.id);
+  activeUser = next;
+  setActiveLocalUserId(next.id);
+  return next;
 }
 
 /** Leaves an Apple-linked profile intact and enters a new empty local profile. */

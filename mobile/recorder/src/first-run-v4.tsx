@@ -1,8 +1,10 @@
 // V4 iPhone onboarding: four steps (Welcome, Location, Soundtrack, See where you've been), each built like the
 // approved Soundtrack motion study: elements arrive in sequence, routes draw, items land with a small spring.
 // Reduce Motion: Reanimated's entering animations follow the system setting, and the drawn lines appear whole.
+import { DEVICE_NAME, isIpad } from './device-layout';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -26,7 +28,7 @@ import { tripDates, type RoadsSoFar } from './roads-so-far-model';
 import { RoadsScanCancelled, requestRoadsAccess, saveFoundStates, saveTripsAsMemories, scanRoadsSoFar, type RoadsScanProgress } from './roads-so-far-scan';
 import { showTodayCard } from './today-screen';
 
-import { V4_STEPS, type V4Stage } from './first-run-v4-flow';
+import { v4Steps, type V4Stage } from './first-run-v4-flow';
 export { nextV4Stage, previousV4Stage, v4Stage, type V4Stage } from './first-run-v4-flow';
 
 const SPRING = { damping: 14, stiffness: 150 };
@@ -50,14 +52,15 @@ function DrawnRoute({ d, length, width, height, color, delay, duration = 1600 }:
 
 function Progress({ stage, onBack }: { stage: Exclude<V4Stage, 'welcome'>; onBack?: () => void }) {
   const c = useRedesignColors();
-  const step = V4_STEPS.indexOf(stage) + 1;
+  const steps = v4Steps(isIpad());
+  const step = steps.indexOf(stage) + 1;
   return <View style={styles.progressRow}>
     <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={10} disabled={!onBack} onPress={onBack}
       style={[styles.back, { backgroundColor: c.surfaceStrong, borderColor: c.border }, !onBack && styles.hidden]}>
       <SymbolView name="chevron.left" tintColor={c.text} size={15} weight="semibold" />
     </Pressable>
-    <View accessibilityRole="progressbar" accessibilityLabel={`Step ${step} of ${V4_STEPS.length}`} accessibilityValue={{ min: 1, max: V4_STEPS.length, now: step }} style={styles.bars}>
-      {V4_STEPS.map((_, index) => <ProgressBar key={index} lit={index < step} current={index === step - 1} />)}
+    <View accessibilityRole="progressbar" accessibilityLabel={`Step ${step} of ${steps.length}`} accessibilityValue={{ min: 1, max: steps.length, now: step }} style={styles.bars}>
+      {steps.map((_, index) => <ProgressBar key={index} lit={index < step} current={index === step - 1} />)}
     </View>
   </View>;
 }
@@ -106,8 +109,8 @@ function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boo
   const content = { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 16) + 8 };
   return <View style={[styles.screen, { backgroundColor: c.page }]}>
     <LinearGradient pointerEvents="none" colors={[c.glow, c.page]} style={styles.glow} />
-    {scroll ? <ScrollView contentContainerStyle={[styles.content, content]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{children}</ScrollView>
-      : <View style={[styles.content, content, styles.flex]}>{children}</View>}
+    {scroll ? <ScrollView contentContainerStyle={[styles.content, styles.column, content]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+      : <View style={[styles.content, styles.column, content, styles.flex]}>{children}</View>}
   </View>;
 }
 
@@ -194,7 +197,7 @@ function WelcomeStep({ onContinue, onHaveAccount }: { onContinue: () => void; on
       <NowPlaying />
       <Animated.Text entering={rise(1100)} style={[styles.kicker, { color: c.accent }]}>JOURNEYDECK</Animated.Text>
       <Animated.Text entering={rise(1100)} accessibilityRole="header" style={[styles.welcomeTitle, { color: c.text }]}>Your journey, remembered.</Animated.Text>
-      <Animated.Text entering={rise(1350)} style={[styles.welcomeBody, { color: c.textSecondary }]}>Every route and song, all private.</Animated.Text>
+      <Animated.Text entering={rise(1350)} style={[styles.welcomeBody, { color: c.textSecondary }]}>{isIpad() ? 'Drives recorded on your iPhone, here and private.' : 'Every route and song, all private.'}</Animated.Text>
       <PrimaryButton label="Get started" onPress={onContinue} delay={1600} />
       <QuietLink label="I have an account" onPress={onHaveAccount} delay={1800} />
     </View>
@@ -223,8 +226,8 @@ function ModeOption({ symbol, title, detail, selected, onPress, delay }: { symbo
 
 function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void; onContinue: (mode: RecordingMode, drivesTesla: boolean | null) => Promise<void>; initialMode: RecordingMode | null }) {
   const c = useRedesignColors();
-  // A replay keeps the mode already chosen; a first run suggests automatic.
-  const [mode, setMode] = useState<RecordingMode>(initialMode ?? 'automatic');
+  // A replay keeps the mode already chosen; a first run suggests automatic on iPhone and Start-by-tap on iPad.
+  const [mode, setMode] = useState<RecordingMode>(initialMode ?? (isIpad() ? 'manual' : 'automatic'));
   const [tesla, setTesla] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const allow = async () => {
@@ -235,7 +238,7 @@ function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void;
   return <Screen>
     <Progress stage="location" onBack={onBack} />
     <Title delay={80}>How should drives be recorded?</Title>
-    <Body delay={220}>JourneyDeck uses your location only while you drive. Routes stay on your iPhone and in your iCloud.</Body>
+    <Body delay={220}>{`JourneyDeck uses your location only while you drive. Routes stay on your ${DEVICE_NAME} and in your iCloud.`}</Body>
     <View accessibilityRole="radiogroup" style={styles.options}>
       <ModeOption symbol="location.fill" title="Automatically" detail="Starts when you start driving" selected={mode === 'automatic'} onPress={() => setMode('automatic')} delay={380} />
       <ModeOption symbol="record.circle" title="When I tap Start" detail="You choose which drives to keep" selected={mode === 'manual'} onPress={() => setMode('manual')} delay={500} />
@@ -264,6 +267,36 @@ function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void;
     <View style={styles.spacer} />
     <PrimaryButton label="Allow location" onPress={() => void allow()} busy={busy} delay={860} />
     <Animated.Text entering={rise(960)} style={[styles.fine, { color: c.textTertiary }]}>{mode === 'automatic' ? 'iOS asks next. Choose “Always” for automatic drives.' : 'iOS asks next.'}</Animated.Text>
+  </Screen>;
+}
+
+// --- iPad · Sign in and sync ---------------------------------------------------------------------------------
+
+/** iPad shows what an iPhone records, so it signs in and pulls from iCloud instead of setting up recording. */
+function SyncStep({ onBack, onContinue, signedIn, signingIn, onSignIn, onSync }: {
+  onBack: () => void; onContinue: () => void; signedIn: boolean; signingIn: boolean; onSignIn: () => void; onSync: () => Promise<void>;
+}) {
+  const c = useRedesignColors();
+  const theme = useAppTheme();
+  const [syncing, setSyncing] = useState(false);
+  const sync = async () => { if (syncing) return; setSyncing(true); try { await onSync(); } finally { setSyncing(false); } };
+  return <Screen>
+    <Progress stage="sync" onBack={onBack} />
+    <Title delay={80}>Sign in and sync</Title>
+    <Body delay={220}>JourneyDeck records drives on your iPhone. Sign in with the same Apple Account and iCloud on this iPad, and your journeys, memories and soundtracks appear here.</Body>
+    <Animated.View entering={rise(380)} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+      <View style={styles.cardHead}>
+        <SymbolView name={signedIn ? 'checkmark.icloud.fill' : 'icloud.fill'} tintColor={c.accent} size={26} />
+        <Text style={[styles.cardTitle, { color: c.text }]}>{signedIn ? 'Signed in with Apple' : 'Private iCloud sync'}</Text>
+      </View>
+      <Text style={[styles.optionDetail, { color: c.textSecondary }]}>{signedIn ? 'Tap Sync now to pull your latest drives from iCloud.' : 'Your library stays in your own iCloud account. JourneyDeck never sees it.'}</Text>
+    </Animated.View>
+    <View style={styles.spacer} />
+    {!signedIn && !signingIn ? <Animated.View entering={rise(520)}><AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+      buttonStyle={theme.isLight ? AppleAuthentication.AppleAuthenticationButtonStyle.BLACK : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={14} style={{ height: 52 }} onPress={onSignIn} /></Animated.View> : null}
+    {signingIn ? <ActivityIndicator color={c.accent} /> : null}
+    <PrimaryButton label={signedIn ? 'Sync now' : 'Sync from iCloud'} onPress={() => void sync()} busy={syncing} delay={620} />
+    <QuietLink label={signedIn ? 'Continue' : 'Skip for now'} onPress={onContinue} delay={720} />
   </Screen>;
 }
 
@@ -528,7 +561,7 @@ function PhotosStep({ onBack, onFinish }: { onBack: () => void; onFinish: () => 
       <Progress stage="photos" />
       <Animated.View entering={rise(60)} style={cardStyle}><ScanningMap /></Animated.View>
       <Title delay={150}>{phase.kind === 'saving' ? 'Saving your Memories…' : 'Tracing your roads…'}</Title>
-      <Body delay={250}>Reading only photo dates and places, on this iPhone.</Body>
+      <Body delay={250}>{`Reading only photo dates and places, on this ${DEVICE_NAME}.`}</Body>
       {progress ? <Animated.View entering={rise(350)} style={styles.stats}>
         <View><Text style={statValue}>{progress.photos.toLocaleString()}</Text><Text style={statLabel}>photos read</Text></View>
         <View style={styles.statRight}><Text style={statValue}>{progress.places.toLocaleString()}</Text><Text style={statLabel}>places found</Text></View>
@@ -560,7 +593,7 @@ function PhotosStep({ onBack, onFinish }: { onBack: () => void; onFinish: () => 
     </Animated.View>
     <Animated.Text entering={rise(2200)} style={[styles.kicker, { color: c.accent }]}>{"SEE WHERE YOU'VE BEEN"}</Animated.Text>
     <Title delay={2300}>Your road trips are already in your photos.</Title>
-    <Body delay={2450}>JourneyDeck reads only the dates and places of your photos, on this iPhone, and turns past trips into Memories.</Body>
+    <Body delay={2450}>{`JourneyDeck reads only the dates and places of your photos, on this ${DEVICE_NAME}, and turns past trips into Memories.`}</Body>
     <View style={styles.spacer} />
     <PrimaryButton label="Look through my photos" onPress={() => void start()} delay={2600} />
     <QuietLink label="Skip and start using JourneyDeck" onPress={onFinish} delay={2700} />
@@ -569,10 +602,12 @@ function PhotosStep({ onBack, onFinish }: { onBack: () => void; onFinish: () => 
 
 // --- The flow --------------------------------------------------------------------------------------------------
 
-export function FirstRunV4({ recordingMode = null, stage, onAdvance, onBack, onHaveAccount, onLocationContinue, onConnectAppleMusic, onConnectLastFm, lastFmUsername, onSkipMusic, onFinish }: {
+export function FirstRunV4({ recordingMode = null, appleSignedIn = false, appleSigningIn = false, onAppleSignIn = () => undefined, onSync = async () => undefined, stage, onAdvance, onBack, onHaveAccount, onLocationContinue, onConnectAppleMusic, onConnectLastFm, lastFmUsername, onSkipMusic, onFinish }: {
   stage: V4Stage;
   /** The recording mode already saved, if any. */
   recordingMode?: RecordingMode | null;
+  /** iPad's Sign in and sync step. */
+  appleSignedIn?: boolean; appleSigningIn?: boolean; onAppleSignIn?: () => void; onSync?: () => Promise<void>;
   onAdvance: () => void;
   onBack: () => void;
   onHaveAccount: () => void;
@@ -587,6 +622,7 @@ export function FirstRunV4({ recordingMode = null, stage, onAdvance, onBack, onH
   // Each step remounts, so its elements arrive in sequence; the page color underneath never moves.
   return <View key={stage} style={[styles.flow, { backgroundColor: c.page }]}>
     {stage === 'welcome' && <WelcomeStep onContinue={onAdvance} onHaveAccount={onHaveAccount} />}
+    {stage === 'sync' && <SyncStep onBack={onBack} onContinue={onAdvance} signedIn={appleSignedIn} signingIn={appleSigningIn} onSignIn={onAppleSignIn} onSync={onSync} />}
     {stage === 'location' && <LocationStep onBack={onBack} onContinue={onLocationContinue} initialMode={recordingMode} />}
     {stage === 'music' && <MusicStep onBack={onBack} onConnectAppleMusic={onConnectAppleMusic} onConnectLastFm={onConnectLastFm} lastFmUsername={lastFmUsername} onContinue={onAdvance} onSkip={onSkipMusic} />}
     {stage === 'photos' && <PhotosStep onBack={onBack} onFinish={onFinish} />}
@@ -594,6 +630,8 @@ export function FirstRunV4({ recordingMode = null, stage, onAdvance, onBack, onH
 }
 
 const styles = StyleSheet.create({
+  /** iPad keeps the steps in a phone-width column, centered over the full-bleed photo and glow. */
+  column: { width: '100%', maxWidth: 560, alignSelf: 'center' },
   flow: { flex: 1 },
   flex: { flex: 1 },
   screen: { flex: 1, overflow: 'hidden' },
@@ -624,7 +662,7 @@ const styles = StyleSheet.create({
   cardArt: { position: 'absolute', right: 6, bottom: 6, width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   cardPlace: { fontFamily: SERIF, fontSize: 17, fontWeight: '600', marginTop: 10 },
   cardSong: { fontSize: 12, marginTop: 2 },
-  welcomeCopy: { position: 'absolute', left: 24, right: 24, bottom: 0, gap: 16 },
+  welcomeCopy: { position: 'absolute', bottom: 0, width: '100%', maxWidth: 608, paddingHorizontal: 24, alignSelf: 'center', gap: 16 },
   welcomeTitle: { fontFamily: SERIF, fontSize: 40, lineHeight: 44, fontWeight: '600', letterSpacing: -0.4 },
   welcomeBody: { fontSize: 16, lineHeight: 22 },
   options: { gap: 10 },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, View, type ImageSourcePropType, type RefreshControlProps, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
@@ -42,16 +42,37 @@ export function useDriveArtwork(startedAt: string | null | undefined): ImageSour
   return headerImageSource(source, theme.id);
 }
 
+/** Widest content column on a large canvas; keeps lines readable on a 13-inch iPad. */
+export const CANVAS_MAX_WIDTH = 1120;
+/** Content width at which a tab page switches from one column to a multi-column layout. */
+export const CANVAS_WIDE_MIN = 680;
+
+export type RedesignCanvas = { width: number; wide: boolean; columns: 1 | 2 | 3 };
+const CanvasContext = createContext<RedesignCanvas>({ width: 0, wide: false, columns: 1 });
+
+/** The measured content width of the enclosing tab page, so screens can adapt on iPad and in Split View. */
+export function useRedesignCanvas(): RedesignCanvas { return useContext(CanvasContext); }
+
+export function canvasForWidth(width: number): RedesignCanvas {
+  return { width, wide: width >= CANVAS_WIDE_MIN, columns: width >= 980 ? 3 : width >= CANVAS_WIDE_MIN ? 2 : 1 };
+}
+
 /** Tab page: themed page color, soft accent glow, and room for the floating bar. */
-export function RedesignPage({ children, refreshControl, testID }: { children: ReactNode; refreshControl?: React.ReactElement<RefreshControlProps>; testID?: string }) {
+/** Reading width for tabs that stay a single column on iPad. */
+export const CANVAS_READING_WIDTH = 760;
+
+/** `children` may be a function of the measured canvas, for screens that lay out by width. */
+export function RedesignPage({ children, refreshControl, testID, maxWidth = CANVAS_MAX_WIDTH }: { children: ReactNode | ((canvas: RedesignCanvas) => ReactNode); refreshControl?: React.ReactElement<RefreshControlProps>; testID?: string; maxWidth?: number }) {
   const colors = useRedesignColors();
   const insets = useSafeAreaInsets();
-  return <View testID={testID} style={[styles.page, { backgroundColor: colors.page }]}>
+  const [width, setWidth] = useState(0);
+  const canvas = useMemo(() => canvasForWidth(Math.min(width, maxWidth)), [width, maxWidth]);
+  return <View testID={testID} onLayout={event => setWidth(Math.round(event.nativeEvent.layout.width))} style={[styles.page, { backgroundColor: colors.page }]}>
     <LinearGradient pointerEvents="none" colors={[colors.glow, colors.page]} locations={[0, 1]} style={styles.glow} />
     <ScrollView refreshControl={refreshControl} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
-      contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE }]}>
-      {children}
+      contentContainerStyle={[styles.pageContent, canvas.wide && styles.pageContentWide, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE }]}>
+      <CanvasContext.Provider value={canvas}><View style={[styles.canvas, { maxWidth }]}>{typeof children === 'function' ? children(canvas) : children}</View></CanvasContext.Provider>
     </ScrollView>
   </View>;
 }
@@ -230,7 +251,9 @@ export const redesignStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   page: { flex: 1 },
   glow: { position: 'absolute', top: 0, left: 0, right: 0, height: 420 },
-  pageContent: { paddingHorizontal: 20, gap: 22 },
+  pageContent: { paddingHorizontal: 20 },
+  pageContentWide: { paddingHorizontal: 32 },
+  canvas: { width: '100%', alignSelf: 'center', gap: 22 },
   flex: { flex: 1, minWidth: 0 },
   pressed: redesignStyles.pressed,
   titleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },

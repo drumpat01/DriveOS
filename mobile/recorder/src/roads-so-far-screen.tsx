@@ -1,3 +1,4 @@
+import { DEVICE_NAME, readingColumnStyle } from './device-layout';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
@@ -110,7 +111,7 @@ export function RoadsSoFarStep({ header, onDone }: { header: ReactNode; onDone: 
         {body('JourneyDeck can use the dates and places in your photos to map your past road trips and the states you\'ve visited. Your first Memories are ready before your first drive.')}
         <View style={[styles.note, card]}>
           <SymbolView name="lock.fill" tintColor={c.accent} size={16} />
-          <Text style={[styles.noteText, { color: c.textSecondary }]}>Happens only on this iPhone. Photos are never uploaded or copied unless you choose to add them.</Text>
+          <Text style={[styles.noteText, { color: c.textSecondary }]}>Happens only on this {DEVICE_NAME}. Photos are never uploaded or copied unless you choose to add them.</Text>
         </View>
         <View style={styles.spacer} />
         {primary('Look at my photos', () => void start())}
@@ -189,7 +190,7 @@ export function RoadsSoFarStep({ header, onDone }: { header: ReactNode; onDone: 
   })();
 
   return <View style={styles.screen}>
-    <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[styles.content, readingColumnStyle, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]} showsVerticalScrollIndicator={false}>
       {header}
       {content}
     </ScrollView>

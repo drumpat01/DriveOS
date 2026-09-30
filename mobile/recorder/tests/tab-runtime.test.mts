@@ -45,7 +45,7 @@ test('all five tabs use the native iOS host and keep one stable screen per route
   // Five legacy routes plus the five V4 iPhone redesign routes (Today, Memories, Soundtrack, Atlas, Search).
   assert.equal(nativeNavigation.match(/<NativeTabs.Trigger name=/g)?.length, 10);
   assert.equal(nativeNavigation.match(/disablePopToTop disableScrollToTop disableAutomaticContentInsets/g)?.length, 10);
-  const redesignBar = nativeNavigation.slice(nativeNavigation.indexOf('if (redesign && !tablet)'), nativeNavigation.indexOf('const homeTrigger'));
+  const redesignBar = nativeNavigation.slice(nativeNavigation.indexOf('if (redesign) {'), nativeNavigation.indexOf('const homeTrigger'));
   assert.deepEqual([...redesignBar.matchAll(/<NativeTabs.Trigger name="([a-z]+)"/g)].map(match => match[1]), ['index', 'journeys', 'music', 'statistics', 'search']);
   assert.doesNotMatch(shell, /<PagerView|CinematicTabPage|<BottomNavigation|<IntegratedNavigationChrome/);
   assert.equal(shell.match(/<ConnectionsScreen\b/g)?.length, 1);
@@ -71,7 +71,7 @@ test('the local-first model still builds Live, Atlas, the merged Statistics time
   assert.match(storage, /including points already uploaded/);
 });
 
-test('V4 iPhone uses its Atlas design while iPad retains Statistics and paid Atlas access', () => {
+test('V4 uses its Atlas design on iPhone and iPad while V3 iPad retains Statistics and paid Atlas access', () => {
   assert.match(nativeNavigation, /name="statistics"/);
   assert.equal(shell.match(/<IpadStatisticsScreen/g)?.length, 2);
   assert.equal(shell.match(/<AtlasTabV4/g)?.length, 1);
@@ -106,7 +106,7 @@ test('primary layouts adapt to usable space without treating device identity as 
   assert.match(adaptiveLayout, /useWindowDimensions\(\)/);
   assert.match(adaptiveLayout, /useSafeAreaInsets\(\)/);
   assert.match(adaptiveLayout, /availableWidth >= REGULAR_MIN_WIDTH && availableHeight >= REGULAR_MIN_HEIGHT/);
-  assert.match(shell, /tabs: adaptiveLayout\.isRegular \? \{/);
+  assert.match(shell, /tabs: adaptiveLayout\.isRegular && !REDESIGN_PHONE \? \{/, 'V3 keeps its iPad tabs; V4 shares one adaptive set');
   assert.match(shell, /presentation=\{adaptiveLayout\.isRegular \? 'ipad' : 'iphone'\}/);
   assert.match(musicScreen, /if \(layout\.isRegular\) return <IpadMusicScreen/);
   assert.doesNotMatch(musicScreen, /if \(isIpad\(\)\)/);
@@ -319,7 +319,7 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(shell, /onSkipMusic=\{\(\) => \{[\s\S]*?onboardingCompleted: true[\s\S]*?advanceFirstRun\('membership'\);/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
-  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'places' \| 'music' \| 'membership' \| 'tessie' \| 'photos' \| 'instructions' \| 'complete'/);
+  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'places' \| 'sync' \| 'music' \| 'membership' \| 'tessie' \| 'photos' \| 'instructions' \| 'complete'/);
   assert.match(firstRunScreen, /const TOTAL_STEPS = 6 \+ \(TESSIE_INTEGRATION_ENABLED \? 1 : 0\) \+ \(ROADS_STEP_ENABLED \? 1 : 0\) \+ \(PLACES_STEP_ENABLED \? 1 : 0\)/);
   assert.match(firstRunScreen, /FirstRunWelcomeScreen onStart=\{props\.onWelcomeComplete\}/);
   assert.doesNotMatch(firstRunScreen, /JourneyOpening|WelcomeAnimation|WELCOME_ANIMATION|autoplay=/);

@@ -1,3 +1,4 @@
+import { DEVICE_NAME } from './device-layout';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -5,7 +6,7 @@ import { searchPrimarySections, type SearchRecord } from './primary-sections-dat
 import { CardDetailLink } from './card-detail-link';
 import type { PrimaryDataState } from './primary-sections';
 import { memoryIdFromSearch, searchSections } from './redesign-model';
-import { Artwork, LargeTitle, RedesignPage, Surface, redesignStyles, useRedesignColors } from './redesign-ui';
+import { Artwork, LargeTitle, RedesignPage, CANVAS_READING_WIDTH, Surface, redesignStyles, useRedesignColors } from './redesign-ui';
 import { TouchPressable } from './touch-feedback';
 
 const KIND_SYMBOL: Record<SearchRecord['kind'], SFSymbol> = {
@@ -26,7 +27,7 @@ export function SearchTabScreen({ state, onJourney, onMemory }: { state: Primary
     else if (record.journeyId) onJourney(record.journeyId);
   };
 
-  return <RedesignPage testID="search-tab">
+  return <RedesignPage maxWidth={CANVAS_READING_WIDTH} testID="search-tab">
     <LargeTitle title="Search" />
     <View style={[styles.field, { backgroundColor: colors.track, borderColor: colors.border }]}>
       <SymbolView name="magnifyingglass" tintColor={colors.textSecondary} size={18} />
@@ -34,7 +35,7 @@ export function SearchTabScreen({ state, onJourney, onMemory }: { state: Primary
         accessibilityLabel="Search your library" autoCapitalize="none" autoCorrect={false} returnKeyType="search" clearButtonMode="while-editing"
         selectionColor={colors.accent} style={[styles.input, { color: colors.text }]} />
     </View>
-    <Text style={[styles.hint, { color: colors.textSecondary }]}>{query.trim() ? `${sections.reduce((sum, section) => sum + section.records.length, 0)} results` : 'Everything stays on this iPhone. Start typing, or pick up where you left off.'}</Text>
+    <Text style={[styles.hint, { color: colors.textSecondary }]}>{query.trim() ? `${sections.reduce((sum, section) => sum + section.records.length, 0)} results` : `Everything stays on this ${DEVICE_NAME}. Start typing, or pick up where you left off.`}</Text>
     {sections.length ? sections.map(section => <View key={section.kind} style={styles.section}>
       <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.text }]}>{section.title}</Text>
       <Surface style={styles.list}>

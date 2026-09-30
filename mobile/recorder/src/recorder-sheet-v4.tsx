@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { readingColumnStyle, useReadingWidth } from './device-layout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -62,7 +63,7 @@ export function RecorderSheetV4({ state, sessionId, startedAt, elapsed, miles, p
 }) {
   const colors = useRedesignColors();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const width = useReadingWidth();
   const drive = useLiveDrive(state.live ? sessionId : null);
   const [markerDetail, setMarkerDetail] = useState('Or ask Siri');
   const [markerSaving, setMarkerSaving] = useState(false);
@@ -90,7 +91,7 @@ export function RecorderSheetV4({ state, sessionId, startedAt, elapsed, miles, p
   const runPrimary = () => { if (state.primary === 'end') onEnd(); else if (state.primary === 'enable') onEnable(); else onStart(); };
 
   return <View testID="recorder-sheet-v4" style={[styles.page, { backgroundColor: colors.page }]}>
-    <ScrollView contentContainerStyle={{ paddingBottom: 140 + insets.bottom }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={[readingColumnStyle, { paddingBottom: 140 + insets.bottom }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <View style={[styles.hero, { backgroundColor: colors.surface }]}>
         {drive.route.length > 1
           ? <View accessible accessibilityLabel="Route so far" style={styles.heroRoute}><RouteSketch routes={[drive.route]} width={width} height={HERO} inks={[colors.accent]} strokeWidth={5} padding={48} /></View>

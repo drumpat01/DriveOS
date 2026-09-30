@@ -13,10 +13,12 @@ import { buildIpadStatistics, calendarDays, dayKey, localDay, summarize, type St
 import { journeyDisplayTitle } from './journey-title';
 import type { PrimaryDataState } from './primary-sections';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
-import { Artwork, Kicker, LargeTitle, RedesignPage, RouteSketch, SERIF, SectionHeader, Surface, redesignStyles, useRedesignColors } from './redesign-ui';
+import { Artwork, Kicker, LargeTitle, RedesignPage, CANVAS_READING_WIDTH, RouteSketch, SERIF, SectionHeader, Surface, redesignStyles, useRedesignColors } from './redesign-ui';
 import { withAlpha } from './redesign-palette';
 import { tessieDirectStatus } from './tessie-direct';
 import type { TessieStatistics } from './tessie-statistics-model';
+import { IphoneRequiredCard } from './iphone-required';
+import { isIpad } from './device-layout';
 import { TouchPressable } from './touch-feedback';
 
 type Section = 'overview' | 'music' | 'places' | 'rhythms' | 'days' | 'tessie';
@@ -87,7 +89,7 @@ export function AtlasTabV4({ state, historyDays, onRefresh, onJourney, onUpgrade
     void haptics.selection(); setRange(value); setSelectedDay(null); setSelectedMonth(null);
   };
 
-  return <RedesignPage testID="atlas-tab-v4" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.accent} />}>
+  return <RedesignPage maxWidth={CANVAS_READING_WIDTH} testID="atlas-tab-v4" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.accent} />}>
     <LargeTitle kicker="Your road story" title="Atlas" />
     <Text style={[styles.intro, { color: colors.textSecondary }]}>Every mile, drive and song in your private history.</Text>
     <View testID="atlas-range-filters" accessibilityRole="tablist" accessibilityLabel="Atlas time range" style={[styles.rangeRow, { backgroundColor: colors.track }]}>
@@ -102,16 +104,17 @@ export function AtlasTabV4({ state, historyDays, onRefresh, onJourney, onUpgrade
         </TouchPressable>;
       })}
     </View>
-    <ScrollView testID="atlas-section-filters" horizontal showsHorizontalScrollIndicator={false} accessibilityRole="tablist" accessibilityLabel="Atlas sections" contentContainerStyle={styles.sectionFilters}>
+    <View testID="atlas-section-filters" accessibilityRole="tablist" accessibilityLabel="Atlas sections" style={styles.sectionFilters}>
       {sections.map(value => <TouchPressable key={value} accessibilityRole="tab" accessibilityLabel={SECTION_LABELS[value]} accessibilityState={{ selected: section === value }}
         onPress={() => { if (section !== value) { void haptics.selection(); setSection(value); } }}
         style={({ pressed }) => [styles.sectionButton, { backgroundColor: section === value ? colors.accentSoft : colors.surface, borderColor: section === value ? colors.accent : colors.border }, pressed && redesignStyles.pressed]}>
         <Text numberOfLines={1} style={[styles.sectionLabel, { color: section === value ? colors.accent : colors.textSecondary, fontWeight: section === value ? '700' : '600' }]}>{SECTION_LABELS[value]}</Text>
       </TouchPressable>)}
-    </ScrollView>
+    </View>
     {state.status === 'error' ? <Surface style={styles.notice}><Text accessibilityRole="alert" style={[styles.body, { color: colors.textSecondary }]}>{state.message ?? 'Atlas could not refresh. Saved data remains available.'}</Text></Surface> : null}
     {!state.data ? state.status === 'loading' ? <ActivityIndicator color={colors.accent} accessibilityLabel="Loading Atlas" />
       : <Surface style={styles.notice}><Text style={[styles.body, { color: colors.textSecondary }]}>Atlas is unavailable. Pull down to try again.</Text></Surface>
+      : !state.data.journeys.length && isIpad() ? <IphoneRequiredCard subject="Your Atlas, miles and places" />
       : <>
         <Text style={[styles.dateRange, { color: colors.textTertiary }]}>{dateLabel(model.start)} – {dateLabel(model.end)} · By journey start date{historyDays === null ? '' : ` · ${historyDays}-day history`}</Text>
         {section === 'overview' ? <Overview model={model} story={story} insights={insights} onDays={() => setSection('days')} onDay={chooseDay} onJourney={onJourney} onAtlas={onAtlas ?? onUpgrade} atlasLocked={!onAtlas} onYearOnRoad={onYearOnRoad} /> : null}
@@ -462,8 +465,8 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: 'row', gap: 7, padding: 4, borderRadius: 17 },
   rangeButton: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth },
   rangeLabel: { fontSize: 14, fontWeight: '700' },
-  sectionFilters: { flexDirection: 'row', gap: 8 },
-  sectionButton: { minWidth: 84, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, paddingVertical: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  sectionFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sectionButton: { flexBasis: '30%', flexGrow: 1, minWidth: 0, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, paddingVertical: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
   sectionLabel: { fontSize: 14, textAlign: 'center' },
   dateRange: { fontSize: 12, lineHeight: 18, marginTop: -5 },
   notice: { padding: 18 },

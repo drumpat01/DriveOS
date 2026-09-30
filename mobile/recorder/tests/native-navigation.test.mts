@@ -338,6 +338,13 @@ test('V4 iPhone redesign puts Today first, Search on its own, and the recorder i
     assert.equal(tree.root.findAllByType('accessory').length, 0, 'before iOS 26 the recorder lives on Today instead');
     ipad = true;
     await act(() => tree.update(render({ redesign: true, accessory: recorder })));
-    assert.deepEqual(tree.root.findAllByType('trigger').map((item: any) => item.props.name), ['index', 'music', 'journeys', 'statistics', 'settings'], 'iPad keeps its sidebar layout');
+    const ipadTriggers = tree.root.findAllByType('trigger');
+    assert.deepEqual(ipadTriggers.map((item: any) => item.props.name), ['index', 'journeys', 'music', 'statistics', 'search'], 'iPad shares the V4 tab structure');
+    assert.deepEqual(ipadTriggers.map((item: any) => item.findByType('label').props.children), ['Today', 'Memories', 'Soundtrack', 'Atlas', 'Search']);
+    assert.equal(tree.root.findByType('tabs').props.sidebarAdaptable, true, 'iPad adds the adaptable sidebar');
+    assert.equal(tree.root.findByType('accessory').findByType('recorder-bar').type, 'recorder-bar', 'iPad keeps the recorder accessory');
+    ipad = false;
+    await act(() => tree.update(render({ redesign: true, accessory: recorder })));
+    assert.equal(tree.root.findByType('tabs').props.sidebarAdaptable, undefined, 'iPhone has no sidebar');
   } finally { ipad = false; light = false; await act(() => tree?.unmount()); }
 });

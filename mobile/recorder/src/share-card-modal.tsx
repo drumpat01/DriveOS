@@ -542,7 +542,7 @@ function createV4Chrome(id: ThemeId) {
   const light = themeCatalog[id].mode === 'light';
   return StyleSheet.create({
     modalRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: light ? withAlpha(c.text, 0.32) : '#0000009e' },
-    sheet: { maxHeight: '94%', marginHorizontal: 8, marginBottom: 8, overflow: 'hidden', borderRadius: 32, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.page, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: -6 } },
+    sheet: { width: '100%', maxWidth: 640, alignSelf: 'center', maxHeight: '94%', marginHorizontal: 8, marginBottom: 8, overflow: 'hidden', borderRadius: 32, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.page, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: -6 } },
     grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, backgroundColor: c.track },
     header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12 },
     kicker: { color: c.textSecondary, fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 },
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
   v4CardTitle: { fontFamily: SERIF, fontWeight: '600', letterSpacing: -0.6 },
   v4JourneyTitle: { fontFamily: SERIF, fontSize: 25, lineHeight: 29, fontWeight: '600', letterSpacing: -0.5 },
   modalRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#030106cc' },
-  sheet: { maxHeight: '94%', margin: 8, overflow: 'hidden', borderRadius: 28, borderWidth: 1, borderColor: '#704d8b', backgroundColor: '#0a0710', shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 28, shadowOffset: { width: 0, height: -8 } },
+  sheet: { width: '100%', maxWidth: 640, alignSelf: 'center', maxHeight: '94%', margin: 8, overflow: 'hidden', borderRadius: 28, borderWidth: 1, borderColor: '#704d8b', backgroundColor: '#0a0710', shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 28, shadowOffset: { width: 0, height: -8 } },
   sheetHeader: { minHeight: 72, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#3b2946' },
   sheetKicker: { color: '#ff795b', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, sheetTitle: { color: '#f8f3fa', fontSize: 22, fontWeight: '900', marginTop: 3 },
   closeButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#4e3a5b', backgroundColor: '#17101f' }, closeText: { color: '#d6c7df', fontSize: 27, lineHeight: 29 },

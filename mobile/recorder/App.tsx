@@ -1,6 +1,7 @@
 import { CreateJourneyMarkerButton } from './src/journey-markers';
 import { requestJourneyLocationAccess } from './src/location-permissions';
 import { IpadRecorderControls } from './src/ipad-home';
+import { isIpad } from './src/device-layout';
 import { AppThemeProvider, useAppTheme, useThemedStyles } from './src/app-theme';
 import { GlassBackdrop, useGlassCardStyle } from './src/glass-material';
 import { journeyDeckSemanticColors } from './src/journeydeck-design-tokens';
@@ -424,7 +425,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   }), [refresh]);
 
   const reconcileAutomaticRecorder = useCallback(async () => {
-    if (!deviceId) return false;
+    if (!deviceId || isIpad()) return false;
     const tessieEligible = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic'
       ? await tessieAutomaticRecordingEligible()
       : false;

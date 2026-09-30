@@ -38,9 +38,9 @@ test('profile switching is blocked during recording and remounts every profile-b
 
 test('synthetic profiles cannot pull existing private iCloud records into the clean test', () => {
   const sync = shell.slice(shell.indexOf('const syncPrivateCloud'), shell.indexOf('const connectAppleIdentity'));
-  assert.match(sync, /isIsolationTestProfile\(\)/);
+  assert.match(sync, /isSandboxProfile\(\)/);
   assert.match(sync, /Paused for the temporary clean-profile isolation test/);
-  assert.ok(sync.indexOf('isIsolationTestProfile()') < sync.indexOf('syncCurrentUserWithPrivateICloud'));
+  assert.ok(sync.indexOf('isSandboxProfile()') < sync.indexOf('syncCurrentUserWithPrivateICloud'));
 });
 
 test('Data Health exposes exact aggregate isolation counts and a safe return path', () => {
@@ -55,8 +55,8 @@ test('Data Health exposes exact aggregate isolation counts and a safe return pat
 test('legacy device credentials can only be claimed by a normal profile', () => {
   assert.match(profileSecrets, /profileKey\(base\)/);
   assert.match(profileSecrets, /legacy-owner-v1/);
-  assert.match(profileSecrets, /isIsolationTestProfile\(user\)/);
-  assert.ok(profileSecrets.indexOf('isIsolationTestProfile(user)') < profileSecrets.indexOf('SecureStore.setItemAsync(ownerKey'));
+  assert.match(profileSecrets, /isSandboxProfile\(user\)/);
+  assert.ok(profileSecrets.indexOf('isSandboxProfile(user)') < profileSecrets.indexOf('SecureStore.setItemAsync(ownerKey'));
 });
 
 test('music, owner Spotify, and Tessie credentials are profile-scoped', () => {

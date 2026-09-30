@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { getCurrentUser, isIsolationTestProfile } from './auth';
+import { getCurrentUser, isSandboxProfile } from './auth';
 
 const secureOptions: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
 
@@ -19,7 +19,7 @@ export async function loadProfileSecret(base: string): Promise<string | null> {
   const [ownerId, legacy] = await Promise.all([
     SecureStore.getItemAsync(ownerKey, secureOptions), SecureStore.getItemAsync(base, secureOptions),
   ]);
-  if (getCurrentUser().id !== user.id || !legacy || isIsolationTestProfile(user) || (ownerId && ownerId !== user.id)) return null;
+  if (getCurrentUser().id !== user.id || !legacy || isSandboxProfile(user) || (ownerId && ownerId !== user.id)) return null;
   await Promise.all([
     SecureStore.setItemAsync(ownerKey, user.id, secureOptions),
     SecureStore.setItemAsync(profileKey(base, user.id), legacy, secureOptions),

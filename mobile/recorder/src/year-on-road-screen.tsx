@@ -3,7 +3,6 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useAppTheme } from './app-theme';
 import { getCurrentUser } from './auth';
-import { isIpad } from './device-layout';
 import { V4_REDESIGN_ENABLED } from './release-features';
 import { DetailScreenFrame } from './detail-screen-frame';
 import { useJourneyDeckNavigation } from './native-navigation-context';
@@ -37,7 +36,7 @@ export function NativeYearOnRoadScreen() {
   const close = () => router.back();
   return <DetailScreenFrame title="Your Year on the Road" onBack={close}>
     <View style={{ padding: 28, gap: 20 }}>
-      {!premium ? <><Text style={V4_REDESIGN_ENABLED && !isIpad() ? { color: theme.palette.text, fontSize: 32, fontWeight: '600', fontFamily: 'ui-serif' } : { color: theme.palette.text, fontSize: 28, fontWeight: '800' }}>A year worth reliving.</Text>
+      {!premium ? <><Text style={V4_REDESIGN_ENABLED ? { color: theme.palette.text, fontSize: 32, fontWeight: '600', fontFamily: 'ui-serif' } : { color: theme.palette.text, fontSize: 28, fontWeight: '800' }}>A year worth reliving.</Text>
         <Text style={{ color: theme.palette.muted, fontSize: 16 }}>An animated story of your roads, music, and Memories. Included with JourneyDeck Plus.</Text>
         <Pressable accessibilityRole="button" onPress={nav.showUpgrade} style={{ padding: 18, backgroundColor: theme.palette.accent, borderRadius: 18 }}><Text style={{ color: theme.palette.onAccent, fontWeight: '800' }}>Explore Plus</Text></Pressable></>
         : error ? <><Text accessibilityRole="alert" style={{ color: theme.palette.muted }}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(n => n + 1)}><Text style={{ color: theme.palette.accent }}>Try again</Text></Pressable></>

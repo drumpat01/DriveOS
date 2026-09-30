@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
+import { readingColumnStyle, useReadingWidth } from './device-layout';
 import { SymbolView } from 'expo-symbols';
 import { router } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
@@ -25,7 +26,7 @@ export function MemoryDetailV4({ memory, journeys, details, onClose, onOpenJourn
 }) {
   const colors = useRedesignColors();
   const insets = useDetailViewportInsets();
-  const { width } = useWindowDimensions();
+  const width = useReadingWidth();
   const { reduceMotion } = useMotionPreferences();
   const scrollY = useRef(new Animated.Value(0)).current;
   const scroller = useRef<any>(null);
@@ -46,7 +47,7 @@ export function MemoryDetailV4({ memory, journeys, details, onClose, onOpenJourn
     <Animated.ScrollView ref={scroller} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
       contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
       onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 48 }}>
+      contentContainerStyle={[readingColumnStyle, { paddingBottom: insets.bottom + 48 }]}>
       <Animated.View style={[styles.hero, heroScale]}>
         <View style={[styles.heroMain, { backgroundColor: colors.surfaceStrong }]}><MemoryCoverImage memory={memory} onReady={onReady} /></View>
         <View style={[styles.heroSide, { width: tileWidth }]}>
