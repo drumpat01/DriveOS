@@ -21,13 +21,13 @@ const FILTERS: { id: DriveFilter; label: string }[] = [{ id: 'all', label: 'All'
 const COLLECTION_SYMBOL: Record<SmartCollection['id'], SFSymbol> = { favorites: 'point.bottomleft.forward.to.point.topright.scurvepath', night: 'moon.stars', longest: 'road.lanes' };
 
 export function MemoriesLibraryScreen({
-  memories, journeys, details, loading, error, historyLimited, onUpgrade, onCreate, onMemory, onJourney, onEdit, onShare,
+  memories, journeys, details, loading, error, historyLimited, onUpgrade, onCreate, onMemory, onJourney, onEdit, onShare, onDelete,
   onAddToMemory, onFiftyStates, onRefresh, isLocked = () => false,
 }: {
   memories: JourneyMemory[]; journeys: JourneySummary[]; details: JourneyDetail[];
   loading: boolean; error?: string; historyLimited: boolean; onUpgrade: () => void;
   onCreate: () => void; onMemory: (id: string) => void; onJourney: (id: string) => void;
-  onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void;
+  onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void; onDelete?: (memory: JourneyMemory) => void;
   onAddToMemory: (journeyId: string) => void; onFiftyStates?: () => void; onRefresh: () => void;
   /** Older history free members can't open: shown with a Plus badge, and tapping opens the paywall. */
   isLocked?: (startedAt: string) => boolean;
@@ -72,9 +72,9 @@ export function MemoriesLibraryScreen({
       </View> : null}
       {groups.length ? groups.map((group, groupIndex) => <View key={group.year} style={styles.section}>
         <SectionHeader title={String(group.year)} detail={`${group.items.length} ${group.items.length === 1 ? 'memory' : 'memories'} · ${formatMilesShort(group.miles)}`} />
-        {group.items.map((item, index) => index === 0 ? <MemoryCard key={item.memory.id} item={item} large locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} /> : null)}
+        {group.items.map((item, index) => index === 0 ? <MemoryCard key={item.memory.id} item={item} large locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} onDelete={onDelete} /> : null)}
         {group.items.length > 1 || groupIndex === 0 ? <View style={styles.grid}>
-          {group.items.slice(1).map(item => <View key={item.memory.id} style={styles.gridCell}><MemoryCard item={item} locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} /></View>)}
+          {group.items.slice(1).map(item => <View key={item.memory.id} style={styles.gridCell}><MemoryCard item={item} locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} onDelete={onDelete} /></View>)}
           {groupIndex === 0 ? <View style={styles.gridCell}><NewMemoryTile onPress={onCreate} /></View> : null}
         </View> : null}
       </View>) : !loading ? <TouchPressable accessibilityRole="button" onPress={onCreate} style={({ pressed }) => pressed && redesignStyles.pressed}>
@@ -92,7 +92,7 @@ export function MemoriesLibraryScreen({
 
 type MemoryItem = ReturnType<typeof memoryYearGroups>[number]['items'][number];
 
-function MemoryCard({ item, large = false, locked = false, onUpgrade, onMemory, onEdit, onShare }: { item: MemoryItem; large?: boolean; locked?: boolean; onUpgrade: () => void; onMemory: (id: string) => void; onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void }) {
+function MemoryCard({ item, large = false, locked = false, onUpgrade, onMemory, onEdit, onShare, onDelete }: { item: MemoryItem; large?: boolean; locked?: boolean; onUpgrade: () => void; onMemory: (id: string) => void; onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void; onDelete?: (memory: JourneyMemory) => void }) {
   const colors = useRedesignColors();
   const when = new Date(item.startedAt).toLocaleDateString(undefined, large ? { month: 'short', day: 'numeric' } : { month: 'short' });
   const detail = `${when} · ${item.drives} ${item.drives === 1 ? 'drive' : 'drives'}${large ? ` · ${formatMilesShort(item.miles)}` : ''}`;
@@ -109,6 +109,7 @@ function MemoryCard({ item, large = false, locked = false, onUpgrade, onMemory, 
   return <CardDetailLink kind="memory" id={item.memory.id} actions={[
     { id: 'edit', title: 'Edit Memory', icon: 'pencil', onPress: () => onEdit(item.memory) },
     { id: 'share', title: 'Create share card', icon: 'square.and.arrow.up', onPress: () => onShare(item.memory) },
+    ...(onDelete ? [{ id: 'delete', title: 'Delete Memory', icon: 'trash' as const, destructive: true, onPress: () => onDelete(item.memory) }] : []),
   ]}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.memory.name}, ${detail}`} onPress={() => onMemory(item.memory.id)}
       style={({ pressed }) => [large ? styles.largeCard : styles.card, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }, pressed && redesignStyles.pressed]}>
