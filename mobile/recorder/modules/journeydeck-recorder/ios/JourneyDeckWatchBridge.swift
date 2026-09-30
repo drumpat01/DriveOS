@@ -26,6 +26,14 @@ final class JourneyDeckWatchBridge: NSObject, WCSessionDelegate {
     ]
     if let id = status["sessionId"] as? String { result["sessionID"] = id }
     if let event = status["lastEvent"] as? String { result["event"] = event }
+    // The Watch shows the same last-drive summary as the Start a Journey widget: distance, minutes and start time only.
+    if let group = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckAppGroup") as? String,
+       let json = UserDefaults(suiteName: group)?.string(forKey: "startWidgetLastDrive"),
+       let data = json.data(using: .utf8),
+       let drive = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+       drive["miles"] is NSNumber, drive["minutes"] is NSNumber, drive["startedAt"] is String {
+      result["lastDrive"] = ["miles": drive["miles"]!, "minutes": drive["minutes"]!, "startedAt": drive["startedAt"]!]
+    }
     return result
   }
 

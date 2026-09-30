@@ -21,89 +21,68 @@ struct JourneyDeckWatchApp: App {
   }
 }
 
+// Grand Touring, the default theme: the same navy, champagne and ivory as the iOS Start a Journey widget.
 private enum WatchPalette {
-  static let night = Color(red: 8 / 255, green: 7 / 255, blue: 13 / 255)
-  static let cream = Color(red: 1, green: 248 / 255, blue: 239 / 255)
-  static let amber = Color(red: 1, green: 138 / 255, blue: 78 / 255)
-  // JourneyDeck --jd-purple: #963CFF.
-  static let purple = Color(red: 150 / 255, green: 60 / 255, blue: 1)
-  static let copper = Color(red: 160 / 255, green: 70 / 255, blue: 27 / 255)
-  static let deepCopper = Color(red: 62 / 255, green: 24 / 255, blue: 13 / 255)
-  static let deepPurple = Color(red: 49 / 255, green: 14 / 255, blue: 87 / 255)
+  static let navy = Color(red: 8 / 255, green: 24 / 255, blue: 50 / 255)
+  static let champagne = Color(red: 212 / 255, green: 177 / 255, blue: 90 / 255)
+  static let ivory = Color(red: 246 / 255, green: 240 / 255, blue: 226 / 255)
 }
 
+/// Mirrors the widget: a small label, the last drive (or a first-drive invitation), and one large Start button.
 @MainActor
 private struct CinematicJourneyScreen: View {
   @ObservedObject var recorder: WatchRecorder
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.isLuminanceReduced) private var dimmed
-  @ScaledMetric(relativeTo: .title2) private var symbolSize = 27.0
 
   var body: some View {
     ScrollView {
-      VStack(spacing: 6) {
-        Image(systemName: recorder.active ? "car" : "steeringwheel")
-          .font(.system(size: symbolSize, weight: .light))
-          .foregroundStyle(WatchPalette.amber)
-          .padding(9)
-          .background(WatchPalette.night.opacity(reduceTransparency ? 1 : 0.82), in: Circle())
-          .overlay(Circle().strokeBorder(WatchPalette.amber.opacity(0.5), lineWidth: 1))
-          .accessibilityHidden(true)
-
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-          if recorder.active {
-            Circle().fill(WatchPalette.amber).frame(width: 5, height: 5)
-              .accessibilityHidden(true)
-          }
-          Text(recorder.status)
-            .font(.system(.subheadline, design: .serif))
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 6).padding(.vertical, 2)
-        .background(WatchPalette.night.opacity(reduceTransparency ? 1 : 0.78), in: RoundedRectangle(cornerRadius: 10))
-
+      VStack(alignment: .leading, spacing: 0) {
+        header
+        Spacer(minLength: 8)
         Button(action: recorder.tap) {
-          VStack(spacing: 6) {
-            if recorder.busy { ProgressView().tint(WatchPalette.cream) }
-            else {
-              Image(systemName: recorder.active ? "stop.fill" : "play.fill")
-                .font(.title3).accessibilityHidden(true)
+          HStack(spacing: 8) {
+            if recorder.busy { ProgressView().tint(WatchPalette.navy) }
+            else if recorder.active {
+              Image(systemName: "stop.fill").font(.system(size: 15, weight: .bold)).accessibilityHidden(true)
+            } else {
+              Circle().fill(WatchPalette.navy).frame(width: 10, height: 10).accessibilityHidden(true)
             }
             Text(recorder.buttonTitle)
-              .font(.system(.headline, design: .serif))
-              .multilineTextAlignment(.center)
-              .fixedSize(horizontal: false, vertical: true)
+              .font(.system(size: 18, weight: .bold))
+              .lineLimit(1).minimumScaleFactor(0.7)
           }
-          .frame(maxWidth: .infinity, minHeight: 58)
-          .padding(.horizontal, 8).padding(.vertical, 2)
+          .frame(maxWidth: .infinity, minHeight: 56)
         }
-        .buttonStyle(CinematicJourneyButtonStyle(active: recorder.active))
+        .buttonStyle(GrandTouringStartButtonStyle(active: recorder.active))
         .disabled(recorder.busy)
         .accessibilityHint(recorder.active ? "Stops and saves the journey on your iPhone" : "Starts recording with your iPhone GPS")
 
-        Text("Journey auto-stops after 10min without driving")
-          .font(.system(.footnote, design: .serif))
-          .foregroundStyle(WatchPalette.cream.opacity(0.8))
-          .multilineTextAlignment(.center)
+        Text("Auto-stops after 10 min without driving")
+          .font(.system(size: 11))
+          .foregroundStyle(WatchPalette.ivory.opacity(0.75))
           .fixedSize(horizontal: false, vertical: true)
-          .padding(.horizontal, 4)
+          .padding(.top, 8)
       }
-      .padding(.horizontal, 8).padding(.top, 0).padding(.bottom, 8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, 8).padding(.bottom, 8)
     }
-    .foregroundStyle(WatchPalette.cream)
+    .foregroundStyle(WatchPalette.ivory)
     .background {
       GeometryReader { geometry in
         ZStack {
-          WatchPalette.night
-          // Decorative bundled artwork; never a live map or location request.
+          WatchPalette.navy
+          // Decorative bundled artwork, the same road photo as the widget; never a live map or location request.
           if !reduceTransparency && !dimmed {
-            Image("CinematicRoad")
+            Image("RoadPhoto")
               .resizable().scaledToFill()
               .frame(width: geometry.size.width, height: geometry.size.height)
               .clipped()
-            LinearGradient(colors: [.black.opacity(0.12), .black.opacity(0.35), WatchPalette.night],
-              startPoint: .top, endPoint: .bottom)
+            LinearGradient(stops: [
+              .init(color: WatchPalette.navy.opacity(0.55), location: 0),
+              .init(color: WatchPalette.navy.opacity(0.1), location: 0.35),
+              .init(color: WatchPalette.navy.opacity(0.93), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
           }
         }
       }
@@ -112,28 +91,70 @@ private struct CinematicJourneyScreen: View {
       .accessibilityHidden(true)
     }
   }
+
+  @ViewBuilder private var header: some View {
+    let connected = recorder.active || recorder.ready
+    if recorder.active {
+      label("RECORDING")
+      Text(recorder.status)
+        .font(.system(size: 20, weight: .semibold, design: .serif))
+        .lineLimit(2).minimumScaleFactor(0.7).fixedSize(horizontal: false, vertical: true)
+    } else if connected, let drive = recorder.lastDrive {
+      label("LAST DRIVE")
+      Text(drive.milesText)
+        .font(.system(size: 26, weight: .semibold, design: .serif))
+        .lineLimit(1).minimumScaleFactor(0.7)
+      Text("\(drive.dayText) · \(Int(drive.minutes.rounded())) min")
+        .font(.system(size: 12)).foregroundStyle(WatchPalette.ivory.opacity(0.85)).lineLimit(1)
+    } else {
+      label("JOURNEYDECK")
+      Text(connected ? "Your first drive awaits" : recorder.status)
+        .font(.system(size: connected ? 20 : 15, weight: .semibold, design: .serif))
+        .lineLimit(4).minimumScaleFactor(0.7).fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private func label(_ text: String) -> some View {
+    Text(text).font(.system(size: 10, weight: .bold)).tracking(1)
+      .foregroundStyle(WatchPalette.ivory.opacity(0.8))
+  }
 }
 
-private struct CinematicJourneyButtonStyle: ButtonStyle {
+/// A large champagne capsule with navy text, like the widget's Start button; Stop is ivory so the state is obvious.
+private struct GrandTouringStartButtonStyle: ButtonStyle {
   let active: Bool
   @Environment(\.isEnabled) private var enabled
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .foregroundStyle(WatchPalette.cream)
-      .background {
-        RoundedRectangle(cornerRadius: 15, style: .continuous)
-          .fill(LinearGradient(colors: active
-            ? [WatchPalette.purple, WatchPalette.deepPurple]
-            : [WatchPalette.copper, WatchPalette.deepCopper],
-            startPoint: .topLeading, endPoint: .bottomTrailing))
-      }
-      .overlay {
-        RoundedRectangle(cornerRadius: 15, style: .continuous)
-          .strokeBorder((active ? WatchPalette.purple : WatchPalette.amber).opacity(0.85), lineWidth: 1)
-      }
+      .foregroundStyle(WatchPalette.navy)
+      .background(Capsule().fill(active ? WatchPalette.ivory : WatchPalette.champagne))
       .brightness(configuration.isPressed ? -0.12 : 0)
       .opacity(enabled ? 1 : 0.65)
+  }
+}
+
+/// The latest drive, sent by the iPhone with its status. Only distance, minutes and the start time.
+struct WatchLastDrive: Equatable {
+  let miles: Double
+  let minutes: Double
+  let startedAt: Date
+
+  var milesText: String { miles < 10 ? String(format: "%.1f mi", miles) : "\(Int(miles.rounded())) mi" }
+  var dayText: String {
+    if Calendar.current.isDateInToday(startedAt) { return "Today" }
+    if Calendar.current.isDateInYesterday(startedAt) { return "Yesterday" }
+    let days = Calendar.current.dateComponents([.day], from: startedAt, to: .now).day ?? 0
+    return days < 7 ? startedAt.formatted(.dateTime.weekday(.wide)) : startedAt.formatted(.dateTime.month(.abbreviated).day())
+  }
+
+  init?(_ value: Any?) {
+    guard let dictionary = value as? [String: Any], let miles = dictionary["miles"] as? Double,
+          let minutes = dictionary["minutes"] as? Double, let iso = dictionary["startedAt"] as? String else { return nil }
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return nil }
+    self.miles = miles; self.minutes = minutes; self.startedAt = date
   }
 }
 
@@ -142,7 +163,8 @@ final class WatchRecorder: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var active = false
   @Published private(set) var busy = false
   @Published private(set) var status = "Connecting to iPhone…"
-  private var ready = false
+  @Published private(set) var lastDrive: WatchLastDrive?
+  @Published private(set) var ready = false
   private var fresh = false
   private var sessionID: String?
   private var controlToken = ""
@@ -223,6 +245,7 @@ final class WatchRecorder: NSObject, ObservableObject, WCSessionDelegate {
     updatedAt = time
     active = message["recording"] as? Bool == true || message["paused"] as? Bool == true
     ready = message["ready"] as? Bool == true
+    if let drive = WatchLastDrive(message["lastDrive"]) { lastDrive = drive }
     sessionID = message["sessionID"] as? String
     controlToken = message["controlToken"] as? String ?? ""
     fresh = confirmed || (fresh && Date().timeIntervalSince1970 - time <= 15)
