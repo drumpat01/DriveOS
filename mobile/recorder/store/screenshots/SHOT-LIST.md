@@ -21,6 +21,8 @@ Turn on Settings > Account > Try sample data and wait about a minute for the Coa
 
 Optional: `09-share.png` (share card from a sample journey).
 
+The screenshots are never modified (no blur, crop or retouching). The store images place each raw screenshot, unchanged, inside a marketing frame (navy background, serif headline, champagne subtitle) in `final/`; the raw files stay in `raw/`.
+
 Send full-size originals (AirDrop with All Photos Data, or download from iCloud Photos); chat attachments are downscaled.
 
 ## iPad (13-inch, 2064 x 2752), later

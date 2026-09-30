@@ -102,7 +102,7 @@ import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { SERIF, useRedesignColors } from './redesign-ui';
 import type { RedesignColors } from './redesign-palette';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
-import { createIsolationTestProfile, enterDemoProfile, exitDemoProfile, getAppleIdentityStatus, getCurrentUser, isDemoProfile, isIsolationTestProfile, isSandboxProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
+import { createIsolationTestProfile, enterDemoProfile, exitDemoProfile, isDemoProfileReady, prepareDemoProfile, getAppleIdentityStatus, getCurrentUser, isDemoProfile, isIsolationTestProfile, isSandboxProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { deleteCurrentJourneyDeckAccount, finishProfileSwitch, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, upsertPrivatePreference, type LocalPlace, type LocalUser } from './local-store';
 import { FirstRunV4, nextV4Stage, previousV4Stage, v4Stage } from './first-run-v4';
@@ -628,30 +628,32 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const sampleBusy = useRef(false);
   const toggleSampleData = useCallback(() => {
     if (sampleBusy.current) return;
-    const leaving = isDemoProfile();
     if (dashboard.data.recorder.state !== 'ready') {
       Alert.alert('Finish the active journey first', 'Profile switching is disabled while the recorder is active.');
       return;
     }
-    Alert.alert(leaving ? 'Leave the sample data?' : 'Try sample data?',
-      leaving ? 'The sample library is removed from this device and JourneyDeck returns to your own data.'
-        : 'JourneyDeck opens a fictional library so you can look around. Your own data stays untouched, and nothing in the sample is uploaded to iCloud. Creating it may take a minute. You can leave it at any time.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: leaving ? 'Leave sample' : 'Open sample', onPress: () => void (async () => {
-        if (sampleBusy.current) return;
-        sampleBusy.current = true;
-        // Building the library and its photos can take a while; say so as soon as the work starts.
-        if (!leaving) Alert.alert('Creating your sample', 'This may take a minute. Sample drives and Memories will appear as they are ready.');
-        try {
-          await prepareForProfileSwitch();
-          if (leaving) exitDemoProfile(); else await enterDemoProfile();
-          onProfileChanged();
-        } catch (error) {
-          Alert.alert('Sample data was not changed', error instanceof Error ? error.message : 'No data was changed.');
-        } finally { sampleBusy.current = false; finishProfileSwitch(); }
-      })() },
-    ]);
+    const leaving = isDemoProfile();
+    void (async () => {
+      sampleBusy.current = true;
+      // The sample is prepared in the background after launch, so it normally just appears. If it is still being
+      // built (a first launch, or a daily refresh), say so.
+      if (!leaving && !isDemoProfileReady()) Alert.alert('Preparing your sample', 'It is still being built and may take a minute. It opens as soon as it is ready.');
+      try {
+        await prepareForProfileSwitch();
+        if (leaving) exitDemoProfile(); else await enterDemoProfile();
+        onProfileChanged();
+      } catch (error) {
+        Alert.alert('Sample data was not changed', error instanceof Error ? error.message : 'No data was changed.');
+      } finally { sampleBusy.current = false; finishProfileSwitch(); }
+    })();
   }, [dashboard.data.recorder.state, onProfileChanged]);
+
+  // Build the sample (drives, songs, Memories and photos) quietly after the app settles, so turning it on is instant.
+  useEffect(() => {
+    if (isDemoProfile()) return;
+    const timer = setTimeout(() => { void prepareDemoProfile().catch(() => undefined); }, 6000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const switchProfileForTest = useCallback((userId: string) => {
     if (dashboard.data.recorder.state !== 'ready') {

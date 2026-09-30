@@ -43,6 +43,7 @@ const MEMORIES: readonly { key: string; name: string; notes: string; drives: rea
   { key: 'coast-weekend', name: 'Coast Highway Weekend', notes: 'Fog, fish tacos and the long way home.', drives: ['coast-morning', 'city-evening'] },
   { key: 'big-sur', name: 'Big Sur Road Trip', notes: 'Two days on Highway 1.', drives: ['big-sur-1', 'big-sur-2'] },
   { key: 'zion', name: 'Desert to Zion', notes: 'Red rock and a full tank.', drives: ['a-year-ago'] },
+  { key: 'wine-country', name: 'Wine Country Day', notes: 'Vineyards and a long lunch.', drives: ['valley-loop'] },
 ];
 
 const EARTH_MILES = 3958.8;
@@ -72,9 +73,13 @@ export function demoRoute(path: readonly Waypoint[]): Waypoint[] {
 export const DEMO_PROFILE_NAME = 'JourneyDeck Sample';
 
 export function demoJourneyCount() { return DRIVES.length; }
+export function demoMemoryCount() { return MEMORIES.length; }
 
 /** Writes the sample library into `userId`. Every row is marked as already synced so it can never upload. */
-export function seedDemoLibrary(userId: LocalUserId, nowMs = Date.now()): void {
+/** Lets the app draw between drives, so preparing the sample in the background never freezes the screen. */
+const yieldToUi = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+export async function seedDemoLibrary(userId: LocalUserId, nowMs = Date.now()): Promise<void> {
   const ids = new Map<string, string>();
   const placeIds = new Map<string, string>();
   const place = (label: string, at: Waypoint) => {
@@ -87,6 +92,7 @@ export function seedDemoLibrary(userId: LocalUserId, nowMs = Date.now()): void {
   };
 
   for (const drive of DRIVES) {
+    await yieldToUi();
     const id = `demo_journey_${drive.key}`;
     ids.set(drive.key, id);
     const start = new Date(nowMs - drive.daysAgo * 86_400_000);
