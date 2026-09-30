@@ -21,10 +21,12 @@ import {
   getActiveLocalUserId,
   linkLocalUserToAppleIdentity,
   deleteLocalUserData,
+  listJourneys,
   setActiveLocalUserId,
 } from './local-store';
 import { isInternalTestingBuild } from './internal-testing';
-import { DEMO_PROFILE_NAME, seedDemoLibrary } from './demo-library';
+import { DEMO_PROFILE_NAME, demoJourneyCount, seedDemoLibrary } from './demo-library';
+import { notifyLocalArchiveChanged } from './local-archive-events';
 import { seedDemoPhotos } from './demo-photos';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -182,9 +184,14 @@ export function isSandboxProfile(user = getCurrentUser()): boolean {
 /** Opens the sample library, creating it on first use. The real profile is left untouched. */
 export async function enterDemoProfile(): Promise<LocalUser> {
   let user = listLocalUsers().find(candidate => isDemoProfile(candidate));
+  // A sample left half-written (the app stopped while it was being created) is rebuilt rather than shown empty.
+  if (user && listJourneys(user.id, { limit: 100 }).items.length < demoJourneyCount()) { removeDemoProfileData(user.id); user = undefined; }
   if (!user) {
-    user = ensureLocalUser({ displayName: DEMO_PROFILE_NAME });
-    try { seedDemoLibrary(user.id); await seedDemoPhotos(user.id); } catch (error) { deleteLocalUserData(user.id); throw error; }
+    const created = ensureLocalUser({ displayName: DEMO_PROFILE_NAME });
+    try { seedDemoLibrary(created.id); } catch (error) { removeDemoProfileData(created.id); throw error; }
+    user = created;
+    // Cover photos copy in the background so the sample opens at once; they appear as they land.
+    void seedDemoPhotos(created.id).then(() => notifyLocalArchiveChanged()).catch(() => undefined);
   }
   activeUser = user;
   demoOpenedThisLaunch = true;
