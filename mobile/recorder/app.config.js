@@ -25,7 +25,11 @@ module.exports = ({ config }) => {
   const microphonePermission = modern ? 'JourneyDeck uses the microphone only when you choose to identify a song. Song recognition audio is not saved.' : config.ios.infoPlist.NSMicrophoneUsageDescription;
   const photoPermission = 'JourneyDeck uses the dates and locations of photos you allow to suggest photos for your journeys. You review and choose which photos to add to Memories.';
   const existingPlugins = (config.plugins ?? []).map(plugin => Array.isArray(plugin) && plugin[0] === 'expo-image-picker'
-    ? [plugin[0], { ...plugin[1], photosPermission: photoPermission }] : plugin);
+    ? [plugin[0], { ...plugin[1], photosPermission: photoPermission }]
+    // V4 records drives it detects on its own, so the Always prompt says so (App Review reads this closely).
+    : v4Store && Array.isArray(plugin) && plugin[0] === 'expo-location'
+      ? [plugin[0], { ...plugin[1], locationAlwaysAndWhenInUsePermission: 'JourneyDeck uses your location in the background to notice when you start driving and record the route, including while your phone is locked. Your routes stay on your iPhone and in your iCloud.' }]
+      : plugin);
   return {
     ...config,
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
@@ -70,6 +74,16 @@ module.exports = ({ config }) => {
       },
       supportsTablet: true,
       requireFullScreen: false,
+      // V4's own native code (app icon, CloudKit, recorder, widget) reads UserDefaults, a required-reason API.
+      // Expo's libraries ship their own manifests; this declares ours so App Store upload accepts the build.
+      ...(v4Store ? { privacyManifests: {
+        NSPrivacyTracking: false,
+        NSPrivacyAccessedAPITypes: [{
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryUserDefaults',
+          // CA92.1: the app's own settings. 1C8F.1: the App Group shared with the Start a Journey widget.
+          NSPrivacyAccessedAPITypeReasons: ['CA92.1', '1C8F.1'],
+        }],
+      } } : {}),
       icon: {
         light: './assets/icon-grand-touring-v2.png',
         dark: './assets/icon-grand-touring-dark-v1.png',

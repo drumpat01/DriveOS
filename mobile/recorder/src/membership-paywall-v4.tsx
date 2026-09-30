@@ -109,13 +109,13 @@ export function MembershipPaywallV4({ hero, plans, selectedId, onSelect, loading
       </View>
 
       <View style={styles.footer}>
-        <Pressable accessibilityRole="button" disabled={pending} onPress={onRestore} hitSlop={8}><Text style={[styles.footerLink, { color: c.textTertiary }]}>Restore</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={pending} onPress={onRestore} hitSlop={8}><Text style={[styles.footerLink, { color: c.textTertiary }]}>Restore Purchases</Text></Pressable>
         <Text style={[styles.footerLink, { color: c.textTertiary }]}>·</Text>
         <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')} hitSlop={8}><Text style={[styles.footerLink, { color: c.textTertiary }]}>Privacy</Text></Pressable>
         <Text style={[styles.footerLink, { color: c.textTertiary }]}>·</Text>
         <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')} hitSlop={8}><Text style={[styles.footerLink, { color: c.textTertiary }]}>Terms</Text></Pressable>
       </View>
-      <Text style={[styles.fine, { color: c.textTertiary }]}>Renews automatically. Cancel at least 24 hours before the period ends.</Text>
+      <Text style={[styles.fine, { color: c.textTertiary }]}>Charged to your Apple Account. Renews automatically unless cancelled at least 24 hours before the period ends; manage it in Settings.</Text>
     </ScrollView>
   </View>;
 }

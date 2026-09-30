@@ -74,7 +74,7 @@ export function FiftyStatesScreen() {
   const selected = useMemo(() => new Set(seen), [seen]);
   const columns = width >= 700 ? 4 : width >= 360 && fontScale <= 1.2 ? 3 : 2;
   const remaining = 50 - seen.length;
-  if (!V3_FIFTY_STATES_ENABLED) return <View style={[styles.unavailable, { paddingTop: insets.top, backgroundColor: theme.palette.page }]}><Text style={{ color: theme.palette.text }}>50 States is available only in the JourneyDeck V3 preview.</Text><Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: theme.palette.accent }}>Go back</Text></Pressable></View>;
+  if (!V3_FIFTY_STATES_ENABLED) return <View style={[styles.unavailable, { paddingTop: insets.top, backgroundColor: theme.palette.page }]}><Text style={{ color: theme.palette.text }}>50 States isn’t available in this version.</Text><Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: theme.palette.accent }}>Go back</Text></Pressable></View>;
   const toggleState = (code: USStateCode) => { toggle(code); void haptics.selection(); };
   return <View style={[styles.screen, { backgroundColor: theme.palette.page }]}>
     <LinearGradient colors={theme.gradient([theme.palette.page, theme.palette.card, theme.palette.page])} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
