@@ -63,3 +63,10 @@ Swift compilation and device CloudKit behavior remain unverified on this Windows
 - **Rule.** An assistant sees a category only when both the app-wide switch (`connector.privacy.v1`) and its own switch allow it.
 - **Linking the app.** `src/connector-app-link.ts` keeps a random secret in the Keychain on this device. It syncs only `{ id, verifier }`, SHA-256 digests of the secret, as the private preference `connector.app-link.v1`. The connector indexes `id` in KV when it reads the user's records, then checks `verifier` against a fresh iCloud read on every `/app/connections` call. The connector still never writes to iCloud. A newly installed app shows "not linked" until iCloud sync has delivered the link and the connector has read the user's records. Connecting an assistant, or asking one a question, triggers that read.
 - **Network.** All calls go through `requestConnectorJson` in `src/network-request.ts`. It is allowlisted to `mcp(-staging).journeydeck.me/app/connections`.
+
+## Production connector (2026-09-29)
+
+- `https://mcp.journeydeck.me` runs the connector's `env.production` (`drumpat01/journeydeck-data-mcp` PR #4): its own Worker, Durable Objects and KV, so staging grants and accounts don't carry over.
+- V4 store builds and V4 OTA exports point at production (`app.config.js`). The `v4-development-simulator` profile, or `JOURNEYDECK_CONNECTOR=staging`, keeps staging.
+- Tools require JourneyDeck Plus in production. The connector confirms `entitlement_pro` with the App Store Server API. Sandbox (TestFlight) purchases count while the connector's `ALLOW_SANDBOX` is on. Staging leaves the gate off.
+- Before production sign-in works, the owner must add two secrets with `wrangler secret put <NAME> --env production` in `packages/connector`: `CLOUDKIT_API_TOKEN` (a new CloudKit Production API token whose allowed origin is `https://mcp.journeydeck.me`), and the In-App Purchase key as `APPSTORE_KEY_ID`, `APPSTORE_ISSUER_ID` and `APPSTORE_PRIVATE_KEY`.

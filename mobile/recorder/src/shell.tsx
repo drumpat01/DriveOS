@@ -3467,7 +3467,9 @@ function ConnectionsScreen({
 /** Soft accent glow at the top of V4 pages, in place of the V3 atmospheric backdrop. */
 function RedesignGlow() {
   const colors = useRedesignColors();
-  return <LinearGradient pointerEvents="none" colors={[colors.glow, colors.page]} locations={[0, 1]} style={{ position: 'absolute', top: 0, left: -20, right: -20, height: 420 }} />;
+  // This glow scrolls with the content, so pulling down reveals the space above it. Extend the glow's top color
+  // 1000pt upward so overscroll shows more glow instead of a hard line where the gradient began.
+  return <LinearGradient pointerEvents="none" colors={[colors.glow, colors.glow, colors.page]} locations={[0, 1000 / 1420, 1]} style={{ position: 'absolute', top: -1000, left: -20, right: -20, height: 1420 }} />;
 }
 
 const settingsV4Cache = new WeakMap<RedesignColors, Record<string, object>>();

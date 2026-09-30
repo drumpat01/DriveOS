@@ -84,6 +84,14 @@
 - GitHub environment `v4-release` exists and accepts deployments from `main` only. Its `EXPO_TOKEN` environment secret was exercised by read-only workflow run `36293057575`: EAS accepted it for `whoami`, `project:info`, and `build:list`. Local `gh` and EAS CLI logins work for the current operator; Claude must recheck auth in its session. EAS production lists the RevenueCat Apple SDK key name. EAS-managed iOS signing and the App Store Connect API key worked noninteractively for V4 Build 41. Never put key values in Git, chat, or logs.
 - V4 OTA still points to the separate xprem server. The GitHub workflow does not publish OTA. Read `mobile/recorder/docs/OTA_RUNBOOK.md` and establish V4 xprem signing/branch access before OTA work.
 
+## Production connector (2026-09-29)
+
+- Connector repo (`C:\Users\patri\OneDrive\Documents\ChatGPT\JourneyDeck Data MCP`) PR #4 merged: consent redesign, per-assistant sharing, Plus gate (`packages/connector/src/plus.js`, App Store Server API, 60 answers/user/hour), `env.production`. Tests 43/43.
+- Deployed: staging `7a80372f` (Plus gate off), production `d850a509` at `mcp.journeydeck.me` (own KV `0dcc42c1…`/`2b49591b…`, `TOKEN_KEY` set). `/mcp` returns 401 as expected.
+- Later the same day: PR #5 (staging-only `LOG_CK_RESPONSES` diagnostic), PR #6 (Apple returns each rotated web-auth token in the `X-Apple-CloudKit-Web-Auth-Token` header; the connector only read the body, so sessions died at ~8 h with 0 rotations — fixed; also fixed the Plus gate double-loading records past the subrequest limit), PR #7 (assistants skip journeys the app hides: same Home/Work at both ends unless `journey.visibility.<uuid>` is Show). Deployed: staging `64547cf3`, production `47f955b4`. Tests 44/44. Owner's staging session started 2026-09-29T22:54Z; if it still works after ~07:00Z on 09-30, rotation beats the old 8 h limit (METRICS KV `session:b99bb58f`).
+- Owner must set production secrets: `CLOUDKIT_API_TOKEN` (new CloudKit token, origin `https://mcp.journeydeck.me`) and `APPSTORE_KEY_ID`/`APPSTORE_ISSUER_ID`/`APPSTORE_PRIVATE_KEY`. Until then production sign-in and Plus checks fail closed.
+- App (`claude/v4-redesign`, uncommitted): V4 store builds and OTAs use `https://mcp.journeydeck.me/mcp`; `v4-development-simulator` or `JOURNEYDECK_CONNECTOR=staging` uses staging. Also uncommitted: brighter Autumn Drive/Aurora light icons, icon picker rows of two. Local commit `5876b00` (Aurora Glass icon) not pushed.
+
 ## Verification and next steps
 
 - PR #186 (`1775223`) routes the V4 `zoneScopes()` lookup through `CloudKitRequests`. Before it, a stalled `userRecordID()`/`allRecordZones()` call could hold `CloudTransportGate` and block all CloudKit calls until relaunch. The user-record lookup now has a 30 s deadline; zone enumeration uses the operation deadlines and fails on any per-zone error. The full mobile suite passed (956 tests, 1 skipped).

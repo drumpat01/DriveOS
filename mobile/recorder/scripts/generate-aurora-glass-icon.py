@@ -22,6 +22,7 @@ SIZE = 1024
 SKY_TOP = np.array([0x0b, 0x1a, 0x33], float)
 SKY_BOTTOM = np.array([0x05, 0x0b, 0x18], float)
 MINT = np.array([0x5f, 0xf2, 0xc4], float)
+SKY_GAIN = 1.9
 VIOLET = np.array([0x8a, 0x5c, 0xff], float)
 # Mint ramp for the mark, from shadowed bevel to specular highlight.
 RAMP = [(0.0, np.array([0x0c, 0x7a, 0x63], float)), (0.35, np.array([0x3f, 0xdc, 0xb0], float)),
@@ -72,7 +73,8 @@ def sky() -> np.ndarray:
     base += curtain[..., None] * MINT * 0.16
     base += glow((860, 150), 380, VIOLET, 0.20)
     base += glow((150, 120), 300, MINT, 0.10)
-    return base
+    # Lifted so the sky reads on the Home Screen instead of looking black; hues are unchanged.
+    return base * SKY_GAIN
 
 
 def compose(background: np.ndarray, alpha: np.ndarray, color: np.ndarray, halo: float) -> Image.Image:

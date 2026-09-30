@@ -36,6 +36,7 @@ function loadPicker(state: {
       './app-theme': { useAppTheme: () => ({ ...themeCatalog.redline, id: 'redline' }) },
       './app-icon-catalog': icons,
       './release-features': { V3_MIDNIGHT_CANOPY_ENABLED: false, V4_AURORA_GLASS_ENABLED: false },
+      '../modules/journeydeck-app-icon': { getAppIconStatus: async () => ({ nativeModuleAvailable: true, supported: true, iconName: null }) },
       './app-icon-preference': { useAppIconChoice: () => ({
         appIconId: state.appIconId,
         availability: state.availability,

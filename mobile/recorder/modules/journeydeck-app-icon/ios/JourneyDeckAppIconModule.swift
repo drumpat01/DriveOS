@@ -31,6 +31,8 @@ public final class JourneyDeckAppIconModule: Module {
       "nativeModuleAvailable": true,
       "supported": UIApplication.shared.supportsAlternateIcons,
       "iconName": UIApplication.shared.alternateIconName,
+      // Lets JavaScript offer only icons this binary contains (an OTA can reach an older build).
+      "bundledIcons": Array(Self.bundledAlternateIconNames()).sorted(),
     ]
   }
 
