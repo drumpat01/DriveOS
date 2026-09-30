@@ -3,6 +3,7 @@ import StoreKit
 
 private let journeyDeckMembershipProductIDs: Set<String> = [
   "com.journeydeck.recorder.pro.monthly",
+  "com.journeydeck.recorder.pro.weekly",
   "com.journeydeck.recorder.pro.annual",
 ]
 
@@ -73,13 +74,23 @@ public final class JourneyDeckMembershipModule: Module {
       let safeProductIDs = requestedProductIDs.filter { journeyDeckMembershipProductIDs.contains($0) }
       guard !safeProductIDs.isEmpty else { return [] }
       let products = try await Product.products(for: safeProductIDs)
-      return products.sorted { left, right in
+      let sortedProducts = products.sorted { left, right in
         let leftPeriod = left.subscription?.subscriptionPeriod.value ?? Int.max
         let rightPeriod = right.subscription?.subscriptionPeriod.value ?? Int.max
         return leftPeriod < rightPeriod
-      }.map { product in
+      }
+      var result: [[String: Any?]] = []
+      for product in sortedProducts {
         let period = product.subscription?.subscriptionPeriod
-        return [
+        var introTrialDays: Int?
+        if let subscription = product.subscription,
+           let offer = subscription.introductoryOffer,
+           offer.paymentMode == .freeTrial,
+           offer.period.unit == .day,
+           await subscription.isEligibleForIntroOffer {
+          introTrialDays = offer.period.value
+        }
+        result.append([
           "id": product.id,
           "displayName": product.displayName,
           "description": product.description,
@@ -87,8 +98,10 @@ public final class JourneyDeckMembershipModule: Module {
           "periodUnit": period.map { subscriptionPeriodUnit($0.unit) },
           "periodValue": period?.value,
           "isFamilyShareable": product.isFamilyShareable,
-        ]
+          "introTrialDays": introTrialDays,
+        ])
       }
+      return result
     }
 
     AsyncFunction("purchaseAsync") { (productID: String) async throws -> [String: Any?] in

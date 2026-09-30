@@ -437,7 +437,7 @@ test('V3 native intent metadata is added once to the app target and excluded fro
   const trial = readFileSync(resolve(root, 'src/plus-trial.ts'), 'utf8');
   assert.ok(intent.includes(`"${trial.match(/PLUS_TRIAL_KEY = '([^']+)'/)![1]}"`), 'Siri reads the same trial Keychain key');
   assert.ok(intent.includes(`"${trial.match(/keychainService: '([^']+)'/)![1]}:no-auth"`), 'Siri reads the same trial Keychain service');
-  assert.match(trial, /PLUS_TRIAL_DAYS = 7;/); assert.match(intent, /7 \* 86_400/);
+  assert.match(trial, /PLUS_TRIAL_DAYS = V4_REDESIGN_ENABLED \? 3 : 7;/); assert.match(intent, /JourneyDeckPlusTrialDays/);
   const membership = readFileSync(resolve(root, 'modules/journeydeck-membership/ios/JourneyDeckMembershipModule.swift'), 'utf8');
   for (const id of intent.match(/"com\.journeydeck\.recorder\.pro\.[a-z]+"/g) ?? []) assert.ok(membership.includes(id), `${id} matches the membership module`);
   const configSource = readFileSync(resolve(root, 'app.config.js'), 'utf8');

@@ -12,6 +12,12 @@ export const JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS = [
   'com.journeydeck.recorder.pro.annual',
 ] as const;
 
+// V4 offers weekly and annual. Keep monthly recognized natively for existing subscribers.
+export const JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS = [
+  'com.journeydeck.recorder.pro.weekly',
+  'com.journeydeck.recorder.pro.annual',
+] as const;
+
 export const isJourneyDeckMembershipNativeAvailable = JourneyDeckMembershipModule !== null;
 
 const unavailableStatus = {
@@ -29,9 +35,9 @@ export async function getMembershipStatus() {
   return status;
 }
 
-export async function getMembershipProducts() {
+export async function getMembershipProducts(productIds: readonly string[] = JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS) {
   if (!JourneyDeckMembershipModule) return [];
-  return JourneyDeckMembershipModule.getProductsAsync([...JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS]);
+  return JourneyDeckMembershipModule.getProductsAsync([...productIds]);
 }
 
 export async function purchaseMembership(productId: string) {

@@ -181,34 +181,27 @@ test('all important grid copy can grow for Dynamic Type', async () => {
   } finally { await harness.unmount(); }
 });
 
-test('V3 Autumn is a standard free card and animates from touch or accessibility activation', async () => {
+test('Autumn Drive is a Plus card: locked for free members, animated for paid members', async () => {
   const harness = await mount({ includeAutumn: true, membershipTier: 'free' });
   try {
     const free = harness.tree.root.findByProps({ testID: 'theme-row-free' });
-    const card = free.findByProps({ testID: 'theme-card-midnight-canopy' });
-    assert.equal(free.findAllByType('Pressable').length, 3);
-    assert.equal(harness.tree.root.findAllByProps({ testID: 'theme-row-preview' }).length, 0);
-    assert.deepEqual(harness.cards().map((c: any) => c.props.testID), ['theme-card-redline', 'theme-card-light', 'theme-card-midnight-canopy', 'theme-card-dark', 'theme-card-sakura']);
-    assert.match(card.props.accessibilityLabel, /Autumn Drive, theme 3 of 5/);
-    assert.doesNotMatch(card.props.accessibilityLabel, /Requires JourneyDeck Plus/);
+    assert.deepEqual(free.findAllByType('Pressable').map((c: any) => c.props.testID), ['theme-card-redline', 'theme-card-light'], 'only Grand Touring and Warm Ivory are free');
+    const plus = harness.tree.root.findByProps({ testID: 'theme-row-plus' });
+    const card = plus.findByProps({ testID: 'theme-card-midnight-canopy' });
+    assert.deepEqual(harness.cards().map((c: any) => c.props.testID), ['theme-card-redline', 'theme-card-light', 'theme-card-dark', 'theme-card-sakura', 'theme-card-midnight-canopy']);
+    assert.match(card.props.accessibilityLabel, /Autumn Drive, theme 5 of 5.*Requires JourneyDeck Plus/);
     await act(() => card.props.onPress({ nativeEvent: { pageX: 85, pageY: 380 } }));
-    await act(() => card.props.onPress({ nativeEvent: { pageX: 0, pageY: 0 } }));
-    assert.deepEqual(harness.transitions, [
-      { id: 'midnight-canopy', origin: { x: 85, y: 380 } },
-      { id: 'midnight-canopy', origin: { x: 120, y: 160 } },
-    ]);
-    assert.deepEqual(harness.setThemes, [], 'selection must use the animated API, never the immediate setter');
-    assert.equal(harness.upgrades(), 0);
-    assert.equal(harness.mounts(), 1);
+    assert.equal(harness.upgrades(), 1);
+    assert.deepEqual(harness.transitions, []);
   } finally { await harness.unmount(); }
-  const restored = await mount({ includeAutumn: true, initial: 'midnight-canopy', membershipTier: 'free' });
+  const paid = await mount({ includeAutumn: true, membershipTier: 'paid' });
   try {
-    const card = restored.cards().find((c: any) => c.props.testID === 'theme-card-midnight-canopy');
-    assert.equal(card.props.accessibilityState.selected, true);
+    const card = paid.cards().find((c: any) => c.props.testID === 'theme-card-midnight-canopy');
     await act(() => card.props.onPress({ nativeEvent: { pageX: 85, pageY: 380 } }));
-    assert.equal(restored.transitions.length, 0, 'reselecting Autumn does not replay the transition');
-    assert.deepEqual(restored.setThemes, [], 'restored Autumn remains available to free members');
-  } finally { await restored.unmount(); }
+    assert.deepEqual(paid.transitions, [{ id: 'midnight-canopy', origin: { x: 85, y: 380 } }]);
+    assert.deepEqual(paid.setThemes, [], 'selection must use the animated API, never the immediate setter');
+    assert.equal(paid.upgrades(), 0);
+  } finally { await paid.unmount(); }
 });
 
 test('V4 Aurora Glass is a third Plus card: locked for free members, animated for paid members', async () => {
@@ -220,7 +213,7 @@ test('V4 Aurora Glass is a third Plus card: locked for free members, animated fo
   const free = await mount({ includeAutumn: true, includeAurora: true, membershipTier: 'free' });
   try {
     const plus = free.tree.root.findByProps({ testID: 'theme-row-plus' });
-    assert.deepEqual(plus.findAllByType('Pressable').map((c: any) => c.props.testID), ['theme-card-dark', 'theme-card-sakura', 'theme-card-aurora-glass']);
+    assert.deepEqual(plus.findAllByType('Pressable').map((c: any) => c.props.testID), ['theme-card-dark', 'theme-card-sakura', 'theme-card-midnight-canopy', 'theme-card-aurora-glass']);
     const card = plus.findByProps({ testID: 'theme-card-aurora-glass' });
     assert.match(card.props.accessibilityLabel, /Aurora Glass, theme 6 of 6\. Dark appearance\..*JourneyDeck Plus\. Requires JourneyDeck Plus/);
     assert.ok(plus.findByProps({ testID: 'theme-plus-aurora-glass' }));

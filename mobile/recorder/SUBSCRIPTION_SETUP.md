@@ -1,4 +1,14 @@
-# JourneyDeck subscription setup for Build 10
+# JourneyDeck subscription setup
+
+## V4 weekly and annual offer (September 29, 2026)
+
+- V4 displays `com.journeydeck.recorder.pro.weekly` and `com.journeydeck.recorder.pro.annual` from StoreKit. Apple supplies localized prices; the U.S. targets are $0.99 per week and $39.99 per year.
+- Existing `com.journeydeck.recorder.pro.monthly` subscriptions remain valid entitlements. V3 continues to offer monthly and annual. V4 removes the local seven-day first-launch Plus unlock and presents Apple's three-day free introductory offer only when StoreKit reports that the selected customer and product are eligible.
+- App Store Connect has a weekly product draft (`6817585321`) at $0.99 U.S. in the same 148 regions and service level as annual and monthly. It has English (U.S.) purchase text. The weekly product has **not** been added for review.
+- The current live annual U.S. price is $24.99. A $39.99 U.S. annual price is scheduled in App Store Connect for October 14, 2026; existing annual subscribers keep their current price. Three-day free introductory offers are scheduled on both weekly and annual for October 14, 2026 through October 13, 2027 in the same 148 sale regions. Each eligible customer can redeem one introductory offer per subscription group.
+- Before public V4 release, add the weekly review screenshot and notes, submit it for review, test eligible and ineligible trial purchase/restore/expiration in Sandbox, verify the annual price and trial in App Store Connect, and confirm V4's new native build recognizes weekly purchases and disables the local trial in Siri. The approved monthly product remains on sale for V3; remove it from sale at V4 launch only after checking how that affects existing subscribers.
+
+## Build 10 baseline
 
 The app uses StoreKit 2 and unlocks paid access only from a verified current App Store transaction. No subscription flag is stored in editable app preferences.
 
