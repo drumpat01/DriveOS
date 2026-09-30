@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { highQualityAlbumArtwork } from './album-artwork';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,7 +54,7 @@ export function SoundtrackScreen({ status, message, music, provider, journeys, d
     {status === 'error' ? <Surface style={styles.message}><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{message ?? 'Your music could not refresh. Pull down to try again.'}</Text></Surface> : null}
 
     {summary.anthem ? <View testID="soundtrack-anthem" style={styles.anthem}>
-      {summary.anthem.artworkUrl ? <ExpoImage source={{ uri: summary.anthem.artworkUrl }} blurRadius={40} contentFit="cover" style={styles.anthemBackdrop} /> : null}
+      {summary.anthem.artworkUrl ? <ExpoImage source={{ uri: highQualityAlbumArtwork(summary.anthem.artworkUrl) ?? summary.anthem.artworkUrl }} blurRadius={40} contentFit="cover" style={styles.anthemBackdrop} /> : null}
       <LinearGradient pointerEvents="none" colors={[colors.photoScrim[0], colors.photoScrim[2], colors.page]} locations={[0, 0.6, 1]} style={styles.anthemBackdrop} />
       <Kicker color={colors.highlight}>{`Your road anthem · ${period}`}</Kicker>
       <View style={[styles.anthemArt, { boxShadow: `0 24px 60px ${colors.shadow}` }]}><Artwork uri={summary.anthem.artworkUrl} size={220} label={`${summary.anthem.track} artwork`} /></View>

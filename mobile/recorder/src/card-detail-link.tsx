@@ -6,7 +6,7 @@ import { openJourneyCardAction } from './journey-card-action';
 import { useMotionPreferences } from './motion';
 import { MemoryFlipPressable, useMemoryFlip } from './memory-flip';
 
-export type CardContextAction = { id: string; title: string; icon: SFSymbol; onPress: () => void };
+export type CardContextAction = { id: string; title: string; icon: SFSymbol; onPress: () => void; destructive?: boolean };
 
 const CardZoomContext = createContext(false);
 
@@ -43,7 +43,7 @@ export function CardDetailLink({ kind, id, children, onSelect, actions }: {
   const trigger = enabled && !flipMemory ? <Link.AppleZoom>{card}</Link.AppleZoom> : card;
   return <Link href={{ pathname: kind === 'journey' ? '/journey/[id]' : '/memory/[id]', params: { id } }} asChild>
     {hasMenu ? <Link.Trigger>{trigger}</Link.Trigger> : trigger}
-    {hasMenu && <Link.Menu>{menuActions.map(action => <Link.MenuAction key={action.id} icon={action.icon} onPress={action.onPress}>{action.title}</Link.MenuAction>)}</Link.Menu>}
+    {hasMenu && <Link.Menu>{menuActions.map(action => <Link.MenuAction key={action.id} icon={action.icon} destructive={action.destructive} onPress={action.onPress}>{action.title}</Link.MenuAction>)}</Link.Menu>}
   </Link>;
 }
 

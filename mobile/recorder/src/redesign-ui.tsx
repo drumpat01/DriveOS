@@ -8,6 +8,8 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { useAppTheme } from './app-theme';
 import { appDataClient, type JourneyMemory } from './app-data';
 import { GlassBackdrop, useGlassCardStyle } from './glass-material';
+import { highQualityAlbumArtwork } from './album-artwork';
+import { subscribeLocalArchiveChanges } from './local-archive-events';
 import { headerImageSource } from './header-image-sources';
 import { haptics } from './haptics';
 import { JourneyImage } from './journey-image';
@@ -145,7 +147,12 @@ export function PhotoChip({ symbol, text, style }: { symbol?: SFSymbol; text: st
 export function Artwork({ uri, size, index = 0, round = false, label }: { uri: string | null | undefined; size: number; index?: number; round?: boolean; label?: string }) {
   const colors = useRedesignColors();
   const radius = round ? size / 2 : Math.round(size * 0.2);
-  if (uri) return <ExpoImage accessibilityLabel={label} source={{ uri }} cachePolicy="memory-disk" contentFit="cover" transition={120}
+  // Large artwork asks Apple's CDN for 800 px instead of the saved 256 px thumbnail; if that size is missing, fall back.
+  const sharp = size >= 120 ? highQualityAlbumArtwork(uri ?? null) : uri;
+  const [failed, setFailed] = useState<string | null>(null);
+  const source = sharp && sharp !== failed ? sharp : uri;
+  if (source) return <ExpoImage accessibilityLabel={label} source={{ uri: source }} cachePolicy="memory-disk" contentFit="cover" transition={120}
+    onError={() => { if (source !== uri) setFailed(source); }}
     style={{ width: size, height: size, borderRadius: radius, backgroundColor: colors.surfaceStrong }} />;
   const tint = colors.artwork[index % colors.artwork.length];
   return <View accessible={Boolean(label)} accessibilityLabel={label} style={{ width: size, height: size, borderRadius: radius, backgroundColor: withAlpha(tint, 0.2), borderWidth: StyleSheet.hairlineWidth, borderColor: withAlpha(tint, 0.4), alignItems: 'center', justifyContent: 'center' }}>
@@ -192,15 +199,19 @@ export function MemoryCoverImage({ memory, onReady }: { memory: Pick<JourneyMemo
   const theme = useAppTheme();
   const photo = memory.coverPhotoId ? memory.photos.find(item => item.id === memory.coverPhotoId) ?? memory.photos[0] : memory.photos[0];
   const [uri, setUri] = useState<string | null>(null);
+  // A cover whose file was missing loads again once iCloud restores it (photo-recovery.ts notifies the archive).
+  const [archiveVersion, setArchiveVersion] = useState(0);
+  useEffect(() => subscribeLocalArchiveChanges(() => setArchiveVersion(version => version + 1)), []);
   const ready = useRef(onReady);
   ready.current = onReady;
+  const shownPhotoId = useRef<string | null>(null);
   useEffect(() => {
     let active = true;
-    setUri(null);
-    if (!photo) return;
+    if (!photo) { setUri(null); return; }
+    if (shownPhotoId.current !== photo.id) { shownPhotoId.current = photo.id; setUri(null); }
     void appDataClient.photoDataUrl(photo).then(value => { if (active) { setUri(value || null); if (!value) ready.current?.(); } }).catch(() => { if (active) ready.current?.(); });
     return () => { active = false; };
-  }, [photo?.id]);
+  }, [photo?.id, archiveVersion]);
   if (photo && uri) return <ExpoImage source={{ uri }} contentFit="cover" cachePolicy="memory" transition={140} onDisplay={onReady} style={StyleSheet.absoluteFill} />;
   if (photo) return <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.palette.inset }]} />;
   return <JourneyImage imageIdentity={`memory-cover-${theme.id}`} source={headerImageSource(require('../assets/cinematic-memory-polaroids-photo-v1.jpg'), theme.id)}

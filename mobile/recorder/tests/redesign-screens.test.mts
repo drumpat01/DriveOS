@@ -39,6 +39,8 @@ const shared: Record<string, unknown> = {
   './app-data': { appDataClient: { photoDataUrl: async () => 'data:image/jpeg;base64,AA' } },
   './glass-material': { GlassBackdrop: () => null, useGlassCardStyle: () => null },
   './header-image-sources': { headerImageSource: (source: unknown) => source },
+  './album-artwork': { highQualityAlbumArtwork: (uri: string | null) => uri },
+  './local-archive-events': { subscribeLocalArchiveChanges: () => () => {}, notifyLocalArchiveChanged() {} },
   './haptics': { haptics: { selection() {}, primaryAction() {} } },
   './journey-image': { JourneyImage: host('JourneyImage') },
   './touch-feedback': { TouchPressable: host('Pressable') },
@@ -189,11 +191,15 @@ test('Memories library groups by year and offers Drives and Map views', async ()
     const calls: string[] = [];
     let tree: any;
     await act(async () => { tree = create(React.createElement(MemoriesLibraryScreen, { memories, journeys, details, loading: false, historyLimited: false,
-      onUpgrade() {}, onCreate: () => calls.push('create'), onMemory: (value: string) => calls.push(value), onJourney() {}, onEdit() {}, onShare() {},
+      onUpgrade() {}, onCreate: () => calls.push('create'), onMemory: (value: string) => calls.push(value), onJourney() {}, onEdit() {}, onShare() {}, onDelete: (memory: any) => calls.push(`delete:${memory.id}`),
       onAddToMemory: (value: string) => calls.push(`add:${value}`), onRefresh() {} })); });
     assert.match(texts(tree), new RegExp(`${now.getFullYear()}`));
     assert.match(texts(tree), /Open road weekend/);
     assert.ok(tree.root.findAllByType('CardDetailLink').some((node: any) => node.props.kind === 'memory' && node.props.id === 'm1'), 'library card uses Atlas Flip link');
+    const deleteAction = tree.root.findAllByType('CardDetailLink').find((node: any) => node.props.id === 'm1')?.props.actions?.find((action: any) => action.id === 'delete');
+    assert.equal(deleteAction?.destructive, true, 'long-press offers a red Delete Memory');
+    deleteAction.onPress();
+    assert.ok(calls.includes('delete:m1'));
     await press(tree, 'New memory');
     const drives = tree.root.find((node: any) => node.type === 'Pressable' && node.props.accessibilityRole === 'tab' && [node.props.children].flat().some((child: any) => child?.props?.children === 'Drives'));
     await act(async () => drives.props.onPress());
@@ -202,7 +208,7 @@ test('Memories library groups by year and offers Drives and Map views', async ()
     const map = tree.root.find((node: any) => node.type === 'Pressable' && node.props.accessibilityRole === 'tab' && [node.props.children].flat().some((child: any) => child?.props?.children === 'Map'));
     await act(async () => map.props.onPress());
     assert.match(texts(tree), /1\s+of\s+3\s+drives drawn/);
-    assert.deepEqual(calls.slice(0, 2), ['create', 'add:j1']);
+    assert.deepEqual(calls.filter((call: string) => !call.startsWith('delete:')).slice(0, 2), ['create', 'add:j1']);
     await act(async () => tree.unmount());
   }
 });

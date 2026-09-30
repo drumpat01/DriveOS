@@ -2359,6 +2359,10 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
         if (latest) editMemory(latest);
         else Alert.alert('Memory unavailable', 'This Memory is no longer in your library.');
       }).catch(() => Alert.alert('Memory unavailable', 'Your library could not be read. Please try again.')); }}
+      onDelete={memory => Alert.alert(`Delete “${memory.name}”?`, 'This removes the Memory from JourneyDeck on all your devices. Your drives are kept.', [
+        { text: 'Delete Memory', style: 'destructive', onPress: () => { void appDataClient.deleteMemory(memory.id).then(onRefresh).catch(() => Alert.alert('Memory not deleted', 'Please try again.')); } },
+        { text: 'Cancel', style: 'cancel' },
+      ])}
       onShare={openMemoryShare} onAddToMemory={setAssignJourneyId} onFiftyStates={onFiftyStates} onRefresh={onRefresh} />}
     {studio && !detailId && !REDESIGN_PHONE && <IpadMemoriesScreen presentation={adaptiveLayout.isRegular ? 'ipad' : 'iphone'} memories={catalog.data.memories} journeys={journeys.data}
       renderArtwork={memory => <MemoryArtwork artworkKey={memory.artworkKey} photo={memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null} />}
