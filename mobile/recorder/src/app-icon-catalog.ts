@@ -1,4 +1,4 @@
-export type AppIconId = 'original' | 'warm-ivory' | 'rosewater' | 'grand-touring' | 'midnight-canopy';
+export type AppIconId = 'original' | 'warm-ivory' | 'rosewater' | 'grand-touring' | 'midnight-canopy' | 'aurora-glass';
 
 export const appIconCatalog: Record<AppIconId, {
   name: string;
@@ -30,10 +30,17 @@ export const appIconCatalog: Record<AppIconId, {
     description: 'Deep green · amber roadmark',
     nativeName: 'JourneyDeckMidnightCanopy',
   },
+  'aurora-glass': {
+    name: 'Aurora Glass',
+    description: 'Midnight sky · aurora mint',
+    nativeName: 'JourneyDeckAuroraGlass',
+  },
 };
 
 export const FREE_APP_ICON_IDS: readonly AppIconId[] = ['grand-touring', 'warm-ivory'];
 export const PLUS_APP_ICON_IDS: readonly AppIconId[] = ['original', 'rosewater'];
+/** V4-only Plus icon, matching the Aurora Glass theme; release-features decides whether it is offered. */
+export const V4_PLUS_APP_ICON_IDS: readonly AppIconId[] = ['aurora-glass'];
 export const APP_ICON_GRID_ORDER: readonly AppIconId[] = [...FREE_APP_ICON_IDS, ...PLUS_APP_ICON_IDS];
 
 export function appIconChoices(includeAutumnDrive: boolean): readonly AppIconId[] {

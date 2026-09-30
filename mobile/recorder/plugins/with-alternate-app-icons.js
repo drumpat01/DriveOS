@@ -35,11 +35,19 @@ const alternateIcons = [
     backgroundColor: '#101a12',
     v3Only: true,
   },
+  {
+    name: 'JourneyDeckAuroraGlass',
+    source: 'assets/icon-aurora-glass-v1.png',
+    darkSource: 'assets/icon-aurora-glass-dark-v1.png',
+    backgroundColor: '#050b18',
+    v4Only: true,
+  },
 ];
 
 function iconsForConfig(config) {
   const includeAutumnDrive = config?.extra?.features?.midnightCanopy === true;
-  return alternateIcons.filter(icon => includeAutumnDrive || !icon.v3Only);
+  const includeAurora = config?.extra?.features?.auroraGlass === true;
+  return alternateIcons.filter(icon => (includeAutumnDrive || !icon.v3Only) && (includeAurora || !icon.v4Only));
 }
 
 function configureAlternateIconBuildSettings(project, icons = alternateIcons) {

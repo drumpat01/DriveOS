@@ -26,7 +26,12 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     assert.equal(config.extra.features.atlasUnlocked, false, 'V4 enforces the Plus paywall for Atlas');
     assert.equal(config.extra.features.connector, true, 'V4 offers Connect to Claude');
     assert.equal(config.extra.features.redesign, true, 'V4 ships the iPhone redesign');
-    assert.equal(config.extra.connector.url, 'https://mcp-staging.journeydeck.me/mcp');
+    assert.equal(config.extra.connector.url, 'https://mcp.journeydeck.me/mcp', 'V4 TestFlight and App Store builds use the production connector');
+    delete process.env.EAS_BUILD_PROFILE;
+    assert.equal(configure({ config: base }).extra.connector.url, 'https://mcp.journeydeck.me/mcp', 'V4 OTA exports use the production connector');
+    process.env.EAS_BUILD_PROFILE = 'v4-development-simulator';
+    assert.equal(configure({ config: base }).extra.connector.url, 'https://mcp-staging.journeydeck.me/mcp', 'V4 development builds use staging');
+    process.env.EAS_BUILD_PROFILE = 'v4-testflight';
     assert.equal(eas.build['v4-testflight'].env.APP_VARIANT, 'v4-store');
     assert.equal(eas.submit['v4-testflight'].ios.ascAppId, '6806502526');
     assert.equal(eas.build['v3-testflight'].env.APP_VARIANT, 'v3-store');

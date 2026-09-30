@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
@@ -6,12 +7,14 @@ import { useAppTheme } from './app-theme';
 import {
   FREE_APP_ICON_IDS,
   PLUS_APP_ICON_IDS,
+  V4_PLUS_APP_ICON_IDS,
   appIconCatalog,
   appIconRequiresPlus,
   type AppIconId,
 } from './app-icon-catalog';
+import { getAppIconStatus } from '../modules/journeydeck-app-icon';
 import { useAppIconChoice } from './app-icon-preference';
-import { V3_MIDNIGHT_CANOPY_ENABLED } from './release-features';
+import { V3_MIDNIGHT_CANOPY_ENABLED, V4_AURORA_GLASS_ENABLED } from './release-features';
 
 const previews: Record<AppIconId, number> = {
   original: require('../assets/icon-cinematic-dark-v2.png'),
@@ -19,6 +22,7 @@ const previews: Record<AppIconId, number> = {
   rosewater: require('../assets/icon-rosewater-v2.png'),
   'grand-touring': require('../assets/icon-grand-touring-v2.png'),
   'midnight-canopy': require('../assets/icon-midnight-canopy-v1.png'),
+  'aurora-glass': require('../assets/icon-aurora-glass-v1.png'),
 };
 
 const darkPreviews: Record<AppIconId, number> = {
@@ -27,12 +31,13 @@ const darkPreviews: Record<AppIconId, number> = {
   rosewater: require('../assets/icon-rosewater-dark-v1.png'),
   'grand-touring': require('../assets/icon-grand-touring-dark-v1.png'),
   'midnight-canopy': require('../assets/icon-midnight-canopy-dark-v1.png'),
+  'aurora-glass': require('../assets/icon-aurora-glass-dark-v1.png'),
 };
 
-const visiblePlusAppIconIds: readonly AppIconId[] = V3_MIDNIGHT_CANOPY_ENABLED
-  ? [...PLUS_APP_ICON_IDS, 'midnight-canopy']
-  : PLUS_APP_ICON_IDS;
-const visibleAppIconIds: readonly AppIconId[] = [...FREE_APP_ICON_IDS, ...visiblePlusAppIconIds];
+const basePlusAppIconIds: readonly AppIconId[] = [
+  ...PLUS_APP_ICON_IDS,
+  ...(V3_MIDNIGHT_CANOPY_ENABLED ? ['midnight-canopy' as const] : []),
+];
 
 type AppIconPickerProps = {
   embedded?: boolean;
@@ -46,6 +51,16 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
   const theme = useAppTheme();
   const colors = theme.palette;
   const { appIconId, availability, changing, setAppIcon } = useAppIconChoice();
+  // Aurora Glass is offered only by builds that contain it: an OTA can run on an older binary.
+  const [hasAuroraIcon, setHasAuroraIcon] = useState(false);
+  useEffect(() => {
+    if (!V4_AURORA_GLASS_ENABLED) return;
+    let live = true;
+    getAppIconStatus().then(status => { if (live) setHasAuroraIcon(status.bundledIcons?.includes(appIconCatalog['aurora-glass'].nativeName ?? '') === true); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const visiblePlusAppIconIds: readonly AppIconId[] = hasAuroraIcon ? [...basePlusAppIconIds, ...V4_PLUS_APP_ICON_IDS] : basePlusAppIconIds;
+  const visibleAppIconIds: readonly AppIconId[] = [...FREE_APP_ICON_IDS, ...visiblePlusAppIconIds];
   const ready = availability === 'ready';
   const detail = availability === 'checking' ? 'Checking icon support…'
     : availability === 'requires-build' ? 'Ready after the next app build'
@@ -68,7 +83,7 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
       <Text style={[styles.tierLabel, { color: isPlus ? colors.accent : colors.muted }]}>{label}</Text>
       {isPlus && <SymbolView name="crown.fill" tintColor={colors.accent} size={13} />}
     </View>
-    <View style={styles.gridRow}>{ids.map(id => {
+    {Array.from({ length: Math.ceil(ids.length / 2) }, (_, row) => <View key={row} style={styles.gridRow}>{ids.slice(row * 2, row * 2 + 2).map(id => {
       const choice = appIconCatalog[id];
       const selected = id === appIconId;
       const locked = isPlus && membershipTier !== 'paid';
@@ -103,7 +118,7 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
           <Text style={[styles.description, { color: colors.muted }]}>{choice.description}</Text>
         </View>
       </Pressable>;
-    })}</View>
+    })}{row * 2 + 1 >= ids.length && <View accessible={false} style={styles.emptyCell} />}</View>)}
   </View>;
 
   return <View testID="app-icon-picker" style={[styles.panel, embedded && styles.embedded, { backgroundColor: embedded ? 'transparent' : colors.card, borderColor: embedded ? 'transparent' : colors.line }]}>
@@ -127,6 +142,7 @@ const styles = StyleSheet.create({
   tierHeading: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
   tierLabel: { fontSize: 10, lineHeight: 14, fontWeight: '900', letterSpacing: 1.5 },
   gridRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  emptyCell: { flex: 1, minWidth: 0 },
   choice: { flex: 1, minWidth: 0, minHeight: 176, alignItems: 'center', borderRadius: 19, borderWidth: 1.5, padding: 10, gap: 9, shadowOpacity: .14, shadowRadius: 11, shadowOffset: { width: 0, height: 6 } },
   compactChoice: { minHeight: 190, borderRadius: 21, padding: 12 },
   previewFrame: { position: 'relative' },
