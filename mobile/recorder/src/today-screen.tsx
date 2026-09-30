@@ -106,6 +106,8 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
   [Boolean(onAsk), Boolean(extraCards.fiftyStates), Boolean(extraCards.yourCar), Boolean(extraCards.journeyInProgress)]);
   const { layout, save, reset } = useTodayLayout(userId, available);
   const [editing, setEditing] = useState(false);
+  // The sample bar can be dismissed for this visit (for screenshots); Settings still has Leave sample data.
+  const [sampleBarHidden, setSampleBarHidden] = useState(false);
   const refresh = async () => {
     setRefreshing(true);
     try { await onRefresh(); } finally { setRefreshing(false); }
@@ -148,12 +150,17 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
         </TouchPressable>
         <ProfileButton profile={profile} onPress={onProfile} />
       </View>} />
-    {sampleActive && onExitSample ? <TouchPressable testID="today-sample-bar" accessibilityRole="button" accessibilityLabel="Viewing sample data. Leave sample data" onPress={() => { void haptics.selection(); onExitSample(); }}
-      style={({ pressed }) => [styles.sampleBar, { backgroundColor: colors.accentSoft, borderColor: colors.border }, pressed && redesignStyles.pressed]}>
-      <SymbolView name="sparkles" tintColor={colors.accent} size={16} />
-      <Text style={[styles.sampleText, { color: colors.text }]}>You’re viewing sample data</Text>
-      <Text style={[styles.sampleAction, { color: colors.accent }]}>Leave</Text>
-    </TouchPressable> : null}
+    {sampleActive && onExitSample && !sampleBarHidden ? <View style={[styles.sampleBar, { backgroundColor: colors.accentSoft, borderColor: colors.border }]}>
+      <TouchPressable testID="today-sample-bar" accessibilityRole="button" accessibilityLabel="Viewing sample data. Leave sample data" onPress={() => { void haptics.selection(); onExitSample(); }}
+        style={({ pressed }) => [styles.sampleMain, pressed && redesignStyles.pressed]}>
+        <SymbolView name="sparkles" tintColor={colors.accent} size={16} />
+        <Text style={[styles.sampleText, { color: colors.text }]}>You’re viewing sample data</Text>
+        <Text style={[styles.sampleAction, { color: colors.accent }]}>Leave</Text>
+      </TouchPressable>
+      <TouchPressable testID="today-sample-dismiss" accessibilityRole="button" accessibilityLabel="Hide this bar" hitSlop={8} onPress={() => { void haptics.selection(); setSampleBarHidden(true); }} style={styles.sampleDismiss}>
+        <SymbolView name="xmark" tintColor={colors.textSecondary} size={13} weight="semibold" />
+      </TouchPressable>
+    </View> : null}
     {onPlus && !sampleActive ? <PlusTrialBanner trialEndsAt={trialEndsAt} onPress={onPlus} now={now} /> : null}
     {recorder ? <View testID="today-inline-recorder">{recorder}</View> : null}
     {primary.status === 'error' && !primary.data ? <Surface style={styles.notice}><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{primary.message ?? 'Your library could not load. Pull down to try again.'}</Text></Surface> : null}
@@ -333,7 +340,9 @@ function RowToggle({ label, value, onChange }: { label: string; value: boolean; 
 const HALF_WIDTH_CARDS = new Set<TodayCardId>(['week', 'onThisDay', 'fiftyStates', 'yourCar', 'journeyInProgress']);
 
 const styles = StyleSheet.create({
-  sampleBar: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 14, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  sampleBar: { flexDirection: 'row', alignItems: 'center', minHeight: 44, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  sampleMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingLeft: 14 },
+  sampleDismiss: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   sampleText: { flex: 1, fontSize: 14, fontWeight: '600' },
   sampleAction: { fontSize: 14, fontWeight: '700' },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 6 },

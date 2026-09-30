@@ -44,3 +44,6 @@ __MACOSX/
 
 # Minted reads OTA-downloaded artwork. Native copies are generated review leftovers.
 /mobile/recorder/modules/journeydeck-keepsakes/ios/Resources/
+
+# Raw App Store screenshots stay local (large, may show personal data)
+mobile/recorder/store/screenshots/raw/**/*.png

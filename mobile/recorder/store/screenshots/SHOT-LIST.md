@@ -5,18 +5,23 @@ Drop raw, unedited screenshots into `raw/iphone/` and `raw/ipad/` using the numb
 
 ## iPhone (6.9-inch, 1320 x 2868 from an iPhone Pro Max)
 
-| # | File | Screen | How to get there |
-|---|---|---|---|
-| 1 | `01-today.png` | Today | Today tab, scrolled to the top |
-| 2 | `02-journey.png` | Journey detail with the route map | Today > Last drive card (or Memories > Drives) |
-| 3 | `03-memories.png` | Memories library | Memories tab |
-| 4 | `04-memory.png` | Memory detail with its cover photo | Open "Coast Highway Weekend" |
-| 5 | `05-soundtrack.png` | Soundtrack | Soundtrack tab |
-| 6 | `06-atlas.png` | Atlas overview | Atlas tab |
-| 7 | `07-themes.png` | Theme picker | Profile button > Appearance |
-| 8 | `08-share.png` | Share card | Memory or journey > Share |
+Before shooting: Do Not Disturb on, battery high, default text size, Grand Touring theme, location set to Always.
+Turn on Settings > Account > Try sample data and wait about a minute for the Coast Highway Weekend photo to appear.
 
-Optional: `09-ask.png` (Ask JourneyDeck with an answer), `10-recorder.png` (recorder bar or sheet, from your real profile with no data showing).
+| # | File | Screen | Source | Notes |
+|---|---|---|---|---|
+| 1 | `01-today.png` | Today | Sample | Top of the screen, recorder bar reads Ready |
+| 2 | `02-journey.png` | Journey detail | Sample | Route map and the Relive card; open from Last drive |
+| 3 | `03-memories.png` | Memories library | Sample | Top of the Memories tab |
+| 4 | `04-memory.png` | Memory detail | Sample | Open "Coast Highway Weekend" (cover photo showing) |
+| 5 | `05-soundtrack.png` | Soundtrack | Real profile | Anthem album art and stats fill the screen; the Last drive strip at the bottom is masked in editing |
+| 6 | `06-atlas.png` | Atlas overview | Sample | 30D range, Overview section |
+| 7 | `07-ask.png` | Ask JourneyDeck | Sample | Ask "How many miles did I drive this week?" and leave the answer showing |
+| 8 | `08-themes.png` | Theme picker | Either | Profile button > Appearance |
+
+Optional: `09-share.png` (share card from a sample journey).
+
+Send full-size originals (AirDrop with All Photos Data, or download from iCloud Photos); chat attachments are downscaled.
 
 ## iPad (13-inch, 2064 x 2752), later
 

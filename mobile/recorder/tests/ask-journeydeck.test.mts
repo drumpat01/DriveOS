@@ -452,3 +452,11 @@ test('V3 native intent metadata is added once to the app target and excluded fro
     assert.equal(config.ios.bundleIdentifier, variant === 'v3-preview' ? 'com.journeydeck.recorder.v3' : variant === 'v2-preview' ? 'com.journeydeck.recorder.v2' : 'com.journeydeck.recorder');
   }
 });
+
+test('answers use the singular for one record and start with a capital letter', async () => {
+  const { readFileSync } = await import('node:fs');
+  const engine = readFileSync(new URL('../modules/journeydeck-recorder/ios/AskResources/ask-query-engine.js', import.meta.url), 'utf8');
+  assert.match(engine, /rows\.length === 1 \? ' matching record ' : ' matching records '/);
+  assert.match(engine, /rows\.length === 1 \? ' record ' : ' records '/);
+  assert.match(engine, /text = text\.charAt\(0\)\.toUpperCase\(\) \+ text\.slice\(1\);/);
+});
