@@ -358,10 +358,12 @@ test('Aurora artwork: full scene on Home, calm blurred scene elsewhere, user pho
   const scene = asset('../assets/theme-aurora-glass-scene-v1.jpg');
   const soft = asset('../assets/theme-aurora-glass-scene-soft-v1.jpg');
   assert.equal(resolve(asset('../assets/cinematic-home-main-photo-v1.jpg'), 'aurora-glass'), scene);
-  for (const file of ['cinematic-settings-photo-v1.jpg', 'cinematic-memories-polaroids-photo-v1.jpg', 'cinematic-memory-polaroids-photo-v1.jpg', 'cinematic-soundtracks-photo-v1.jpg', 'cinematic-statistics-photo-v1.jpg', 'cinematic-home-night-photo-v1.jpg']) {
+  for (const file of ['cinematic-settings-photo-v1.jpg', 'cinematic-memories-polaroids-photo-v1.jpg', 'cinematic-memory-polaroids-photo-v1.jpg', 'cinematic-soundtracks-photo-v1.jpg', 'cinematic-statistics-photo-v1.jpg']) {
     assert.equal(resolve(asset(`../assets/${file}`), 'aurora-glass'), soft, `${file} uses the blurred scene`);
   }
-  assert.equal(resolve(asset('../assets/cinematic-journey-photo-v1.jpg'), 'aurora-glass'), asset('../assets/theme-aurora-glass-journey-v1.jpg'), 'Journeys use the aurora road photo');
+  for (const file of ['cinematic-journey-photo-v1.jpg', 'cinematic-home-morning-photo-v1.jpg', 'cinematic-home-afternoon-photo-v1.jpg', 'cinematic-home-evening-photo-v1.jpg', 'cinematic-home-night-photo-v1.jpg']) {
+    assert.equal(resolve(asset(`../assets/${file}`), 'aurora-glass'), asset('../assets/theme-aurora-glass-journey-v1.jpg'), `${file}: drive artwork uses the aurora road photo`);
+  }
   const photo = { uri: 'file:///private/photo.jpg' };
   assert.equal(resolve(photo, 'aurora-glass'), photo);
   assert.equal(resolve(99999, 'aurora-glass'), 99999);

@@ -207,6 +207,27 @@ test('Memories library groups by year and offers Drives and Map views', async ()
   }
 });
 
+test('Free members see older Memories and drives locked with a Plus badge that opens the paywall', async () => {
+  themeId = THEMES[0];
+  const calls: string[] = [];
+  let tree: any;
+  await act(async () => { tree = create(React.createElement(MemoriesLibraryScreen, { memories, journeys, details, loading: false, historyLimited: true,
+    isLocked: () => true, onUpgrade: () => calls.push('upgrade'), onCreate() {}, onMemory: (value: string) => calls.push(`open:${value}`), onJourney: (value: string) => calls.push(`journey:${value}`),
+    onEdit() {}, onShare() {}, onAddToMemory() {}, onRefresh() {} })); });
+  assert.match(texts(tree), /Open road weekend/, 'locked memories stay visible');
+  assert.match(texts(tree), /PLUS/);
+  assert.equal(tree.root.findAllByType('CardDetailLink').filter((node: any) => node.props.kind === 'memory').length, 0, 'locked memories cannot be previewed');
+  const card = tree.root.find((node: any) => node.type === 'Pressable' && /Open road weekend.*Requires JourneyDeck Plus/.test(node.props.accessibilityLabel ?? ''));
+  await act(async () => card.props.onPress());
+  const drives = tree.root.find((node: any) => node.type === 'Pressable' && node.props.accessibilityRole === 'tab' && [node.props.children].flat().some((child: any) => child?.props?.children === 'Drives'));
+  await act(async () => drives.props.onPress());
+  assert.match(texts(tree), /Pacifica → Half Moon Bay/, 'locked drives stay visible');
+  const row = tree.root.findAll((node: any) => typeof node.props?.onPress === 'function' && node.props?.accessibilityLabel?.includes('Pacifica → Half Moon Bay') && node.props.accessibilityLabel.includes('Requires JourneyDeck Plus'))[0];
+  await act(async () => row.props.onPress());
+  assert.deepEqual(calls, ['upgrade', 'upgrade'], 'locked items open the paywall, never the Memory or drive');
+  await act(async () => tree.unmount());
+});
+
 test('Memory detail tells the trip: stats, drives timeline, soundtrack and photos', async () => {
   for (const id of THEMES) {
     themeId = id;

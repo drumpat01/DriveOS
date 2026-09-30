@@ -1004,7 +1004,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
     } : {
       music: <MusicScreen redesign={REDESIGN_PHONE} state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
-      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
+      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => REDESIGN_PHONE || membershipCanAccessDate(membership, journey.startedAt)) }} isLocked={REDESIGN_PHONE ? startedAt => !membershipCanAccessDate(membership, startedAt) : undefined} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
       home: REDESIGN_PHONE ? <TodayScreen userId={currentUser.id} primary={primarySections} memories={membershipMemories.data.memories} recorder={accessoryRecorder ? undefined : redesignRecorder}
         onAsk={V3_ASK_JOURNEYDECK_ENABLED ? () => router.push('/ask-journeydeck') : undefined}
         extraCards={{
@@ -2226,9 +2226,9 @@ function memoryDraftSignature(draft: MemoryEditorDraft) {
   return JSON.stringify({ name: draft.name.trim(), notes: draft.notes.trim(), journeyIds: [...new Set(draft.journeyIds)].sort(), coverPhotoId: draft.coverPhotoId });
 }
 
-function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onMemory, onRefresh, onFiftyStates, detailId, detailReady, studio = false }: {
+function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onMemory, onRefresh, onFiftyStates, detailId, detailReady, studio = false, isLocked }: {
   catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; details: JourneyDetail[];
-  historyLimited: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onMemory: (id: string) => void; onRefresh: () => void; onFiftyStates?: () => void; detailId?: string; detailReady?: () => void; studio?: boolean;
+  historyLimited: boolean; onUpgrade: () => void; isLocked?: (startedAt: string) => boolean; onJourney: (id: string) => void; onMemory: (id: string) => void; onRefresh: () => void; onFiftyStates?: () => void; detailId?: string; detailReady?: () => void; studio?: boolean;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
@@ -2352,7 +2352,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
   return <View style={styles.safe}>
     {REDESIGN_PHONE && !detailId && <MemoriesLibraryScreen memories={catalog.data.memories} journeys={journeys.data} details={details}
       loading={catalog.status === 'loading' || journeys.status === 'loading'} error={catalog.status === 'error' || journeys.status === 'error' ? catalog.message ?? journeys.message ?? 'Your library could not refresh.' : undefined}
-      historyLimited={historyLimited} onUpgrade={onUpgrade} onCreate={() => editMemory(null)} onMemory={onMemory} onJourney={onJourney}
+      historyLimited={historyLimited} onUpgrade={onUpgrade} isLocked={isLocked} onCreate={() => editMemory(null)} onMemory={onMemory} onJourney={onJourney}
       onEdit={memory => { void appDataClient.memories().then(data => {
         const latest = data.memories.find(item => item.id === memory.id);
         if (latest) editMemory(latest);

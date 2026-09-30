@@ -144,13 +144,13 @@ test('unavailable native icon support disables all four cards', async () => {
   } finally { await harness.unmount(); }
 });
 
-test('icon previews follow the device light and dark appearance', async () => {
+test('icon previews always show the light variant, even in dark mode', async () => {
   const harness = await mount('paid');
   try {
     const preview = () => harness.tree.root.findAllByType('Image')[0];
-    assert.equal(preview().props.source, 4, 'light appearance uses the existing Grand Touring icon');
+    assert.equal(preview().props.source, 4, 'light appearance uses the Grand Touring light icon');
     harness.state.colorScheme = 'dark';
     await act(() => harness.tree.update(React.createElement(loadPicker(harness.state).AppIconPicker, { membershipTier: 'paid' })));
-    assert.equal(preview().props.source, 9, 'dark appearance uses the approved Grand Touring dark variant');
+    assert.equal(preview().props.source, 4, 'dark appearance still previews the light icon');
   } finally { await harness.unmount(); }
 });

@@ -22,13 +22,15 @@ const COLLECTION_SYMBOL: Record<SmartCollection['id'], SFSymbol> = { favorites: 
 
 export function MemoriesLibraryScreen({
   memories, journeys, details, loading, error, historyLimited, onUpgrade, onCreate, onMemory, onJourney, onEdit, onShare,
-  onAddToMemory, onFiftyStates, onRefresh,
+  onAddToMemory, onFiftyStates, onRefresh, isLocked = () => false,
 }: {
   memories: JourneyMemory[]; journeys: JourneySummary[]; details: JourneyDetail[];
   loading: boolean; error?: string; historyLimited: boolean; onUpgrade: () => void;
   onCreate: () => void; onMemory: (id: string) => void; onJourney: (id: string) => void;
   onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void;
   onAddToMemory: (journeyId: string) => void; onFiftyStates?: () => void; onRefresh: () => void;
+  /** Older history free members can't open: shown with a Plus badge, and tapping opens the paywall. */
+  isLocked?: (startedAt: string) => boolean;
 }) {
   const colors = useRedesignColors();
   const [view, setView] = useState<View3>('memories');
@@ -70,9 +72,9 @@ export function MemoriesLibraryScreen({
       </View> : null}
       {groups.length ? groups.map((group, groupIndex) => <View key={group.year} style={styles.section}>
         <SectionHeader title={String(group.year)} detail={`${group.items.length} ${group.items.length === 1 ? 'memory' : 'memories'} · ${formatMilesShort(group.miles)}`} />
-        {group.items.map((item, index) => index === 0 ? <MemoryCard key={item.memory.id} item={item} large onMemory={onMemory} onEdit={onEdit} onShare={onShare} /> : null)}
+        {group.items.map((item, index) => index === 0 ? <MemoryCard key={item.memory.id} item={item} large locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} /> : null)}
         {group.items.length > 1 || groupIndex === 0 ? <View style={styles.grid}>
-          {group.items.slice(1).map(item => <View key={item.memory.id} style={styles.gridCell}><MemoryCard item={item} onMemory={onMemory} onEdit={onEdit} onShare={onShare} /></View>)}
+          {group.items.slice(1).map(item => <View key={item.memory.id} style={styles.gridCell}><MemoryCard item={item} locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} /></View>)}
           {groupIndex === 0 ? <View style={styles.gridCell}><NewMemoryTile onPress={onCreate} /></View> : null}
         </View> : null}
       </View>) : !loading ? <TouchPressable accessibilityRole="button" onPress={onCreate} style={({ pressed }) => pressed && redesignStyles.pressed}>
@@ -83,17 +85,27 @@ export function MemoriesLibraryScreen({
         </Surface>
       </TouchPressable> : null}
     </> : view === 'drives' ? <DrivesView journeys={journeys} details={details} filter={filter} onFilter={setFilter}
-      collection={collection} onClearCollection={() => setCollection(null)} onJourney={onJourney} onAddToMemory={onAddToMemory} />
-      : <MapView journeys={journeys} details={details} />}
+      collection={collection} onClearCollection={() => setCollection(null)} onJourney={onJourney} onAddToMemory={onAddToMemory} isLocked={isLocked} onUpgrade={onUpgrade} />
+      : <MapView journeys={journeys.filter(journey => !isLocked(journey.startedAt))} details={details} />}
   </RedesignPage>;
 }
 
 type MemoryItem = ReturnType<typeof memoryYearGroups>[number]['items'][number];
 
-function MemoryCard({ item, large = false, onMemory, onEdit, onShare }: { item: MemoryItem; large?: boolean; onMemory: (id: string) => void; onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void }) {
+function MemoryCard({ item, large = false, locked = false, onUpgrade, onMemory, onEdit, onShare }: { item: MemoryItem; large?: boolean; locked?: boolean; onUpgrade: () => void; onMemory: (id: string) => void; onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void }) {
   const colors = useRedesignColors();
   const when = new Date(item.startedAt).toLocaleDateString(undefined, large ? { month: 'short', day: 'numeric' } : { month: 'short' });
   const detail = `${when} · ${item.drives} ${item.drives === 1 ? 'drive' : 'drives'}${large ? ` · ${formatMilesShort(item.miles)}` : ''}`;
+  if (locked) return <Pressable accessibilityRole="button" accessibilityLabel={`${item.memory.name}, ${detail}. Requires JourneyDeck Plus`} accessibilityHint="Opens JourneyDeck Plus" onPress={onUpgrade}
+    style={({ pressed }) => [large ? styles.largeCard : styles.card, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }, pressed && redesignStyles.pressed]}>
+    <View style={[StyleSheet.absoluteFill, styles.lockedMedia]}><MemoryCoverImage memory={item.memory} /></View>
+    <PhotoScrim />
+    <PlusBadge />
+    <View style={styles.cardCopy}>
+      <Kicker color={colors.textSecondary}>{detail}</Kicker>
+      <Text numberOfLines={2} style={[large ? styles.largeTitle : styles.cardTitle, { color: colors.text }]}>{item.memory.name}</Text>
+    </View>
+  </Pressable>;
   return <CardDetailLink kind="memory" id={item.memory.id} actions={[
     { id: 'edit', title: 'Edit Memory', icon: 'pencil', onPress: () => onEdit(item.memory) },
     { id: 'share', title: 'Create share card', icon: 'square.and.arrow.up', onPress: () => onShare(item.memory) },
@@ -110,6 +122,14 @@ function MemoryCard({ item, large = false, onMemory, onEdit, onShare }: { item: 
   </CardDetailLink>;
 }
 
+function PlusBadge({ inline = false }: { inline?: boolean }) {
+  const colors = useRedesignColors();
+  return <View accessible={false} style={[inline ? styles.plusBadgeInline : styles.plusBadge, { backgroundColor: colors.accent }]}>
+    <SymbolView name="lock.fill" tintColor={colors.onAccent} size={9} weight="bold" />
+    <Text style={[styles.plusBadgeText, { color: colors.onAccent }]}>PLUS</Text>
+  </View>;
+}
+
 function NewMemoryTile({ onPress }: { onPress: () => void }) {
   const colors = useRedesignColors();
   return <TouchPressable accessibilityRole="button" accessibilityLabel="New memory" onPress={onPress}
@@ -120,9 +140,10 @@ function NewMemoryTile({ onPress }: { onPress: () => void }) {
   </TouchPressable>;
 }
 
-function DrivesView({ journeys, details, filter, onFilter, collection, onClearCollection, onJourney, onAddToMemory }: {
+function DrivesView({ journeys, details, filter, onFilter, collection, onClearCollection, onJourney, onAddToMemory, isLocked, onUpgrade }: {
   journeys: JourneySummary[]; details: JourneyDetail[]; filter: DriveFilter; onFilter: (filter: DriveFilter) => void;
   collection: SmartCollection | null; onClearCollection: () => void; onJourney: (id: string) => void; onAddToMemory: (id: string) => void;
+  isLocked: (startedAt: string) => boolean; onUpgrade: () => void;
 }) {
   const colors = useRedesignColors();
   const routes = useMemo(() => new Map(details.map(detail => [detail.id, detail.route?.coordinates ?? []])), [details]);
@@ -159,7 +180,7 @@ function DrivesView({ journeys, details, filter, onFilter, collection, onClearCo
     {months.length ? months.map(month => <View key={month.key} style={styles.section}>
       <SectionHeader title={month.label} detail={`${month.items.length} ${month.items.length === 1 ? 'drive' : 'drives'} · ${formatMilesShort(month.items.reduce((sum, item) => sum + item.miles, 0))}`} />
       <Surface style={styles.driveList}>
-        {month.items.map((journey, index) => <DriveRow key={journey.id} journey={journey} route={routes.get(journey.id) ?? []} divider={index > 0} onJourney={onJourney} onAddToMemory={onAddToMemory} />)}
+        {month.items.map((journey, index) => <DriveRow key={journey.id} journey={journey} route={routes.get(journey.id) ?? []} divider={index > 0} locked={isLocked(journey.startedAt)} onUpgrade={onUpgrade} onJourney={onJourney} onAddToMemory={onAddToMemory} />)}
       </Surface>
     </View>) : <Surface style={styles.empty}>
       <Text style={[styles.emptyTitle, { color: colors.text }]}>No drives match</Text>
@@ -168,14 +189,14 @@ function DrivesView({ journeys, details, filter, onFilter, collection, onClearCo
   </>;
 }
 
-function DriveRow({ journey, route, divider, onJourney, onAddToMemory }: { journey: JourneySummary; route: [number, number][]; divider: boolean; onJourney: (id: string) => void; onAddToMemory: (id: string) => void }) {
+function DriveRow({ journey, route, divider, locked = false, onUpgrade, onJourney, onAddToMemory }: { journey: JourneySummary; route: [number, number][]; divider: boolean; locked?: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onAddToMemory: (id: string) => void }) {
   const colors = useRedesignColors();
   const artwork = useDriveArtwork(journey.startedAt);
   const title = driveTitle(journey.startedAt);
   const meta = `${formatMilesShort(journey.miles)} · ${formatMinutesShort(journey.durationMinutes)}${journey.songCount ? ` · ${journey.songCount} songs` : ''}`;
   return <View style={[styles.driveRow, divider && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator }]}>
-    <CardDetailLink kind="journey" id={journey.id}>
-      <TouchPressable accessibilityRole="button" accessibilityLabel={`${title}, ${routeLabel(journey)}, ${meta}`} onPress={() => onJourney(journey.id)} style={({ pressed }) => [styles.driveMain, pressed && redesignStyles.pressed]}>
+    <CardDetailLink kind="journey" id={locked ? '' : journey.id}>
+      <TouchPressable accessibilityRole="button" accessibilityLabel={`${title}, ${routeLabel(journey)}, ${meta}${locked ? '. Requires JourneyDeck Plus' : ''}`} onPress={() => (locked ? onUpgrade() : onJourney(journey.id))} style={({ pressed }) => [styles.driveMain, locked && styles.lockedMedia, pressed && redesignStyles.pressed]}>
         <View style={[styles.driveThumb, { backgroundColor: colors.surfaceStrong }]}>
           {route.length > 1 ? <RouteSketch routes={[route]} width={56} height={56} inks={colors.routes} strokeWidth={2.4} padding={8} />
             : <JourneyImage imageIdentity={`drive-thumb-${journey.id}`} source={artwork} contentFit="cover" style={StyleSheet.absoluteFill} />}
@@ -187,10 +208,11 @@ function DriveRow({ journey, route, divider, onJourney, onAddToMemory }: { journ
         </View>
       </TouchPressable>
     </CardDetailLink>
-    <TouchPressable accessibilityRole="button" accessibilityLabel={`Add ${routeLabel(journey)} to a Memory`} hitSlop={6} onPress={() => onAddToMemory(journey.id)}
+    {locked ? <TouchPressable accessibilityRole="button" accessibilityLabel="Unlock with JourneyDeck Plus" hitSlop={6} onPress={onUpgrade}><PlusBadge inline /></TouchPressable>
+      : <TouchPressable accessibilityRole="button" accessibilityLabel={`Add ${routeLabel(journey)} to a Memory`} hitSlop={6} onPress={() => onAddToMemory(journey.id)}
       style={({ pressed }) => [styles.addButton, { backgroundColor: colors.accentSoft }, pressed && redesignStyles.pressed]}>
       <SymbolView name="plus" tintColor={colors.accent} size={15} weight="bold" />
-    </TouchPressable>
+    </TouchPressable>}
   </View>;
 }
 
@@ -209,6 +231,10 @@ function MapView({ journeys, details }: { journeys: JourneySummary[]; details: J
 }
 
 const styles = StyleSheet.create({
+  lockedMedia: { opacity: 0.45 },
+  plusBadge: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 9, paddingHorizontal: 7, paddingVertical: 4 },
+  plusBadgeInline: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 9, paddingHorizontal: 7, paddingVertical: 4 },
+  plusBadgeText: { fontSize: 9, lineHeight: 12, fontWeight: '900', letterSpacing: 1 },
   section: { gap: 12 },
   center: { textAlign: 'center' },
   gate: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
