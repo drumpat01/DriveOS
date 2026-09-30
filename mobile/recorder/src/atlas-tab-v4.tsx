@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { localAtlasClient, type JourneySummary } from './app-data';
+import { buildAtlasInsights, type AtlasInsights } from './atlas-insights';
+import { buildAtlasStory, type AtlasStory } from './atlas-story-model';
+import { loadFiftyStates } from './fifty-states-store';
 import { getCurrentUser } from './auth';
 import { CardDetailLink } from './card-detail-link';
 import { haptics } from './haptics';
@@ -10,12 +13,14 @@ import { buildIpadStatistics, calendarDays, dayKey, localDay, summarize, type St
 import { journeyDisplayTitle } from './journey-title';
 import type { PrimaryDataState } from './primary-sections';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
-import { Kicker, LargeTitle, RedesignPage, SectionHeader, Surface, redesignStyles, useRedesignColors } from './redesign-ui';
+import { Artwork, Kicker, LargeTitle, RedesignPage, RouteSketch, SERIF, SectionHeader, Surface, redesignStyles, useRedesignColors } from './redesign-ui';
+import { withAlpha } from './redesign-palette';
 import { tessieDirectStatus } from './tessie-direct';
 import type { TessieStatistics } from './tessie-statistics-model';
 import { TouchPressable } from './touch-feedback';
 
-type Section = 'overview' | 'days' | 'insights' | 'tessie';
+type Section = 'overview' | 'music' | 'places' | 'rhythms' | 'days' | 'tessie';
+const SECTION_LABELS: Record<Section, string> = { overview: 'Overview', music: 'Music', places: 'Places', rhythms: 'Rhythms', days: 'Days', tessie: 'Tessie' };
 type Model = ReturnType<typeof buildIpadStatistics>;
 const RANGES: StatisticsRange[] = [7, 30, 90, 'all'];
 const number = (value: number, digits = 0) => value.toLocaleString(undefined, { maximumFractionDigits: digits });
@@ -29,7 +34,6 @@ export function AtlasTabV4({ state, historyDays, onRefresh, onJourney, onUpgrade
   onJourney: (id: string) => void; onUpgrade: () => void; onAtlas?: () => void; onYearOnRoad?: () => void;
 }) {
   const colors = useRedesignColors();
-  const { width, fontScale } = useWindowDimensions();
   const [range, setRange] = useState<StatisticsRange>(30);
   const [section, setSection] = useState<Section>('overview');
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -47,8 +51,10 @@ export function AtlasTabV4({ state, historyDays, onRefresh, onJourney, onUpgrade
   const monthDate = localDay(`${month}-01`);
   const dayJourneys = [...(model.byDay.get(focus) ?? [])].reverse();
   const dayTotals = useMemo(() => summarize(model.byDay.get(focus) ?? [], state.data?.details ?? []), [model, focus, state.data?.details]);
-  const sections: Section[] = TESSIE_INTEGRATION_ENABLED ? ['overview', 'days', 'insights', 'tessie'] : ['overview', 'days', 'insights'];
-  const twoColumns = sections.length === 4 || width / fontScale < 360;
+  const sections: Section[] = TESSIE_INTEGRATION_ENABLED ? ['overview', 'music', 'places', 'rhythms', 'days', 'tessie'] : ['overview', 'music', 'places', 'rhythms', 'days'];
+  const details = state.data?.details;
+  const insights = useMemo(() => buildAtlasInsights(model.selected, details ?? [], 'all'), [model.selected, details]);
+  const story = useMemo(() => buildAtlasStory(model.selected, state.data?.journeys ?? [], details ?? []), [model.selected, state.data?.journeys, details]);
   const tessieRange = useMemo(() => ({
     startInclusive: model.start.toISOString(),
     endExclusive: new Date(model.end.getFullYear(), model.end.getMonth(), model.end.getDate() + 1).toISOString(),
@@ -96,29 +102,31 @@ export function AtlasTabV4({ state, historyDays, onRefresh, onJourney, onUpgrade
         </TouchPressable>;
       })}
     </View>
-    <View testID="atlas-section-filters" accessibilityRole="tablist" accessibilityLabel="Atlas sections" style={styles.sectionFilters}>
-      {sections.map(value => <TouchPressable key={value} accessibilityRole="tab" accessibilityLabel={value[0].toUpperCase() + value.slice(1)} accessibilityState={{ selected: section === value }}
+    <ScrollView testID="atlas-section-filters" horizontal showsHorizontalScrollIndicator={false} accessibilityRole="tablist" accessibilityLabel="Atlas sections" contentContainerStyle={styles.sectionFilters}>
+      {sections.map(value => <TouchPressable key={value} accessibilityRole="tab" accessibilityLabel={SECTION_LABELS[value]} accessibilityState={{ selected: section === value }}
         onPress={() => { if (section !== value) { void haptics.selection(); setSection(value); } }}
-        style={({ pressed }) => [styles.sectionButton, { flexBasis: twoColumns ? '47%' : '30%', backgroundColor: section === value ? colors.accentSoft : colors.surface, borderColor: section === value ? colors.accent : colors.border }, pressed && redesignStyles.pressed]}>
-        <Text numberOfLines={2} style={[styles.sectionLabel, { color: section === value ? colors.accent : colors.textSecondary, fontWeight: section === value ? '700' : '600' }]}>{value[0].toUpperCase() + value.slice(1)}</Text>
+        style={({ pressed }) => [styles.sectionButton, { backgroundColor: section === value ? colors.accentSoft : colors.surface, borderColor: section === value ? colors.accent : colors.border }, pressed && redesignStyles.pressed]}>
+        <Text numberOfLines={1} style={[styles.sectionLabel, { color: section === value ? colors.accent : colors.textSecondary, fontWeight: section === value ? '700' : '600' }]}>{SECTION_LABELS[value]}</Text>
       </TouchPressable>)}
-    </View>
+    </ScrollView>
     {state.status === 'error' ? <Surface style={styles.notice}><Text accessibilityRole="alert" style={[styles.body, { color: colors.textSecondary }]}>{state.message ?? 'Atlas could not refresh. Saved data remains available.'}</Text></Surface> : null}
     {!state.data ? state.status === 'loading' ? <ActivityIndicator color={colors.accent} accessibilityLabel="Loading Atlas" />
       : <Surface style={styles.notice}><Text style={[styles.body, { color: colors.textSecondary }]}>Atlas is unavailable. Pull down to try again.</Text></Surface>
       : <>
         <Text style={[styles.dateRange, { color: colors.textTertiary }]}>{dateLabel(model.start)} – {dateLabel(model.end)} · By journey start date{historyDays === null ? '' : ` · ${historyDays}-day history`}</Text>
-        {section === 'overview' ? <Overview model={model} onDay={chooseDay} onJourney={onJourney} onAtlas={onAtlas ?? onUpgrade} atlasLocked={!onAtlas} onYearOnRoad={onYearOnRoad} /> : null}
+        {section === 'overview' ? <Overview model={model} story={story} insights={insights} onDays={() => setSection('days')} onDay={chooseDay} onJourney={onJourney} onAtlas={onAtlas ?? onUpgrade} atlasLocked={!onAtlas} onYearOnRoad={onYearOnRoad} /> : null}
         {section === 'days' ? <Days model={model} month={monthDate} monthStart={monthStart} monthEnd={monthEnd} focus={focus} totals={dayTotals} journeys={dayJourneys}
           onMonth={setSelectedMonth} onDay={chooseDay} onJourney={onJourney} /> : null}
-        {section === 'insights' ? <Insights model={model} /> : null}
+        {section === 'music' ? <Music story={story} insights={insights} /> : null}
+        {section === 'places' ? <Places story={story} insights={insights} /> : null}
+        {section === 'rhythms' ? <Insights model={model} insights={insights} /> : null}
         {section === 'tessie' && tessie ? <Tessie data={tessie} connection={connection} onJourney={onJourney} /> : null}
       </>}
   </RedesignPage>;
 }
 
-function Overview({ model, onDay, onJourney, onAtlas, atlasLocked, onYearOnRoad }: {
-  model: Model; onDay: (key: string) => void; onJourney: (id: string) => void; onAtlas: () => void; atlasLocked: boolean; onYearOnRoad?: () => void;
+function Overview({ model, story, insights, onDays, onDay, onJourney, onAtlas, atlasLocked, onYearOnRoad }: {
+  model: Model; story: AtlasStory; insights: AtlasInsights; onDays: () => void; onDay: (key: string) => void; onJourney: (id: string) => void; onAtlas: () => void; atlasLocked: boolean; onYearOnRoad?: () => void;
 }) {
   const colors = useRedesignColors();
   const [recentCount, setRecentCount] = useState(5);
@@ -130,7 +138,11 @@ function Overview({ model, onDay, onJourney, onAtlas, atlasLocked, onYearOnRoad 
   return <>
     <Surface testID="atlas-overview-hero" radius={28} style={styles.hero}>
       <View style={styles.heroTop}><Kicker color={colors.highlight}>PERIOD OVERVIEW</Kicker><SymbolView name="road.lanes" tintColor={colors.accent} size={24} /></View>
-      <Text style={[styles.heroCaption, { color: colors.textSecondary }]}>Total distance</Text>
+      {story.routes.length ? <View style={[styles.heroMap, { backgroundColor: colors.page }]} accessible={false}><RouteSketch routes={story.routes} width={300} height={130} inks={colors.routes} strokeWidth={2.5} /></View> : null}
+      <TouchPressable accessibilityRole="button" accessibilityLabel="Show your days" onPress={onDays} style={styles.heroDays}>
+        <Text style={[styles.heroCaption, { color: colors.textSecondary }]}>Total distance</Text>
+        <Text style={[styles.caption, { color: colors.accent }]}>Your days ›</Text>
+      </TouchPressable>
       <Text accessibilityRole="text" accessibilityLabel={`${number(model.totals.miles, 1)} miles`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.heroValue, { color: colors.text }]}>{number(model.totals.miles, 1)} <Text style={styles.heroUnit}>mi</Text></Text>
       <Text style={[styles.comparison, { color: colors.textSecondary }]}>{change}</Text>
       <View style={[styles.divider, { backgroundColor: colors.separator }]} />
@@ -144,6 +156,13 @@ function Overview({ model, onDay, onJourney, onAtlas, atlasLocked, onYearOnRoad 
       </View>
       {!model.selected.length ? <Text style={[styles.body, { color: colors.textSecondary }]}>Your next recorded drive will begin filling this view.</Text> : null}
     </Surface>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
+      <StoryCard kicker="STREAK" value={number(story.streak)} detail={story.streak === 1 ? 'day in a row' : 'days in a row'} />
+      {story.topArtists[0] ? <StoryCard kicker="TOP ARTIST" value={story.topArtists[0].artist} detail={`${number(story.topArtists[0].plays)} plays`} artwork={story.topArtists[0].artworkUrl} /> : null}
+      {story.followedSongs[0] ? <StoryCard kicker="ON REPEAT" value={story.followedSongs[0].track} detail={`On ${story.followedSongs[0].drives} drives`} artwork={story.followedSongs[0].artworkUrl} /> : null}
+      {insights.routeDna.ready && insights.routeDna.startLabel ? <StoryCard kicker="YOUR ROUTE" value={`${insights.routeDna.startLabel} → ${insights.routeDna.endLabel}`} detail={`${insights.routeDna.trips} trips`} /> : null}
+    </ScrollView>
+    {insights.exploration.score !== null ? <ExplorationRing score={insights.exploration.score} areas={insights.exploration.oneJourneyAreas} /> : null}
     <View testID="atlas-metric-grid" style={styles.metricGrid}>
       <MetricTile symbol="car.fill" label="Journeys" value={number(model.totals.journeys)} />
       <MetricTile symbol="clock" label="Driving time" value={duration(model.totals.drivingMinutes)} />
@@ -227,7 +246,7 @@ function Days({ model, month, monthStart, monthEnd, focus, totals, journeys, onM
   </>;
 }
 
-function Insights({ model }: { model: Model }) {
+function Insights({ model, insights }: { model: Model; insights: AtlasInsights }) {
   const colors = useRedesignColors();
   const count = Math.max(1, model.totals.journeys);
   const longest = model.selected.reduce<JourneySummary | null>((best, journey) => !best || journey.miles > best.miles ? journey : best, null);
@@ -248,6 +267,7 @@ function Insights({ model }: { model: Model }) {
     </Surface>
     <View style={styles.metricGrid}><MetricTile symbol="road.lanes" label="Miles per drive" value={`${number(model.totals.miles / count, 1)} mi`} /><MetricTile symbol="clock" label="Time per drive" value={duration(model.totals.drivingMinutes / count)} />
       <MetricTile symbol="music.note" label="Plays per drive" value={number(model.totals.plays / count, 1)} /><MetricTile symbol="calendar" label="Active days" value={number(model.totals.activeDays)} /></View>
+    <Heatmap rhythms={insights.drivingRhythms} />
     <SectionHeader title="When you drive" detail="Starts by local hour" />
     <Surface style={styles.insightCard}>
       <View accessible accessibilityLabel={`Hourly departures. ${model.totals.journeys} journeys across 24 local hours.`} style={styles.hoursChart}>
@@ -273,6 +293,120 @@ function Insights({ model }: { model: Model }) {
     <Surface style={styles.insightCard}><InsightLine label="Weekday drives" value={number(weekdayJourneys)} /><InsightLine label="Weekend drives" value={number(model.totals.journeys - weekdayJourneys)} />
       <InsightLine label="Days without a drive" value={number(Math.max(0, model.days.length - model.totals.activeDays))} /></Surface>
     <Text style={[styles.caption, { color: colors.textTertiary }]}>Listening time sums saved song durations. {model.totals.partialMusic ? 'Some music details or durations are missing, so music totals are partial.' : 'Music is grouped by its journey start date.'}</Text>
+  </>;
+}
+
+function StoryCard({ kicker, value, detail, artwork }: { kicker: string; value: string; detail: string; artwork?: string | null }) {
+  const colors = useRedesignColors();
+  return <Surface radius={20} style={styles.storyCard}>
+    <Kicker>{kicker}</Kicker>
+    <View style={styles.storyRow}>
+      {artwork !== undefined ? <Artwork uri={artwork} size={40} label={value} /> : null}
+      <Text numberOfLines={2} style={[styles.storyValue, { color: colors.text, fontSize: artwork !== undefined || value.length > 6 ? 17 : 30 }]}>{value}</Text>
+    </View>
+    <Text numberOfLines={1} style={[styles.caption, { color: colors.textSecondary }]}>{detail}</Text>
+  </Surface>;
+}
+
+const RING = 2 * Math.PI * 22;
+function ExplorationRing({ score, areas }: { score: number; areas: number }) {
+  const colors = useRedesignColors();
+  return <Surface style={styles.feature}>
+    <View accessible accessibilityLabel={`Exploration score ${score} out of 100`} style={styles.ring}>
+      <Svg width={54} height={54} style={StyleSheet.absoluteFill}>
+        <Circle cx={27} cy={27} r={22} stroke={colors.track} strokeWidth={5} fill="none" />
+        <Circle cx={27} cy={27} r={22} stroke={colors.accent} strokeWidth={5} fill="none" strokeLinecap="round" strokeDasharray={[RING * score / 100, RING]} transform="rotate(-90 27 27)" />
+      </Svg>
+      <Text style={[styles.ringValue, { color: colors.text }]}>{score}</Text>
+    </View>
+    <View style={redesignStyles.flex}><Text style={[styles.featureTitle, { color: colors.text }]}>Exploration score</Text>
+      <Text style={[styles.caption, { color: colors.textSecondary }]}>{number(areas)} stretches of road driven only once</Text></View>
+  </Surface>;
+}
+
+function Music({ story, insights }: { story: AtlasStory; insights: AtlasInsights }) {
+  const colors = useRedesignColors();
+  const peak = Math.max(1, story.topArtists[0]?.plays ?? 1);
+  if (!story.plays) return <Surface style={styles.notice}><Text style={[styles.body, { color: colors.textSecondary }]}>Songs played while driving will build your soundtrack here.</Text></Surface>;
+  return <>
+    <SectionHeader title="Top artists" detail="Most played on your drives" />
+    <Surface style={styles.insightCard}>{story.topArtists.map((artist, index) => <View key={artist.artist} style={styles.artistRow}>
+      <Artwork uri={artist.artworkUrl} size={44} index={index} label={artist.artist} />
+      <View style={redesignStyles.flex}>
+        <View style={styles.bandLabels}><Text numberOfLines={1} style={[styles.journeyTitle, { color: colors.text, flexShrink: 1 }]}>{artist.artist}</Text><Text style={[styles.caption, { color: colors.textSecondary }]}>{number(artist.plays)}</Text></View>
+        <View style={[styles.bandTrack, { backgroundColor: colors.track }]}><View style={[styles.bandFill, { width: `${artist.plays / peak * 100}%`, backgroundColor: colors.accent }]} /></View>
+      </View>
+    </View>)}</Surface>
+    {story.followedSongs.length ? <>
+      <SectionHeader title="Songs that followed you" detail="Played on more than one drive" />
+      <Surface style={styles.listCard}>{story.followedSongs.map((song, index) => <View key={`${song.artist}:${song.track}`} style={[styles.journeyRow, { borderBottomColor: colors.separator }]}>
+        <Artwork uri={song.artworkUrl} size={40} index={index} label={song.track} />
+        <View style={redesignStyles.flex}><Text numberOfLines={1} style={[styles.journeyTitle, { color: colors.text }]}>{song.track}</Text><Text numberOfLines={1} style={[styles.caption, { color: colors.textSecondary }]}>{song.artist}</Text></View>
+        <Text style={[styles.insightValue, { color: colors.accent }]}>{song.drives} drives</Text>
+      </View>)}</Surface>
+    </> : null}
+    <View style={styles.metricGrid}>
+      <MetricTile symbol="music.note" label="Song plays" value={number(story.plays)} />
+      <MetricTile symbol="headphones" label="Listening" value={duration(story.listeningMinutes)} />
+      <MetricTile symbol="music.mic" label="Unique songs" value={number(insights.soundtrack.uniqueSongs)} />
+      <MetricTile symbol="car.fill" label="Drives with music" value={insights.soundtrack.journeyMatchPercent === null ? number(insights.soundtrack.journeysWithMusic) : `${number(insights.soundtrack.journeyMatchPercent)}%`} />
+    </View>
+  </>;
+}
+
+function Places({ story, insights }: { story: AtlasStory; insights: AtlasInsights }) {
+  const colors = useRedesignColors();
+  const dna = insights.routeDna;
+  const states = useMemo(() => loadFiftyStates(getCurrentUser().id).length, []);
+  return <>
+    {dna.ready && dna.startLabel ? <>
+      <SectionHeader title="Your route" detail={dna.bidirectional ? 'Driven both ways' : 'Your most repeated drive'} />
+      <Surface style={styles.insightCard}>
+        <Text style={[styles.routeTitle, { color: colors.text }]}>{dna.startLabel} {dna.bidirectional ? '⇄' : '→'} {dna.endLabel}</Text>
+        {dna.route.length >= 2 ? <View style={[styles.heroMap, { backgroundColor: colors.page }]}><RouteSketch routes={[dna.route]} width={300} height={110} inks={[colors.accent]} /></View> : null}
+        <View style={styles.routeStats}>
+          <RouteStat label="Trips" value={number(dna.trips)} />
+          <RouteStat label="Average" value={dna.averageMinutes === null ? '—' : `${number(dna.averageMinutes)} min`} />
+          <RouteStat label="Best" value={dna.quickestMinutes === null ? '—' : `${number(dna.quickestMinutes)} min`} accent />
+        </View>
+      </Surface>
+    </> : null}
+    <SectionHeader title="Most connected" detail="Places you drive between" />
+    <Surface style={styles.insightCard}>{insights.placeRelationships.connections.length
+      ? insights.placeRelationships.connections.slice(0, 5).map(link => <InsightLine key={`${link.startLabel}:${link.endLabel}`} label={`${link.startLabel} → ${link.endLabel}`} value={`${link.trips} trips`} />)
+      : <Text style={[styles.body, { color: colors.textSecondary }]}>Connections appear once drives share named places.</Text>}</Surface>
+    <View style={styles.metricGrid}>
+      <MetricTile symbol="flag.fill" label="States" value={`${states} of 50`} />
+      <MetricTile symbol="mappin.and.ellipse" label="New places" value={number(story.newPlaces.length)} />
+    </View>
+    {story.newPlaces.length ? <>
+      <SectionHeader title="New this period" detail="First visits" />
+      <Surface style={styles.insightCard}><Text style={[styles.body, { color: colors.text }]}>{story.newPlaces.join(' · ')}</Text></Surface>
+    </> : null}
+  </>;
+}
+
+function RouteStat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  const colors = useRedesignColors();
+  return <View><Text style={[styles.caption, { color: colors.textSecondary }]}>{label}</Text><Text style={[styles.insightValue, { color: accent ? colors.accent : colors.text }]}>{value}</Text></View>;
+}
+
+const HEAT_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+function Heatmap({ rhythms }: { rhythms: AtlasInsights['drivingRhythms'] }) {
+  const colors = useRedesignColors();
+  const peak = Math.max(1, ...rhythms.weekdayTwoHourBuckets.flat());
+  if (!rhythms.journeyCount) return null;
+  return <>
+    <SectionHeader title="Your driving week" detail={rhythms.leadingDay ? `Busiest: ${rhythms.leadingDay}${rhythms.leadingTime ? ` · ${rhythms.leadingTime}` : ''}` : 'Day and time of each start'} />
+    <Surface style={styles.insightCard}>
+      <View accessible accessibilityLabel={`Weekly driving heatmap. Busiest day ${rhythms.leadingDay ?? 'unknown'}.`} style={styles.heatmap}>
+        {rhythms.weekdayTwoHourBuckets.map((buckets, day) => <View key={day} style={styles.heatRow}>
+          <Text style={[styles.heatDay, { color: colors.textTertiary }]}>{HEAT_DAYS[day]}</Text>
+          {buckets.map((value, index) => <View key={index} style={[styles.heatCell, { backgroundColor: value ? withAlpha(colors.accent, 0.2 + 0.8 * value / peak) : colors.track }]} />)}
+        </View>)}
+      </View>
+      <View style={styles.hourLabels}>{['12 AM', '6 AM', '12 PM', '6 PM', '12 AM'].map((label, index) => <Text key={index} style={[styles.chartDate, { color: colors.textTertiary }]}>{label}</Text>)}</View>
+    </Surface>
   </>;
 }
 
@@ -328,16 +462,31 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: 'row', gap: 7, padding: 4, borderRadius: 17 },
   rangeButton: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth },
   rangeLabel: { fontSize: 14, fontWeight: '700' },
-  sectionFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  sectionButton: { flexGrow: 1, minWidth: 0, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, paddingVertical: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  sectionFilters: { flexDirection: 'row', gap: 8 },
+  sectionButton: { minWidth: 84, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, paddingVertical: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
   sectionLabel: { fontSize: 14, textAlign: 'center' },
   dateRange: { fontSize: 12, lineHeight: 18, marginTop: -5 },
   notice: { padding: 18 },
   body: { fontSize: 14, lineHeight: 21 },
   caption: { fontSize: 12, lineHeight: 18 },
   hero: { padding: 22, gap: 10 },
+  heroMap: { borderRadius: 16, overflow: 'hidden', alignItems: 'center' },
+  heroDays: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 10 },
+  strip: { gap: 10, paddingRight: 4 },
+  storyCard: { width: 158, minHeight: 124, padding: 14, gap: 8, justifyContent: 'space-between' },
+  storyRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  storyValue: { flexShrink: 1, fontFamily: SERIF, fontWeight: '600' },
+  ring: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center' },
+  ringValue: { fontFamily: SERIF, fontSize: 17, fontWeight: '600' },
+  artistRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  routeTitle: { fontFamily: SERIF, fontSize: 20, fontWeight: '600' },
+  routeStats: { flexDirection: 'row', justifyContent: 'space-between' },
+  heatmap: { gap: 4 },
+  heatRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  heatDay: { width: 14, fontSize: 10, fontWeight: '700' },
+  heatCell: { flex: 1, aspectRatio: 1, borderRadius: 4 },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  heroCaption: { fontSize: 14, marginTop: 10 },
+  heroCaption: { fontSize: 14 },
   heroValue: { fontSize: 43, lineHeight: 52, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -1 },
   heroUnit: { fontSize: 24, fontWeight: '600' },
   comparison: { fontSize: 13, lineHeight: 19 },
