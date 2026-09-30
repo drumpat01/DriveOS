@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode, useEffect } from 'react';
+import { PlusTrialBanner } from './plus-trial-banner';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
@@ -55,8 +56,11 @@ function useTodayLayout(userId: string, available: TodayCardId[]) {
   return { layout, save, reset: () => save(defaultTodayLayout(available)) };
 }
 
-export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh, userId = 'default', onAsk, extraCards = {} }: {
+export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh, userId = 'default', onAsk, extraCards = {}, trialEndsAt = null, onPlus }: {
   primary: PrimaryDataState;
+  /** While the first-launch Plus trial runs: its end, for the banner under the title. */
+  trialEndsAt?: number | null;
+  onPlus?: () => void;
   userId?: string;
   /** Opens Ask JourneyDeck; omitted when Ask is unavailable. */
   onAsk?: () => void;
@@ -138,6 +142,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
         </TouchPressable>
         <ProfileButton profile={profile} onPress={onProfile} />
       </View>} />
+    {onPlus ? <PlusTrialBanner trialEndsAt={trialEndsAt} onPress={onPlus} now={now} /> : null}
     {recorder ? <View testID="today-inline-recorder">{recorder}</View> : null}
     {primary.status === 'error' && !primary.data ? <Surface style={styles.notice}><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{primary.message ?? 'Your library could not load. Pull down to try again.'}</Text></Surface> : null}
     {layout.filter(card => card.visible).map(card => <View key={card.id}>{renderCard(card.id)}</View>)}
