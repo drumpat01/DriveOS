@@ -55,10 +55,14 @@ export function JourneyDeckNativeTabs() {
   // Reserve orange for Home rather than applying it to the whole iPad host.
   const selected = theme.isCustom ? theme.palette.accent : tablet ? neutral : theme.isLight ? '#ad492e' : '#ff9470';
   const homeLabelStyle = theme.isCustom ? { color: selected } : tablet ? { color: '#ff8956' } : undefined;
-  if (redesign && !tablet) {
-    // V4 iPhone: Today first, Settings behind the profile button, Search as its own
-    // system item, and the recorder in the iOS 26 bottom accessory.
-    return <NativeTabs backgroundColor={theme.id === 'midnight-canopy' ? theme.palette.inset : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge tintColor={selected} iconColor={{ default: inactive, selected }} labelStyle={{ default: { color: inactive }, selected: { color: selected } }}>
+  if (redesign) {
+    // V4: Today first, Settings behind the profile button, Search as its own
+    // system item, and the recorder in the iOS 26 bottom accessory. iPad adds the
+    // adaptable sidebar with the same items, so both devices share one structure.
+    // The iPhone tint applies on iPad too, so the sidebar matches the tab bar.
+    const v4Inactive = theme.isCustom ? neutral : theme.isLight ? '#756775' : '#b6a6c1';
+    const v4Selected = theme.isCustom ? theme.palette.accent : theme.isLight ? '#ad492e' : '#ff9470';
+    return <NativeTabs sidebarAdaptable={tablet ? true : undefined} backgroundColor={theme.id === 'midnight-canopy' ? theme.palette.inset : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge tintColor={v4Selected} iconColor={{ default: v4Inactive, selected: v4Selected }} labelStyle={{ default: { color: v4Inactive }, selected: { color: v4Selected } }}>
       {accessory ? <NativeTabs.BottomAccessory>{accessory}</NativeTabs.BottomAccessory> : null}
       <NativeTabs.Trigger name="index" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="sun.horizon.fill" /><NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="journeys" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="photo.stack" /><NativeTabs.Trigger.Label>Memories</NativeTabs.Trigger.Label></NativeTabs.Trigger>

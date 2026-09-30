@@ -43,7 +43,7 @@ export function MembershipPaywallV4({ hero, plans, selectedId, onSelect, loading
   return <View style={[styles.page, { backgroundColor: c.page }]}>
     <LinearGradient pointerEvents="none" colors={[c.glow, c.page]} style={styles.glow} />
     <ScrollView bounces={false} showsVerticalScrollIndicator={false}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 16) }]}>
+      contentContainerStyle={[styles.content, styles.column, { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 16) }]}>
       <View style={styles.topBar}>
         <Text style={[styles.kicker, { color: c.textSecondary }]}>JOURNEYDECK PLUS</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Not now, keep the free plan" hitSlop={8} onPress={onClose}
@@ -123,6 +123,7 @@ export function MembershipPaywallV4({ hero, plans, selectedId, onSelect, loading
 }
 
 const styles = StyleSheet.create({
+  column: { width: '100%', maxWidth: 620, alignSelf: 'center' },
   page: { flex: 1 },
   glow: { position: 'absolute', top: 0, left: 0, right: 0, height: 380 },
   content: { flexGrow: 1, paddingHorizontal: 20, gap: 14 },

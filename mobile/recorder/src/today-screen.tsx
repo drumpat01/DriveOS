@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode, useEffect } from 'react';
+import { isIpad } from './device-layout';
 import { PlusTrialBanner } from './plus-trial-banner';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -56,7 +57,7 @@ function useTodayLayout(userId: string, available: TodayCardId[]) {
   return { layout, save, reset: () => save(defaultTodayLayout(available)) };
 }
 
-export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh, userId = 'default', onAsk, extraCards = {}, trialEndsAt = null, onPlus }: {
+export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh, userId = 'default', onAsk, extraCards = {}, trialEndsAt = null, onPlus, onSync, sampleActive = false, onExitSample }: {
   primary: PrimaryDataState;
   /** While the first-launch Plus trial runs: its end, for the banner under the title. */
   trialEndsAt?: number | null;
@@ -76,6 +77,11 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
   onMemories: () => void;
   onWeek: () => void;
   onProfile: () => void;
+  /** iPad only: syncs from iCloud, the way drives arrive from an iPhone. */
+  onSync?: () => void;
+  /** While the fictional sample library is open: a bar to leave it. */
+  sampleActive?: boolean;
+  onExitSample?: () => void;
   onRefresh: () => Promise<void>;
 }) {
   const colors = useRedesignColors();
@@ -110,7 +116,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
       case 'ask': return onAsk ? <AskBar onPress={onAsk} /> : null;
       case 'lastDrive': return primary.status === 'loading' && !primary.data
         ? <Surface style={styles.loading}><ActivityIndicator color={colors.accent} /><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>Opening your library…</Text></Surface>
-        : latest ? <LastDriveCard journey={latest} detail={latestDetail} now={now} onOpen={() => onJourney(latest.id)} /> : <FirstDriveCard />;
+        : latest ? <LastDriveCard journey={latest} detail={latestDetail} now={now} onOpen={() => onJourney(latest.id)} /> : <FirstDriveCard onSync={onSync} onAccount={onProfile} />;
       case 'week': return journeys.length ? <WeekCard week={week} onPress={onWeek} /> : null;
       case 'onThisDay': return resurfaced ? <OnThisDayCard memory={resurfaced.memory} yearsAgo={resurfaced.yearsAgo} journeys={journeys} onPress={() => onMemory(resurfaced.memory.id)} /> : null;
       case 'memories': return recent.length ? <View style={styles.section}>
@@ -133,7 +139,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
     }
   };
 
-  return <RedesignPage testID="today-screen" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.accent} />}>
+  return <RedesignPage testID="today-screen" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.accent} />}>{canvas => <>
     <LargeTitle kicker={new Date(now).toLocaleDateString(undefined, WEEKDAY_FORMAT)} title="Today"
       trailing={<View style={styles.headerButtons}>
         <TouchPressable accessibilityRole="button" accessibilityLabel="Edit Today" onPress={() => { void haptics.selection(); setEditing(true); }}
@@ -142,11 +148,19 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
         </TouchPressable>
         <ProfileButton profile={profile} onPress={onProfile} />
       </View>} />
+    {sampleActive && onExitSample ? <TouchPressable testID="today-sample-bar" accessibilityRole="button" accessibilityLabel="Viewing sample data. Leave sample data" onPress={() => { void haptics.selection(); onExitSample(); }}
+      style={({ pressed }) => [styles.sampleBar, { backgroundColor: colors.accentSoft, borderColor: colors.border }, pressed && redesignStyles.pressed]}>
+      <SymbolView name="sparkles" tintColor={colors.accent} size={16} />
+      <Text style={[styles.sampleText, { color: colors.text }]}>You’re viewing sample data</Text>
+      <Text style={[styles.sampleAction, { color: colors.accent }]}>Leave</Text>
+    </TouchPressable> : null}
     {onPlus ? <PlusTrialBanner trialEndsAt={trialEndsAt} onPress={onPlus} now={now} /> : null}
     {recorder ? <View testID="today-inline-recorder">{recorder}</View> : null}
     {primary.status === 'error' && !primary.data ? <Surface style={styles.notice}><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{primary.message ?? 'Your library could not load. Pull down to try again.'}</Text></Surface> : null}
-    {layout.filter(card => card.visible).map(card => <View key={card.id}>{renderCard(card.id)}</View>)}
-    <HomeLayoutEditorSheet visible={editing} onClose={() => setEditing(false)} onReset={reset} noteIcon="slider.horizontal.3" note="Choose what Today shows and in what order. Changes save on this iPhone.">
+    <View style={canvas.wide ? styles.cardGrid : styles.cardColumn}>
+      {layout.filter(card => card.visible).map(card => <View key={card.id} style={canvas.wide ? (HALF_WIDTH_CARDS.has(card.id) ? styles.cardHalf : styles.cardFull) : undefined}>{renderCard(card.id)}</View>)}
+    </View>
+    <HomeLayoutEditorSheet visible={editing} onClose={() => setEditing(false)} onReset={reset} noteIcon="slider.horizontal.3" note="Choose what Today shows and in what order. Changes save on this device.">
       <View testID="today-layout-editor" style={styles.editor}>
         {layout.map((card, index) => <View key={card.id} style={[styles.editorRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.editorLabel, { color: colors.text }]}>{TODAY_CARD_LABELS[card.id]}</Text>
@@ -160,7 +174,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
         </View>)}
       </View>
     </HomeLayoutEditorSheet>
-  </RedesignPage>;
+  </>}</RedesignPage>;
 }
 
 function AskBar({ onPress }: { onPress: () => void }) {
@@ -226,16 +240,20 @@ function LastDriveCard({ journey, detail, now, onOpen }: {
 type PrimaryJourney = NonNullable<PrimaryDataState['data']>['journeys'][number];
 type PrimaryDetail = NonNullable<PrimaryDataState['data']>['details'][number];
 
-function FirstDriveCard() {
+function FirstDriveCard({ onSync, onAccount }: { onSync?: () => void; onAccount: () => void }) {
   const colors = useRedesignColors();
   const artwork = useDriveArtwork(null);
   return <View testID="today-first-drive" style={[styles.hero, styles.heroEmpty, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
     <JourneyImage imageIdentity="today-first-drive" source={artwork} contentFit="cover" style={StyleSheet.absoluteFill} />
     <PhotoScrim />
     <View style={styles.heroBody}>
-      <Kicker color={colors.accent}>Your first drive</Kicker>
-      <Text style={[styles.heroTitle, { color: colors.text }]}>The road remembers</Text>
-      <Text style={[redesignStyles.body, { color: colors.textSecondary }]}>Start a journey from the bar below. Your route, time and soundtrack will appear here.</Text>
+      <Kicker color={colors.accent}>{isIpad() ? 'Requires an iPhone' : 'Your first drive'}</Kicker>
+      <Text style={[styles.heroTitle, { color: colors.text }]}>{isIpad() ? 'Record on your iPhone' : 'The road remembers'}</Text>
+      <Text style={[redesignStyles.body, { color: colors.textSecondary }]}>{isIpad() ? 'JourneyDeck records drives on iPhone. Sign in with the same Apple Account and iCloud on both devices, and your journeys, memories and soundtracks appear here.' : 'Start a journey from the bar below. Your route, time and soundtrack will appear here.'}</Text>
+      {isIpad() ? <View style={styles.emptyActions}>
+        {onSync ? <TouchPressable accessibilityRole="button" accessibilityLabel="Sync from iCloud" onPress={() => { void haptics.selection(); onSync(); }} style={({ pressed }) => [styles.emptyButton, { backgroundColor: colors.accent }, pressed && redesignStyles.pressed]}><Text style={[styles.emptyButtonText, { color: colors.onAccent }]}>Sync from iCloud</Text></TouchPressable> : null}
+        <TouchPressable accessibilityRole="button" accessibilityLabel="Account and iCloud settings" onPress={() => { void haptics.selection(); onAccount(); }} style={({ pressed }) => [styles.emptyButton, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth }, pressed && redesignStyles.pressed]}><Text style={[styles.emptyButtonText, { color: colors.text }]}>Account & sync</Text></TouchPressable>
+      </View> : null}
     </View>
   </View>;
 }
@@ -311,7 +329,20 @@ function RowToggle({ label, value, onChange }: { label: string; value: boolean; 
   </Pressable>;
 }
 
+/** On a wide canvas these sit two to a row; everything else spans the full width. */
+const HALF_WIDTH_CARDS = new Set<TodayCardId>(['week', 'onThisDay', 'fiftyStates', 'yourCar', 'journeyInProgress']);
+
 const styles = StyleSheet.create({
+  sampleBar: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 14, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  sampleText: { flex: 1, fontSize: 14, fontWeight: '600' },
+  sampleAction: { fontSize: 14, fontWeight: '700' },
+  emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 6 },
+  emptyButton: { minHeight: 44, paddingHorizontal: 18, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  emptyButtonText: { fontSize: 15, fontWeight: '700' },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 22, rowGap: 22, alignItems: 'stretch' },
+  cardFull: { width: '100%' },
+  cardHalf: { flexGrow: 1, flexBasis: '46%', minWidth: 300 },
+  cardColumn: { gap: 22 },
   toggle: { width: 50, height: 30, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, padding: 2, justifyContent: 'center' },
   toggleKnob: { width: 25, height: 25, borderRadius: 12.5 },
   section: { gap: 12 },

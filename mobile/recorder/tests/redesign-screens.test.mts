@@ -42,6 +42,7 @@ const shared: Record<string, unknown> = {
   './album-artwork': { highQualityAlbumArtwork: (uri: string | null) => uri },
   './plus-trial-banner': { PlusTrialBanner: (props: any) => props.trialEndsAt ? React.createElement('PlusTrialBanner', props) : null },
   './local-archive-events': { subscribeLocalArchiveChanges: () => () => {}, notifyLocalArchiveChanged() {} },
+  './device-layout': { DEVICE_NAME: 'iPhone', isIpad: () => false, readingColumnStyle: { width: '100%', maxWidth: 760, alignSelf: 'center' }, useReadingWidth: (max = 760) => Math.min(viewportWidth, max) },
   './haptics': { haptics: { selection() {}, primaryAction() {} } },
   './journey-image': { JourneyImage: host('JourneyImage') },
   './touch-feedback': { TouchPressable: host('Pressable') },
@@ -83,6 +84,7 @@ function load(name: string, extra: Record<string, unknown> = {}) {
 }
 const ui = load('redesign-ui.tsx');
 shared['./redesign-ui'] = ui;
+shared['./iphone-required'] = load('iphone-required.tsx');
 const accessoryModel = require('../src/recorder-accessory-model.ts');
 const { TodayScreen } = load('today-screen.tsx');
 const { SoundtrackScreen } = load('soundtrack-screen.tsx');
@@ -354,7 +356,7 @@ test('Ask V4 suggests questions, shows records as cards, and starts a new conver
   const asked: any[] = [];
   const answer = { status: 'answered', text: 'You drove 42.6 miles this week.', ticket: 't', contextToken: 't', evidence: [{ kind: 'memory', id: 'm1', label: 'Open road weekend' }] };
   const make = () => load('ask-journeydeck-screen.tsx', {
-    './ask-journeydeck-v4': v4, './ask-chat-motion': motion, './device-layout': { isIpad: () => false },
+    './ask-journeydeck-v4': v4, './ask-chat-motion': motion, './device-layout': { isIpad: () => false, DEVICE_NAME: 'iPhone' },
     './release-features': { V3_ASK_JOURNEYDECK_ENABLED: true, V4_REDESIGN_ENABLED: true },
     './siri-testing': { canShowSiriTesting: false }, './auth': { getCurrentUser: () => ({ id: `ask-${themeId}` }) },
     './native-navigation-context': { useJourneyDeckNavigation: () => ({ membership: { tier: 'paid' }, showUpgrade() {} }) },
@@ -503,4 +505,69 @@ test('the V4 recorder sheet shows the live drive and routes each control in ever
     assert.deepEqual(calls, ['onPause', 'onEnd', 'onIdentify', 'onClose', 'onResume', 'onStart'], id);
     act(() => tree.unmount());
   }
+});
+
+test('The V4 page canvas widens Today into two columns on iPad widths and stays one column on iPhone', async () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.canvasForWidth(393))), { width: 393, wide: false, columns: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.canvasForWidth(744))), { width: 744, wide: true, columns: 2 });
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.canvasForWidth(1120))), { width: 1120, wide: true, columns: 3 });
+  themeId = 'redline';
+  let tree: any;
+  await act(async () => { tree = create(React.createElement(TodayScreen, { primary, memories, loadProfile: () => ({ initials: 'PS', avatarUri: null }),
+    onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
+  const page = () => tree.root.findAll((node: any) => node.type === 'View' && node.props.testID === 'today-screen')[0];
+  const grids = () => tree.root.findAll((node: any) => node.type === 'View' && node.props.style && [].concat(node.props.style).some((style: any) => style && style.flexWrap === 'wrap' && style.columnGap === 22));
+  assert.equal(grids().length, 0, 'iPhone keeps a single column');
+  await act(async () => { page().props.onLayout({ nativeEvent: { layout: { width: 820 } } }); });
+  assert.equal(grids().length, 1, 'iPad width lays cards out in a wrapping grid');
+  assert.match(texts(tree), /This week/);
+  assert.match(texts(tree), /Recent memories/);
+  await act(async () => { tree.unmount(); });
+});
+
+test('An empty iPad Today says it requires an iPhone and offers iCloud sync and account settings', async () => {
+  themeId = 'redline';
+  const calls: string[] = [];
+  const { TodayScreen: IpadToday } = load('today-screen.tsx', { './device-layout': { isIpad: () => true, DEVICE_NAME: 'iPad' } });
+  let tree: any;
+  await act(async () => { tree = create(React.createElement(IpadToday, { primary: { status: 'ready', data: { journeys: [], details: [] } }, memories: [], loadProfile: () => ({ initials: 'PS', avatarUri: null }),
+    onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile: () => calls.push('account'), onSync: () => calls.push('sync'), onRefresh: async () => {} })); });
+  assert.match(texts(tree), /Requires an iPhone/i);
+  assert.match(texts(tree), /Record on your iPhone/);
+  const press = (label: string) => tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.accessibilityLabel === label)[0].props.onPress();
+  await act(async () => { press('Sync from iCloud'); press('Account and iCloud settings'); });
+  assert.deepEqual(calls, ['sync', 'account']);
+  await act(async () => { tree.unmount(); });
+});
+
+test('Empty Memories, Soundtrack and Atlas tell an iPad user the section requires an iPhone', async () => {
+  themeId = 'redline';
+  const ipadStubs = { './device-layout': { isIpad: () => true, DEVICE_NAME: 'iPad', readingColumnStyle: {}, useReadingWidth: () => 393 } };
+  const { SoundtrackScreen: IpadSoundtrack } = load('soundtrack-screen.tsx', ipadStubs);
+  let tree: any;
+  await act(async () => { tree = create(React.createElement(IpadSoundtrack, { status: 'ready', music: null, provider: 'apple-music', journeys: [], details: [], canOpenTracks: false, onTrack() {}, onJourney() {}, onRefresh: async () => {} })); });
+  assert.match(texts(tree), /Requires an iPhone/);
+  assert.doesNotMatch(texts(tree), /No songs/);
+  await act(async () => { tree.unmount(); });
+  const { SoundtrackScreen: PhoneSoundtrack } = load('soundtrack-screen.tsx');
+  await act(async () => { tree = create(React.createElement(PhoneSoundtrack, { status: 'ready', music: null, provider: 'apple-music', journeys: [], details: [], canOpenTracks: false, onTrack() {}, onJourney() {}, onRefresh: async () => {} })); });
+  assert.doesNotMatch(texts(tree), /Requires an iPhone/, 'iPhone keeps its own empty state');
+  await act(async () => { tree.unmount(); });
+});
+
+test('Sample data: Today shows a bar to leave it, and the empty iPad card offers to open it', async () => {
+  themeId = 'redline';
+  const calls: string[] = [];
+  let tree: any;
+  await act(async () => { tree = create(React.createElement(TodayScreen, { primary, memories, loadProfile: () => ({ initials: 'PS', avatarUri: null }), sampleActive: true, onExitSample: () => calls.push('exit'),
+    onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
+  assert.match(texts(tree), /viewing sample data/i);
+  await act(async () => { tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.testID === 'today-sample-bar')[0].props.onPress(); });
+  assert.deepEqual(calls, ['exit']);
+  await act(async () => { tree.unmount(); });
+  const { IphoneRequiredProvider, IphoneRequiredCard } = shared['./iphone-required'] as any;
+  await act(async () => { tree = create(React.createElement(IphoneRequiredProvider, { value: { sample: () => calls.push('sample') } }, React.createElement(IphoneRequiredCard, { subject: 'Your drives' }))); });
+  await act(async () => { tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Try sample data')[0].props.onPress(); });
+  assert.deepEqual(calls, ['exit', 'sample']);
+  await act(async () => { tree.unmount(); });
 });

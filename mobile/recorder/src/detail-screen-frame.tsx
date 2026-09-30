@@ -41,10 +41,11 @@ export function DetailScreenFrame({ title, onBack, actions, children }: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: { height: 52, flexShrink: 0, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // iPad centers the header and body in a 900pt column.
+  header: { width: '100%', maxWidth: 900, alignSelf: 'center', height: 52, flexShrink: 0, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
   control: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   backIcon: { width: 20, height: 24 },
   title: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600' },
   actionSlot: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  body: { flex: 1 },
+  body: { width: '100%', maxWidth: 900, alignSelf: 'center', flex: 1 },
 });

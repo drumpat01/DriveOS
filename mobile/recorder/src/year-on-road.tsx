@@ -6,7 +6,6 @@ import { SymbolView } from 'expo-symbols';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { themeCatalog, type ThemeId, type ThemePalette } from './theme-catalog';
 import { V3_MIDNIGHT_CANOPY_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
-import { isIpad } from './device-layout';
 /** New York on iOS, as in redesign-ui. */
 const SERIF = 'ui-serif';
 import { headerImageSource } from './header-image-sources';
@@ -15,7 +14,7 @@ import { useYearOnRoadAudio } from './year-on-road-audio';
 import { musicForTheme, yearOnRoadMusic, type YearOnRoadMusicId } from './year-on-road-music';
 
 /** V4 iPhone type: serif headlines over the same chapters. iPad keeps the V3 look. */
-const V4_TYPE = V4_REDESIGN_ENABLED && !isIpad();
+const V4_TYPE = V4_REDESIGN_ENABLED;
 
 export type { YearOnRoadData } from './year-on-road-model';
 export type YearOnRoadViewerProps = {

@@ -25,7 +25,7 @@ function evaluate(sourceText: string, mocks: Record<string, any> = {}, globals: 
 }
 const viewport = evaluate(readFileSync(new URL('../src/settings-scroll-view.tsx', import.meta.url), 'utf8'), {
   'react-native': controls, 'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView') },
-  './device-layout': { isIpad: () => tablet }, './app-theme': { useAppTheme: () => testTheme(light) },
+  './device-layout': { isIpad: () => tablet, readingColumnStyle: { width: '100%', maxWidth: 760, alignSelf: 'center' } }, './release-features': { V4_REDESIGN_ENABLED: false }, './app-theme': { useAppTheme: () => testTheme(light) },
 });
 const viewSource = source.slice(source.indexOf('function ConnectionsScreen('), source.indexOf('function JourneyDeckLogo('));
 const links: string[] = [], modes: string[] = [];
@@ -64,7 +64,7 @@ const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScree
   useAppIconChoice: () => ({ appIconId: 'original' }), appIconCatalog: { original: { name: 'Cinematic' } },
   settingsCategories: require('../src/settings-categories.ts').settingsCategories,
   useThemedStyles: () => new Proxy({}, { get: () => ({}) }), darkStyles: {},
-  useSettingsStyles: () => new Proxy({}, { get: () => ({}) }), REDESIGN_PHONE: false, RedesignGlow: host('RedesignGlow'), useRedesignColors: () => ({}), SERIF: 'ui-serif',
+  useSettingsStyles: () => new Proxy({}, { get: () => ({}) }), REDESIGN_PHONE: false, canRecordDrives: () => true, RedesignGlow: host('RedesignGlow'), useRedesignColors: () => ({}), SERIF: 'ui-serif',
   useSafeAreaInsets: () => ({ top: 24, bottom: 20 }), isIpad: () => tablet,
   loadSavedPlaces: () => ({}), loadCustomSavedPlaces: () => [{ id: 'saved-custom-place-v1-gym', label: 'Gym' }], loadProfileAppearance: () => ({ displayName: 'Test driver', avatarDataUri: null }), profileInitialsFor: () => 'TD',
   selectableProviderOptions: () => [{ id: 'apple-music', color: '#ff9478', name: 'Apple Music' }], publicProviderOptions: [], SAVED_PLACE_SLOTS: [{ id: 'home', label: 'Home', symbol: 'house' }, { id: 'work', label: 'Work', symbol: 'briefcase' }, { id: 'school', label: 'School', symbol: 'graduationcap' }],
@@ -268,7 +268,7 @@ test('successful private sync refreshes the shared library; unavailable accounts
   const states: any[] = [];
   const callback = source.slice(source.indexOf('const syncPrivateCloud = useCallback'), source.indexOf('const createProfileIsolationTest'));
   const { sync } = evaluate(callback + '\nexports.sync = syncPrivateCloud;', {}, {
-    useCallback: (callback: any) => callback, isIsolationTestProfile: () => false, isPrivateICloudNativeAvailable: () => true,
+    useCallback: (callback: any) => callback, isIsolationTestProfile: () => false, isSandboxProfile: () => false, isDemoProfile: () => false, isPrivateICloudNativeAvailable: () => true,
     setPrivateCloud: (state: any) => states.push(state), isIpad: () => true, observeJourneyDeckEvent: () => {},
     getPrivateICloudSyncBackoff: () => null, getPrivateICloudSyncFailureRecord: () => null,
     PrivateICloudSyncDeferredError: class extends Error {}, classifyPrivateICloudSyncError: () => 'unknown',
@@ -304,7 +304,7 @@ test('private sync backs off quietly, reports a privacy-safe category, and only 
   const states: any[] = [], events: any[] = [], alerts: string[] = [];
   const callback = source.slice(source.indexOf('const syncPrivateCloud = useCallback'), source.indexOf('const createProfileIsolationTest'));
   const { sync } = evaluate(callback + '\nexports.sync = syncPrivateCloud;', {}, {
-    useCallback: (callback: any) => callback, isIsolationTestProfile: () => false, isPrivateICloudNativeAvailable: () => true,
+    useCallback: (callback: any) => callback, isIsolationTestProfile: () => false, isSandboxProfile: () => false, isDemoProfile: () => false, isPrivateICloudNativeAvailable: () => true,
     setPrivateCloud: (state: any) => states.push(state), isIpad: () => false, Alert: { alert: (title: string) => alerts.push(title) },
     observeJourneyDeckEvent: (name: string, attributes: any) => events.push({ name, ...attributes }),
     getPrivateICloudSyncBackoff: () => backoff,

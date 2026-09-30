@@ -12,7 +12,6 @@ import { useJourneyDeckNavigation } from './native-navigation-context';
 import { JourneyEditorMap } from './journey-editor-map';
 import { loadJourneyEditor, commitJourneyEdit, getJourneyEditConflictChoices, resolveJourneyEditConflict } from './journey-editor-store';
 import { previewJourneyEdit, type JourneyEditSelection, type JourneyEditorSnapshot } from './journey-editor-model';
-import { isIpad } from './device-layout';
 import { V4_REDESIGN_ENABLED } from './release-features';
 import { SERIF, Segmented, useRedesignColors } from './redesign-ui';
 import { clipEditorRoute, moveEditorHandle, sampleEditorRoute, type EditorHandle, type EditorRange } from './journey-editor-timeline';
@@ -20,7 +19,7 @@ import { clipEditorRoute, moveEditorHandle, sampleEditorRoute, type EditorHandle
 const time = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 const minutes = (ms: number) => `${Math.floor(ms / 60000)}m ${Math.floor(ms / 1000) % 60}s`;
 /** V4 iPhone Journey Studio: redesign roles, serif title, pill controls. iPad keeps the V3 studio. */
-const V4 = V4_REDESIGN_ENABLED && !isIpad();
+const V4 = V4_REDESIGN_ENABLED;
 
 /** The studio's palette roles, from the V4 redesign roles on iPhone. */
 function useStudioColors() {

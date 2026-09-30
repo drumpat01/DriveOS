@@ -10,7 +10,8 @@ import { ThemePicker } from './theme-picker';
 import { ConnectorSettings, readConnectorPrivacy } from './connector-settings';
 import { connectorPrivacySummary } from './connector-privacy';
 import { settingsCategories, type SettingsCategoryId } from './settings-categories';
-import { isIpad } from './device-layout';
+import { IphoneRequiredProvider } from './iphone-required';
+import { isIpad, canRecordDrives, DEVICE_NAME } from './device-layout';
 import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
 import { HomeLayoutEditorSheet, useHomeWidgetLayout } from './home-widget-grid';
 import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from './home-widget-layout';
@@ -26,8 +27,8 @@ import { supportsTabAccessory } from './recorder-accessory-model';
 import { MemoryDetailV4 } from './memory-detail-v4';
 import { JourneyDetailV4, JourneyDetailV4Placeholder } from './journey-detail-v4';
 
-/** The V4 iPhone redesign; iPad keeps its sidebar layouts. */
-const REDESIGN_PHONE = V4_REDESIGN_ENABLED && !isIpad();
+/** The V4 redesign, on iPhone and iPad alike; iPad adapts it to the wider canvas. */
+const REDESIGN_PHONE = V4_REDESIGN_ENABLED;
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
@@ -101,7 +102,7 @@ import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { SERIF, useRedesignColors } from './redesign-ui';
 import type { RedesignColors } from './redesign-palette';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
-import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
+import { createIsolationTestProfile, enterDemoProfile, exitDemoProfile, getAppleIdentityStatus, getCurrentUser, isDemoProfile, isIsolationTestProfile, isSandboxProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { deleteCurrentJourneyDeckAccount, finishProfileSwitch, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, upsertPrivatePreference, type LocalPlace, type LocalUser } from './local-store';
 import { FirstRunV4, nextV4Stage, previousV4Stage, v4Stage } from './first-run-v4';
@@ -152,6 +153,7 @@ function previousFirstRunStage(stage: Exclude<FirstRunStage, 'welcome' | 'comple
     case 'recording': return 'welcome';
     case 'location': return 'recording';
     case 'places': return 'location';
+    case 'sync': return 'welcome';
     case 'music': return PLACES_STEP_ENABLED ? 'places' : 'location';
     case 'membership': return 'music';
     case 'tessie': return 'membership';
@@ -453,7 +455,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       setDashboard({ status: 'ready', data: dashboardForMembership(data, membership, primarySections.data?.dashboard.summary.allTime) });
     } catch {
       const local = await appDataClient.localDashboard();
-      setDashboard({ status: 'error', data: dashboardForMembership(local, membership, primarySections.data?.dashboard.summary.allTime), message: 'Showing what is safe on this iPhone. Journey history will return when JourneyDeck is reachable.' });
+      setDashboard({ status: 'error', data: dashboardForMembership(local, membership, primarySections.data?.dashboard.summary.allTime), message: `Showing what is safe on this ${DEVICE_NAME}. Journey history will return when JourneyDeck is reachable.` });
     }
   }, [membership, primarySections.data?.dashboard.summary.allTime]);
 
@@ -530,8 +532,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   }, [membership]);
 
   const syncPrivateCloud = useCallback(async (announce = false) => {
-    if (isIsolationTestProfile()) {
-      const detail = 'Paused for the temporary clean-profile isolation test.';
+    if (isSandboxProfile()) {
+      const detail = isDemoProfile() ? 'Sample data stays on this device and is never uploaded.' : 'Paused for the temporary clean-profile isolation test.';
       setPrivateCloud({ status: 'idle', detail });
       if (announce) Alert.alert('Private iCloud is paused', detail);
       return;
@@ -606,6 +608,28 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           onProfileChanged();
         } catch (error) {
           Alert.alert('Test profile was not created', error instanceof Error ? error.message : 'No profile data was changed.');
+        } finally { finishProfileSwitch(); }
+      })() },
+    ]);
+  }, [dashboard.data.recorder.state, onProfileChanged]);
+
+  const toggleSampleData = useCallback(() => {
+    const leaving = isDemoProfile();
+    if (dashboard.data.recorder.state !== 'ready') {
+      Alert.alert('Finish the active journey first', 'Profile switching is disabled while the recorder is active.');
+      return;
+    }
+    Alert.alert(leaving ? 'Leave the sample data?' : 'Try sample data?',
+      leaving ? 'The sample library is removed from this device and JourneyDeck returns to your own data.'
+        : 'JourneyDeck opens a fictional library so you can look around. Your own data stays untouched, and nothing in the sample is uploaded to iCloud. You can leave it at any time.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: leaving ? 'Leave sample' : 'Open sample', onPress: () => void (async () => {
+        try {
+          await prepareForProfileSwitch();
+          if (leaving) exitDemoProfile(); else await enterDemoProfile();
+          onProfileChanged();
+        } catch (error) {
+          Alert.alert('Sample data was not changed', error instanceof Error ? error.message : 'No data was changed.');
         } finally { finishProfileSwitch(); }
       })() },
     ]);
@@ -969,6 +993,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     onDataHealth={() => openMore('health')}
     onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
     onRestoreMembership={membershipStore.restore}
+    sampleActive={isDemoProfile(currentUser)} onSampleToggle={REDESIGN_PHONE ? toggleSampleData : undefined}
     onReplayOnboarding={REDESIGN_PHONE ? () => { setFirstRunProgress(saveFirstRunProgress({ stage: 'welcome', recordingMode: firstRunRecordingMode })); } : undefined}
     onSpotifyOwnerConnect={() => void connectSpotifyOwner()}
     onSpotifyOwnerSync={() => void syncSpotifyOwner()}
@@ -987,15 +1012,16 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   />;
 
   // V4 iPhone: one recorder instance, in the tab bar accessory on iOS 26+ and on Today before that.
-  const accessoryRecorder = REDESIGN_PHONE && supportsTabAccessory(Platform.OS, Platform.Version);
-  const redesignRecorder = REDESIGN_PHONE ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
+  // iPad never records; it shows what the iPhone syncs through iCloud.
+  const accessoryRecorder = REDESIGN_PHONE && canRecordDrives() && !isDemoProfile(currentUser) && supportsTabAccessory(Platform.OS, Platform.Version);
+  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() && !isDemoProfile(currentUser) ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
   const loadTodayProfile = useCallback(() => {
     const appearance = loadProfileAppearance(currentUser);
     return { initials: profileInitialsFor(appearance.displayName), avatarUri: appearance.avatarDataUri ?? null };
   }, [currentUser]);
 
   const navigationContent = {
-    tabs: adaptiveLayout.isRegular ? {
+    tabs: adaptiveLayout.isRegular && !REDESIGN_PHONE ? {
       music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
       statistics: <IpadStatisticsScreen key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
@@ -1013,10 +1039,10 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         onAsk={V3_ASK_JOURNEYDECK_ENABLED ? () => router.push('/ask-journeydeck') : undefined}
         extraCards={{
           fiftyStates: V3_FIFTY_STATES_ENABLED ? <FiftyStatesHomeWidget userId={currentUser.id} onPress={openFiftyStates} dense /> : undefined,
-          yourCar: TESSIE_INTEGRATION_ENABLED ? <YourCarWidget vehicles={primarySections.data?.vehicle.vehicles ?? []} loading={primarySections.status === 'loading' && !primarySections.data} failed={primarySections.status === 'error'} /> : undefined,
+          yourCar: TESSIE_INTEGRATION_ENABLED && canRecordDrives() ? <YourCarWidget vehicles={primarySections.data?.vehicle.vehicles ?? []} loading={primarySections.status === 'loading' && !primarySections.data} failed={primarySections.status === 'error'} /> : undefined,
         }}
         loadProfile={loadTodayProfile} onJourney={openJourney} onMemory={openMemory} onMemories={() => openTab('journeys')} onWeek={() => openTab('statistics')}
-        onProfile={() => { router.push('/preferences'); }} onRefresh={() => refreshPrimarySections(true)} />
+        onProfile={() => { router.push('/preferences'); }} onSync={isIpad() ? () => void syncPrivateCloud(true) : undefined} sampleActive={isDemoProfile(currentUser)} onExitSample={toggleSampleData} onRefresh={() => refreshPrimarySections(true)} />
         : <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
       statistics: REDESIGN_PHONE
         ? <AtlasTabV4 key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />
@@ -1039,20 +1065,20 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   };
 
   return (
-    <NativeNavigationContext.Provider value={navigationContent}><View style={styles.app}>
+    <IphoneRequiredProvider value={{ sync: () => void syncPrivateCloud(true), account: () => router.push('/preferences'), sample: toggleSampleData }}><NativeNavigationContext.Provider value={navigationContent}><View style={styles.app}>
       {appVisible && primarySections.status !== 'loading' && <ObserveInteractiveMarker params={{ dataState: primarySections.status }} />}
       <View style={styles.screenBody}>
         {(!preferences || !recordingPreferences) && <AppLoading />}
         {firstRunStage && REDESIGN_PHONE && (() => {
-          const stage = v4Stage(firstRunStage as Exclude<FirstRunStage, 'complete'>);
-          const finish = () => { setFirstRunProgress(completeFirstRun(firstRunRecordingMode)); openTab('home'); void refreshMemories(false); };
+          const stage = v4Stage(firstRunStage as Exclude<FirstRunStage, 'complete'>, isIpad());
+          const finish = () => { if (isIpad()) void chooseRecordingMode('manual'); setFirstRunProgress(completeFirstRun(firstRunRecordingMode)); openTab('home'); void refreshMemories(false); };
           const advance = () => {
             if (stage === 'welcome') completeWelcomeIntro();
-            const next = nextV4Stage(stage);
+            const next = nextV4Stage(stage, isIpad());
             if (next === 'complete') finish(); else advanceFirstRun(next);
           };
-          return <FirstRunV4 stage={stage} recordingMode={recordingPreferences?.onboardingCompleted ? recordingPreferences.mode : null} onAdvance={advance} onFinish={finish}
-            onBack={() => { const previous = previousV4Stage(stage); if (previous) advanceFirstRun(previous); }}
+          return <FirstRunV4 stage={stage} appleSignedIn={appleIdentityStatus === 'authorized'} appleSigningIn={signingInWithApple} onAppleSignIn={() => void connectAppleIdentity()} onSync={() => syncPrivateCloud(true)} recordingMode={recordingPreferences?.onboardingCompleted ? recordingPreferences.mode : null} onAdvance={advance} onFinish={finish}
+            onBack={() => { const previous = previousV4Stage(stage, isIpad()); if (previous) advanceFirstRun(previous); }}
             onHaveAccount={() => { completeWelcomeIntro(); finish(); }}
             onLocationContinue={async (mode, drivesTesla) => {
               await chooseRecordingMode(mode);
@@ -1178,7 +1204,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         })}
         onRestore={membershipStore.restore}
       />
-    </View></NativeNavigationContext.Provider>
+    </View></NativeNavigationContext.Provider></IphoneRequiredProvider>
   );
 }
 
@@ -1632,7 +1658,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
   const routeTitle = latestJourney ? homeRouteContext(latestJourney) : 'Your next drive will appear here';
   const heroStats = latestJourney
     ? `${formatMiles(latestJourney.miles)} · ${formatDuration(latestJourney.durationMinutes)} · ${latestJourney.songCount} ${latestJourney.songCount === 1 ? 'song' : 'songs'}`
-    : 'Captured privately on your iPhone';
+    : `Captured privately on your ${DEVICE_NAME}`;
 
   const editProfile = () => { setProfileDraft(appearance); setProfileEditorOpen(true); void haptics.selection(); };
   const pickAvatar = async () => {
@@ -2360,7 +2386,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
 
   const deleteMemory = () => {
     if (!memoryDraft?.id) return;
-    Alert.alert('Delete this Memory?', 'It will disappear on this iPhone and your other devices. JourneyDeck keeps a recoverable deletion marker so an older device cannot bring it back.', [
+    Alert.alert('Delete this Memory?', `It will disappear on this ${DEVICE_NAME} and your other devices. JourneyDeck keeps a recoverable deletion marker so an older device cannot bring it back.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void (async () => {
         setSaving(true);
@@ -3212,7 +3238,7 @@ function ConnectionsScreen({
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, journeys, memories, onMembership,
   onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible,
-  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange, onTessieChanged, onRestoreMembership, onReplayOnboarding,
+  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange, onTessieChanged, onRestoreMembership, sampleActive, onSampleToggle, onReplayOnboarding,
 }: {
   provider: MusicProvider;
   connectionCapabilities: ConnectionCapabilities;
@@ -3225,6 +3251,9 @@ function ConnectionsScreen({
   membershipExpirationDate: string | null;
   /** App Store Restore Purchases, reachable from Settings as well as the paywall. */
   onRestoreMembership?: () => Promise<void>;
+  /** Opens or leaves the fictional sample library (App Review, first look). */
+  sampleActive?: boolean;
+  onSampleToggle?: () => void;
   /** Shows the V4 welcome tour again from the start; data and permissions stay as they are. */
   onReplayOnboarding?: () => void;
   journeys: JourneySummary[];
@@ -3337,7 +3366,7 @@ function ConnectionsScreen({
   const openConnector = () => { setDestination({ kind: 'connector' }); void haptics.selection(); };
   const connectorSummary = V4_CONNECTOR_ENABLED ? connectorPrivacySummary(readConnectorPrivacy(currentUser.id)) : '';
 
-  if (adaptiveLayout.isRegular) return <IpadSettingsScreen
+  if (adaptiveLayout.isRegular && !REDESIGN_PHONE) return <IpadSettingsScreen
     displayName={profileAppearance.displayName} avatar={profileAppearance.avatarDataUri} initials={profileInitialsFor(profileAppearance.displayName)}
     appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending}
     hasAppleAccount={Boolean(currentUser.appleSubject)} cloud={privateCloud} membershipTier={membershipTier} membershipExpirationDate={membershipExpirationDate}
@@ -3457,7 +3486,7 @@ function ConnectionsScreen({
         <View style={styles.settingsInsetNote}><Text style={styles.privateCloudTitle}>PLACE DATA</Text><PlaceDataCredits /></View>
       </>,
       music: <>{providerCard}{tessieContent}{lastFmControls}{internalMusicControls}<View style={styles.settingsInsetNote}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music and vehicle connections are optional. A connection or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View></>,
-      account: <>{profileCard}{cloudCard}<View style={styles.settingsCompactList}>{compactActionRow({ label: 'Read Privacy Policy', detail: 'How JourneyDeck protects your data', symbol: 'hand.raised.fill', accessibilityLabel: 'Privacy Policy', onPress: () => void Linking.openURL('https://journeydeck.me/privacy') })}</View><Text style={styles.settingsSectionLabel}>ACCOUNT ACTIONS</Text>{accountActions}</>,
+      account: <>{profileCard}{cloudCard}<View style={styles.settingsCompactList}>{compactActionRow({ label: 'Read Privacy Policy', detail: 'How JourneyDeck protects your data', symbol: 'hand.raised.fill', accessibilityLabel: 'Privacy Policy', onPress: () => void Linking.openURL('https://journeydeck.me/privacy') })}{onSampleToggle ? compactActionRow({ label: sampleActive ? 'Leave sample data' : 'Try sample data', detail: sampleActive ? 'Remove the sample and return to your own data' : 'Explore a fictional library. Nothing is uploaded.', symbol: 'sparkles', accessibilityLabel: sampleActive ? 'Leave sample data' : 'Try sample data', onPress: onSampleToggle, border: true }) : null}</View><Text style={styles.settingsSectionLabel}>ACCOUNT ACTIONS</Text>{accountActions}</>,
       places: <><Text style={styles.settingsDetailIntro}>Name familiar places automatically and protect their exact locations when sharing.</Text>{placesCard}</>,
       membership: <>{membershipCard}{onRestoreMembership ? <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Restore Purchases', detail: 'Already subscribed? Restore JourneyDeck Plus', symbol: 'arrow.clockwise', accessibilityLabel: 'Restore Purchases', onPress: () => { void onRestoreMembership().then(() => Alert.alert('Restore Purchases', 'JourneyDeck checked the App Store for your purchases.')).catch(error => Alert.alert('Restore Purchases', error instanceof Error ? error.message : 'The App Store could not restore purchases.')); } })}</View> : null}{onReplayOnboarding ? <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Replay onboarding', detail: 'See the welcome tour again. Your data stays as it is.', symbol: 'play.circle', accessibilityLabel: 'Replay onboarding', onPress: onReplayOnboarding })}</View> : null}{supportCard}</>,
     };
@@ -3499,7 +3528,11 @@ function ConnectionsScreen({
         </TouchPressable>}
       </View>
     </View>
-    {renderCategoryGroup('PREFERENCES', ['appearance', 'music', 'recording'])}
+    {renderCategoryGroup('PREFERENCES', canRecordDrives() ? ['appearance', 'music', 'recording'] : ['appearance'])}
+    {!canRecordDrives() && <View style={styles.settingsHubSection}>
+      <Text style={styles.settingsSectionLabel}>RECORDING</Text>
+      <View style={styles.settingsHubList}><View style={styles.settingsHubRow}><View style={styles.settingsHubIcon}><SymbolView name="iphone" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>Record on your iPhone</Text><Text style={styles.settingsHubProfileDetail}>Drives are recorded with JourneyDeck on iPhone and sync here through iCloud.</Text></View></View></View>
+    </View>}
     {V4_CONNECTOR_ENABLED && <View style={styles.settingsHubSection}>
       <Text style={styles.settingsSectionLabel}>AI ASSISTANTS</Text>
       <View style={styles.settingsHubList}>
@@ -4098,12 +4131,12 @@ function statusText(status: string) { return status === 'connected' ? 'Connected
 function nativeAppleStatus(capabilities: JourneyDeckMusicCapabilityStatus | null, stored: string) {
   if (!isJourneyDeckMusicNativeAvailable) return 'New native build required';
   if (capabilities?.appleMusicAvailable === false) return 'Apple capability unavailable';
-  return capabilities?.appleMusicAuthorizationStatus === 'authorized' ? 'Connected on this iPhone' : capabilities?.appleMusicAuthorizationStatus === 'denied' || capabilities?.appleMusicAuthorizationStatus === 'restricted' ? 'Needs attention' : statusText(stored);
+  return capabilities?.appleMusicAuthorizationStatus === 'authorized' ? `Connected on this ${DEVICE_NAME}` : capabilities?.appleMusicAuthorizationStatus === 'denied' || capabilities?.appleMusicAuthorizationStatus === 'restricted' ? 'Needs attention' : statusText(stored);
 }
 function nativeShazamStatus(capabilities: JourneyDeckMusicCapabilityStatus | null, stored: string) {
   if (!isJourneyDeckMusicNativeAvailable) return 'New native build required';
   if (capabilities?.shazamKitAvailable === false) return 'ShazamKit capability unavailable';
-  return capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled on this iPhone' : capabilities?.microphonePermissionStatus === 'denied' || capabilities?.microphonePermissionStatus === 'restricted' ? 'Needs attention' : statusText(stored);
+  return capabilities?.microphonePermissionStatus === 'authorized' ? `Enabled on this ${DEVICE_NAME}` : capabilities?.microphonePermissionStatus === 'denied' || capabilities?.microphonePermissionStatus === 'restricted' ? 'Needs attention' : statusText(stored);
 }
 
 const darkRouteVisualStyles = StyleSheet.create({

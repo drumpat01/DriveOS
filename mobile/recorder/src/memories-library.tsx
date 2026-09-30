@@ -12,6 +12,8 @@ import {
   CircleButton, Kicker, LargeTitle, MemoryCoverImage, PhotoScrim, RedesignPage, RouteSketch, SectionHeader, Segmented,
   Surface, redesignStyles, SERIF, useDriveArtwork, useRedesignColors,
 } from './redesign-ui';
+import { IphoneRequiredCard } from './iphone-required';
+import { isIpad } from './device-layout';
 import { TouchPressable } from './touch-feedback';
 
 type View3 = 'memories' | 'drives' | 'map';
@@ -40,7 +42,7 @@ export function MemoriesLibraryScreen({
   const collections = useMemo(() => smartCollections(journeys), [journeys]);
   const openCollection = (item: SmartCollection) => { setCollection(item); setFilter('all'); setView('drives'); };
 
-  return <RedesignPage testID="memories-library" refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accent} />}>
+  return <RedesignPage testID="memories-library" refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accent} />}>{canvas => <>
     <LargeTitle title="Memories" trailing={<CircleButton label="New memory" symbol="plus" onPress={onCreate} />} />
     <Segmented label="Library view" options={VIEWS} value={view} onChange={setView} />
     {historyLimited ? <TouchPressable accessibilityRole="button" accessibilityLabel="Unlock every Journey and Memory" onPress={onUpgrade} style={({ pressed }) => pressed && redesignStyles.pressed}>
@@ -74,10 +76,10 @@ export function MemoriesLibraryScreen({
         <SectionHeader title={String(group.year)} detail={`${group.items.length} ${group.items.length === 1 ? 'memory' : 'memories'} · ${formatMilesShort(group.miles)}`} />
         {group.items.map((item, index) => index === 0 ? <MemoryCard key={item.memory.id} item={item} large locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} onDelete={onDelete} /> : null)}
         {group.items.length > 1 || groupIndex === 0 ? <View style={styles.grid}>
-          {group.items.slice(1).map(item => <View key={item.memory.id} style={styles.gridCell}><MemoryCard item={item} locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} onDelete={onDelete} /></View>)}
-          {groupIndex === 0 ? <View style={styles.gridCell}><NewMemoryTile onPress={onCreate} /></View> : null}
+          {group.items.slice(1).map(item => <View key={item.memory.id} style={[styles.gridCell, canvas.columns === 3 && styles.gridCellThird]}><MemoryCard item={item} locked={isLocked(item.startedAt)} onUpgrade={onUpgrade} onMemory={onMemory} onEdit={onEdit} onShare={onShare} onDelete={onDelete} /></View>)}
+          {groupIndex === 0 ? <View style={[styles.gridCell, canvas.columns === 3 && styles.gridCellThird]}><NewMemoryTile onPress={onCreate} /></View> : null}
         </View> : null}
-      </View>) : !loading ? <TouchPressable accessibilityRole="button" onPress={onCreate} style={({ pressed }) => pressed && redesignStyles.pressed}>
+      </View>) : !loading && !journeys.length && isIpad() ? <IphoneRequiredCard subject="Your drives and Memories" /> : !loading ? <TouchPressable accessibilityRole="button" onPress={onCreate} style={({ pressed }) => pressed && redesignStyles.pressed}>
         <Surface style={styles.empty}>
           <SymbolView name="rectangle.stack.badge.plus" tintColor={colors.accent} size={30} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>Keep drives together</Text>
@@ -87,7 +89,7 @@ export function MemoriesLibraryScreen({
     </> : view === 'drives' ? <DrivesView journeys={journeys} details={details} filter={filter} onFilter={setFilter}
       collection={collection} onClearCollection={() => setCollection(null)} onJourney={onJourney} onAddToMemory={onAddToMemory} isLocked={isLocked} onUpgrade={onUpgrade} />
       : <MapView journeys={journeys.filter(journey => !isLocked(journey.startedAt))} details={details} />}
-  </RedesignPage>;
+  </>}</RedesignPage>;
 }
 
 type MemoryItem = ReturnType<typeof memoryYearGroups>[number]['items'][number];
@@ -252,6 +254,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontFamily: SERIF, fontSize: 20, lineHeight: 23, fontWeight: '600' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   gridCell: { width: '47.8%', flexGrow: 1 },
+  gridCellThird: { width: '31.5%' },
   newTile: { alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderStyle: 'dashed', borderWidth: 1.5 },
   empty: { padding: 24, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '700' },

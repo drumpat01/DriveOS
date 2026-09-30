@@ -1,3 +1,4 @@
+import { DEVICE_NAME } from './device-layout';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -90,7 +91,7 @@ export function ConnectorSettings({ profileId, membershipTier, hasAppleAccount, 
           <SymbolView name="square.and.arrow.up" tintColor={colors.accent} size={18} />
         </Pressable>
       </View>}
-      <Step number={String(assistant.addSteps.length + 2)} text="Connect, sign in with the Apple Account this iPhone uses, then choose Allow." colors={colors} />
+      <Step number={String(assistant.addSteps.length + 2)} text={`Connect, sign in with the Apple Account this ${DEVICE_NAME} uses, then choose Allow.`} colors={colors} />
       {assistant.note && <Text style={[styles.footnote, { color: colors.muted }]}>{assistant.note}</Text>}
       <Text style={[styles.label, { color: colors.muted }]}>THEN ASK {assistant.id === 'other' ? 'IT' : assistant.name.toUpperCase()}</Text>
       {EXAMPLE_QUESTIONS.map(question => <Text key={question} style={[styles.example, { color: colors.text, borderColor: colors.border }]}>“{question}”</Text>)}
