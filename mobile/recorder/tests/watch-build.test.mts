@@ -89,6 +89,11 @@ test('generated Watch files identify the paired preview app and match the bundle
     assert.equal(background.images[0].filename, 'cinematic-road.png');
     assert.equal(readFileSync(join(directory, 'JourneyDeckWatch', backgroundPath, background.images[0].filename))
       .compare(readFileSync(join(root, 'watch', backgroundPath, 'cinematic-road.png'))), 0);
+    // Grand Touring: the same road photo as the iOS widget ships with the Watch target.
+    const roadPath = 'Assets.xcassets/RoadPhoto.imageset';
+    const road = JSON.parse(readFileSync(join(directory, 'JourneyDeckWatch', roadPath, 'Contents.json'), 'utf8'));
+    assert.equal(road.images[0].filename, 'RoadPhoto.jpg');
+    assert.equal(readFileSync(join(directory, 'JourneyDeckWatch', roadPath, 'RoadPhoto.jpg')).compare(readFileSync(join(root, 'watch', roadPath, 'RoadPhoto.jpg'))), 0);
   } finally {
     const resolved = resolve(directory);
     assert.ok(resolved.startsWith(resolve(tmpdir()) + require('node:path').sep));
@@ -112,4 +117,22 @@ test('native integration retains isolated persistence, precise stop ownership an
   assert.match(bridge, /executeCommand\(operationID: requestID, action: "finish", sessionID: expected, expectedToken: token, expiresAt: issuedAt \+ 30\)/);
   assert.match(app, /isNativeManualRecorderAvailable[\s\S]*startNativeManualJourney\(randomUUID\(\)\)/);
   assert.match(app, /beginLocalSession\(deviceId\)/);
+});
+
+test('Watch is themed Grand Touring like the Start a Journey widget, with a larger Start button', () => {
+  const watch = source('watch/JourneyDeckWatchApp.swift');
+  const widget = source('widgets/JourneyDeckWidgets.swift');
+  const channel = (name: string, text: string) => text.match(new RegExp(name + String.raw` = Color\(red: (\d+) / 255, green: (\d+) / 255, blue: (\d+) / 255\)`))?.slice(1).join(',');
+  for (const color of ['navy', 'champagne', 'ivory']) {
+    assert.ok(channel(color, widget), `${color} exists in the widget`);
+    assert.equal(channel(color, watch), channel(color, widget), `${color} matches the widget`);
+  }
+  assert.match(watch, /Image\("RoadPhoto"\)/);
+  assert.match(watch, /Capsule\(\)\.fill\(active \? WatchPalette\.ivory : WatchPalette\.champagne\)/);
+  assert.match(watch, /minHeight: 56/, 'the Start button is larger than the widget\'s 36pt');
+  assert.match(watch, /LAST DRIVE/);
+  assert.doesNotMatch(watch, /purple|copper/i, 'the old copper and purple palette is gone');
+  const bridge = source('modules/journeydeck-recorder/ios/JourneyDeckWatchBridge.swift');
+  assert.match(bridge, /result\["lastDrive"\]/);
+  assert.doesNotMatch(bridge, /latitude|longitude/);
 });
