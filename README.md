@@ -24,6 +24,8 @@ JourneyDeck is currently a personal, single-household project—not a public hos
 
 ## Highlights
 
+JourneyDeck's idea began on **August 7, 2026, at 9:23 a.m.**, as a Tesla drive recorder and music journal. See the [project origin](docs/PROJECT_ORIGIN.md) for the original conversation and first repository milestones.
+
 - **Overview and Live** — current vehicle state, latest journey, battery, range, recent music, and quick actions.
 - **Timeline** — journeys, charging, songs, and stops arranged in chronological order.
 - **Memories** — collect journeys into visual chapters such as road trips, weekends, seasons, and favorites.
