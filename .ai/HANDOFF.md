@@ -1,9 +1,10 @@
-# JourneyDeck current handoff — September 30, 2026
+# JourneyDeck current handoff — October 1, 2026
 
 ## Objective and checkout
 
 - V4 is being prepared for an October 14, 2026 public launch. Public release, App Review submission, OTA, deploy, commit, and push still require the owner's explicit request. V2 is live. Owner decision (2026-09-30): V4 4.0.0 replaces the live App Store version directly; V3 is never released (frozen, emergency fixes only).
-- Checkout verified September 30: `D:\JourneyDeckV4`, branch `main`, HEAD `035847d` (PR 226, project origin; also includes PR 225 Watch changes from another session). Local modifications are website verification notes and this handoff only; verify current status before acting.
+- Owner decision October 1: JourneyDeck is feature and development complete, including V4 and all previous app versions. Preserve the completed baseline; no discretionary development. This decision is recorded in `GEMINI.md` and `mobile/recorder/AGENTS.md`.
+- Checkout verified October 1: `D:\JourneyDeckV4`, branch `main`, HEAD `ade9e3f` (PR 233, Build 48 and App Review submission handoff). Tree was clean before this documentation update; only the handbook, mobile guidance, and handoff are changed by this session. No staging, commit, push, build, OTA, submission, or release performed.
 - Project origin is permanently recorded in `docs/PROJECT_ORIGIN.md` and linked from README, merged through PR 226. Owner supplied the original conversation screenshot: Friday, August 7, 2026, 9:23 a.m. (displayed timezone unspecified), proposing a Tesla Drive “Flight Recorder” + Music Journal. Distinguish conception from the first Git commits on August 8.
 
 ## Website V4 update — live September 30
@@ -59,9 +60,6 @@
 
 ## Next steps
 
-- October 1: owner requested a browser update to V4 App Review notes. Saved and verified in App Store Connect 4.0.0: sample entry/exit and relaunch instructions, weekly/annual sandbox purchase steps, Restore Purchases, and explicit three-day **in-app** Plus trial separate from subscription purchases. Version remains Ready for Review with one draft submission; no submission or release performed.
-
-1. Review the uncommitted subscription diff and run targeted tests after any change. Build V4 natively to verify StoreKit and Siri, then test eligible/ineligible trials, weekly and annual purchases, legacy monthly entitlement, restore, cancellation, and expiration in Sandbox.
-2. Add weekly review screenshot and V4 notes in App Store Connect; submit the weekly product for App Review only when the owner requests it. Confirm product approval before the October 14 launch. Keep V3 and current live pricing functional meanwhile.
-3. Before launch, confirm both scheduled offers and the annual price in App Store Connect. Decide when to remove monthly from new sale while preserving active monthly subscribers. Do not submit/release V4 without owner authorization.
-4. Update this handoff after material repo/environment changes, keeping it under 150 lines and 20 KB.
+1. Await the outcome of the recorded Build 48 App Review submission; no monitoring automation was created by this session. No discretionary app development remains authorized.
+2. Public release remains manual and requires the owner's explicit request. Existing launch target is October 14, 2026; verify current App Store state before any authorized release action.
+3. Documentation-only completion update: run `git diff --check`; no runtime tests are needed. Update this handoff only after material changes or an explicit request.
