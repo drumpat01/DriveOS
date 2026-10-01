@@ -19,7 +19,7 @@ function load(name: string, mocks: Record<string, unknown>) {
   }).outputText;
   // The V4 redesign is off in these classic-layout tests; its modules are stubbed.
   const v4Stubs: Record<string, unknown> = { './redesign-ui': { useRedesignColors: () => ({}) }, './device-layout': { isIpad: () => false, DEVICE_NAME: 'iPhone' }, './ask-journeydeck-v4': {}, './ask-chat-motion': {}, 'react-native-keyboard-controller': {}, './motion': { useMotionPreferences: () => ({ reduceMotion: false }) } };
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id in v4Stubs ? v4Stubs[id] : id.endsWith('.png') ? id : require(id) });
+  vm.runInNewContext(code, { module, exports: module.exports, setTimeout, clearTimeout, require: (id: string) => id in mocks ? mocks[id] : id in v4Stubs ? v4Stubs[id] : id.endsWith('.png') ? id : require(id) });
   return module.exports;
 }
 function deferred() {
@@ -372,6 +372,10 @@ test('Ask JourneyDeck shows the Plus upgrade prompt to free members and never as
   assert.match(view.text(), /Included with JourneyDeck Plus/);
   assert.equal(view.tree.root.findAllByType('TextInput').length, 0);
   await act(() => view.tree.root.findByProps({ testID: 'ask-upgrade-button' }).props.onPress());
+  // iOS cannot show the plans over Ask's full-screen modal: Ask closes first, then the plans open.
+  assert.deepEqual(view.pushes, ['back']);
+  assert.equal(view.upgrades(), 0);
+  await new Promise(resolve => setTimeout(resolve, 550));
   assert.equal(view.upgrades(), 1);
   assert.equal(view.calls.length, 0);
   await view.close();

@@ -63,9 +63,15 @@ export function AskJourneyDeckScreen() {
   return nav.membership.tier === 'paid' ? <AskJourneyDeckChat /> : <AskJourneyDeckUpgrade onUpgrade={nav.showUpgrade} />;
 }
 
+/** How long Ask's full-screen dismissal takes before the plans can be presented. */
+export const PLANS_AFTER_ASK_CLOSES_MS = 500;
+
 function AskJourneyDeckUpgrade({ onUpgrade }: { onUpgrade: () => void }) {
   const theme = useAppTheme(), c = theme.palette, insets = useSafeAreaInsets();
   const close = () => { if (router.canGoBack()) router.back(); else router.replace('/'); };
+  // The plans are presented from the app root, and iOS will not show them over this full-screen
+  // modal, so Ask closes first and the plans open once it has gone.
+  const upgrade = () => { close(); setTimeout(onUpgrade, PLANS_AFTER_ASK_CLOSES_MS); };
   return <View testID="ask-upgrade" style={[styles.screen, { backgroundColor: c.page, paddingTop: insets.top + 12, paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
     <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={close} hitSlop={12} style={{ alignSelf: 'flex-start', paddingVertical: 8 }}>
       <Text style={{ color: c.accent, fontSize: 17, fontWeight: '600' }}>Close</Text>
@@ -74,7 +80,7 @@ function AskJourneyDeckUpgrade({ onUpgrade }: { onUpgrade: () => void }) {
       <BotAvatar themeID={theme.id} size={72} />
       <Text accessibilityRole="header" style={{ color: c.text, fontSize: 30, fontWeight: '700' }}>Ask anything about your drives.</Text>
       <Text style={{ color: c.muted, fontSize: 16, lineHeight: 22 }}>Miles, music, places and Memories, answered privately on this {DEVICE_NAME} and with Siri. Included with JourneyDeck Plus.</Text>
-      <Pressable accessibilityRole="button" testID="ask-upgrade-button" onPress={onUpgrade} style={{ padding: 18, backgroundColor: c.accent, borderRadius: 18, alignItems: 'center' }}>
+      <Pressable accessibilityRole="button" testID="ask-upgrade-button" onPress={upgrade} style={{ padding: 18, backgroundColor: c.accent, borderRadius: 18, alignItems: 'center' }}>
         <Text style={{ color: c.onAccent, fontWeight: '800', fontSize: 16 }}>Explore Plus</Text>
       </Pressable>
     </View>
