@@ -7,7 +7,7 @@ import { GlassBackdrop, useGlassCardStyle } from './src/glass-material';
 import { journeyDeckSemanticColors } from './src/journeydeck-design-tokens';
 import { AppIconProvider } from './src/app-icon-preference';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { hasStartJourneyRequest, subscribeStartJourneyRequests, takeStartJourneyRequest } from './src/start-journey-link';
+import { hasStartJourneyRequest, subscribeStartJourneyRequests, takeStartJourneyRequest, requestStartJourney, takeStartJourneyLeftSample } from './src/start-journey-link';
 import {
   ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, View,
@@ -61,7 +61,7 @@ import {
   configureNativeManualRecorder, isNativeManualRecorderAvailable, startNativeManualJourney,
   subscribeNativeRecorderStatus,
 } from './modules/journeydeck-recorder';
-import { getCurrentUser } from './src/auth';
+import { getCurrentUser, isDemoProfile } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_FIFTY_STATES_ENABLED } from './src/release-features';
@@ -159,8 +159,10 @@ function completionMomentFromSnapshot(snapshot: LiveRecorderSnapshot, fallback: 
   };
 }
 
-function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange }: {
+function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample }: {
   onClose: () => void;
+  /** Leaves the sample for the member's own library (the recorder remounts there). */
+  onLeaveSample?: () => Promise<void>;
   presentation?: 'screen' | 'home' | 'ipad-home' | 'accessory' | 'accessory-inline';
   showManualSongButton?: boolean;
   onJourneyChange?: () => void;
@@ -435,7 +437,8 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     const current = activeSession();
     const automaticState = loadAutomaticDriveState();
     const finishingExistingAutomaticJourney = Boolean(current && automaticState.automaticSessionId === current.id);
-    const shouldRun = Boolean(foregroundPermission && backgroundPermission && (tessieEligible || finishingExistingAutomaticJourney));
+    // Automatic drives are never recorded into the sample; detection resumes when the sample is left.
+    const shouldRun = !isDemoProfile() && Boolean(foregroundPermission && backgroundPermission && (tessieEligible || finishingExistingAutomaticJourney));
     if (NATIVE_AUTOMATIC_RECORDER_ENABLED) {
       await stopAutomaticDetection().catch(() => undefined);
       const status = await configureNativeAutomaticRecorder(shouldRun, getCurrentUser().id, deviceId);
@@ -563,7 +566,13 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     setNotice('Background location is ready.');
   }, 'Checking location access…');
 
-  const start = () => withBusy(async () => {
+  const start = () => {
+    // The sample is a fixed demo that is rebuilt daily, so a real drive is never recorded into it: Start leaves
+    // the sample, and the recorder starts the journey again in the member's own library once it reloads there.
+    if (onLeaveSample && isDemoProfile()) { requestStartJourney(Date.now(), true); return onLeaveSample(); }
+    return startRecording();
+  };
+  const startRecording = () => withBusy(async () => {
     if (!deviceId) throw new Error('The local recorder is still getting ready.');
     if (!permissionsReady) throw new Error('Enable background location first.');
     if (isNativeManualRecorderAvailable) {
@@ -608,8 +617,9 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     if (!hasStartJourneyRequest() || !deviceId || !recorderInitialized || busy) return;
     const live = summary && summary.status !== 'completed';
     takeStartJourneyRequest();
+    const fromSample = takeStartJourneyLeftSample();
     setRecorderSheetOpen(true);
-    if (!live && permissionsReady) void start();
+    if (!live && permissionsReady) void start().then(() => { if (fromSample) setNotice('Recording in your library. The sample is still in Settings.'); });
   }, [startRequestTick, presentation, deviceId, recorderInitialized, busy, permissionsReady, summary]);
 
   const pause = () => withBusy(async () => {

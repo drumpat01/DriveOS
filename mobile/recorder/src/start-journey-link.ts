@@ -5,10 +5,13 @@
  */
 const EXPIRES_MS = 120_000;
 let requestedAt: number | null = null;
+/** True when the request came from Start while the sample was open; the drive is recorded in the member's own library. */
+let leftSample = false;
 const listeners = new Set<() => void>();
 
-export function requestStartJourney(now = Date.now()) {
+export function requestStartJourney(now = Date.now(), fromSample = false) {
   requestedAt = now;
+  leftSample = fromSample;
   for (const listener of listeners) listener();
 }
 
@@ -17,6 +20,13 @@ export function takeStartJourneyRequest(now = Date.now()) {
   const fresh = requestedAt !== null && now - requestedAt <= EXPIRES_MS;
   requestedAt = null;
   return fresh;
+}
+
+/** Whether the request just taken came from leaving the sample. Returns it once, then clears it. */
+export function takeStartJourneyLeftSample() {
+  const value = leftSample;
+  leftSample = false;
+  return value;
 }
 
 export function hasStartJourneyRequest(now = Date.now()) {
