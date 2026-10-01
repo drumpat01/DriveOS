@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { V4_STEPS, nextV4Stage, previousV4Stage, v4Stage, v4Steps } from '../src/first-run-v4-flow.ts';
+import { V4_STEPS, haveAccountStage, nextV4Stage, previousV4Stage, v4Stage, v4Steps } from '../src/first-run-v4-flow.ts';
 
 test('V4 onboarding is four steps: Welcome, Location, Soundtrack, See where you have been', () => {
   assert.deepEqual(V4_STEPS, ['welcome', 'location', 'music', 'photos']);
@@ -28,4 +28,10 @@ test('iPad onboarding skips the recording steps because drives are recorded on i
   assert.equal(v4Stage('recording', true), 'sync');
   assert.equal(v4Stage('membership', true), 'photos');
   assert.equal(v4Stage('welcome', true), 'welcome');
+});
+
+test('"I have an account" skips only the welcome deck on iPhone and finishes on iPad', () => {
+  // iPhone still sets up location and music, so the pre-V4 pickers never appear.
+  assert.equal(haveAccountStage(), 'location');
+  assert.equal(haveAccountStage(true), 'complete');
 });

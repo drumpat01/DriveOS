@@ -106,6 +106,7 @@ import { createIsolationTestProfile, enterDemoProfile, exitDemoProfile, isDemoPr
 import { deleteCurrentJourneyDeckAccount, finishProfileSwitch, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, upsertPrivatePreference, type LocalPlace, type LocalUser } from './local-store';
 import { FirstRunV4, nextV4Stage, previousV4Stage, v4Stage } from './first-run-v4';
+import { haveAccountStage } from './first-run-v4-flow';
 import { PlaceDataCredits } from './place-data-credits';
 import {
   loadCustomSavedPlaces, loadSavedPlaces, removeCustomSavedPlace, removeSavedPlace, saveCustomSavedPlace, saveSavedPlace,
@@ -964,8 +965,11 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const fallbackFirstRunStage = preferences && recordingPreferences && !(preferences.onboardingCompleted && recordingPreferences.onboardingCompleted)
     ? (hasCompletedWelcomeIntro() ? 'recording' : 'welcome')
     : null;
+  // V4 never shows the pre-V4 pickers: an iPhone whose location or music setup is unfinished
+  // (for example after "I have an account" in an earlier build) returns to the V4 location step.
+  const v4SetupUnfinished = REDESIGN_PHONE && !isIpad() && fallbackFirstRunStage !== null;
   const firstRunStage = !editingRecordingMode && !editingProvider
-    ? firstRunProgress?.stage === 'complete' ? null : firstRunProgress?.stage ?? fallbackFirstRunStage
+    ? firstRunProgress?.stage === 'complete' ? (v4SetupUnfinished ? 'location' : null) : firstRunProgress?.stage ?? fallbackFirstRunStage
     : null;
   const firstRunRecordingMode: RecordingMode = 'manual';
   const appVisible = appReady && !firstRunStage;
@@ -1099,7 +1103,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           };
           return <FirstRunV4 stage={stage} appleSignedIn={appleIdentityStatus === 'authorized'} appleSigningIn={signingInWithApple} onAppleSignIn={() => void connectAppleIdentity()} onSync={() => syncPrivateCloud(true)} recordingMode={recordingPreferences?.onboardingCompleted ? recordingPreferences.mode : null} onAdvance={advance} onFinish={finish}
             onBack={() => { const previous = previousV4Stage(stage, isIpad()); if (previous) advanceFirstRun(previous); }}
-            onHaveAccount={() => { completeWelcomeIntro(); finish(); }}
+            onHaveAccount={() => { completeWelcomeIntro(); const next = haveAccountStage(isIpad()); if (next === 'complete') finish(); else advanceFirstRun(next); }}
             onLocationContinue={async (mode, drivesTesla) => {
               await chooseRecordingMode(mode);
               if (drivesTesla !== null) upsertPrivatePreference(currentUser.id, 'vehicle.drives-tesla.v1', { drivesTesla });
@@ -1177,12 +1181,23 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           }}
           onBack={firstRunStage === 'welcome' ? undefined : () => advanceFirstRun(previousFirstRunStage(firstRunStage as Exclude<FirstRunStage, 'welcome' | 'complete'>))}
         />}
-        {!firstRunStage && recordingPreferences && !activeRecordingPreferences && <RecordingModePicker
+        {!REDESIGN_PHONE && !firstRunStage && recordingPreferences && !activeRecordingPreferences && <RecordingModePicker
           initial={recordingPreferences.mode ?? 'manual'}
           onContinue={chooseRecordingMode}
           onCancel={recordingPreferences.onboardingCompleted ? () => setEditingRecordingMode(false) : undefined}
         />}
-        {!firstRunStage && activeRecordingPreferences && preferences && !activePreferences && <ProviderPicker
+        {REDESIGN_PHONE && editingProvider && <FirstRunV4 stage="music" lastFmUsername={lastFmUsername}
+          onAdvance={() => setEditingProvider(false)} onBack={() => setEditingProvider(false)} onSkipMusic={() => setEditingProvider(false)}
+          onFinish={() => setEditingProvider(false)} onHaveAccount={() => undefined} onLocationContinue={async () => undefined}
+          onConnectAppleMusic={async () => { await chooseProvider('apple-music'); await connectAppleMusic('apple-music'); }}
+          onConnectLastFm={async username => {
+            await saveLastFmUsername(username);
+            setLastFmUsername(username);
+            setLastFmDraft(username);
+            setLastFmConnected(await isLastFmConnected(username));
+            await chooseProvider('lastfm');
+          }} />}
+        {!REDESIGN_PHONE && !firstRunStage && activeRecordingPreferences && preferences && !activePreferences && <ProviderPicker
           initial={preferences.provider ?? 'apple-music'}
           ownerSpotifyEnabled={ownerSpotifyEligible}
           lastFmUsername={lastFmUsername}
