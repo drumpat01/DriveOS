@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-test('public feature tour starts with Home and keeps its copy with the selected screenshot', async ({ page }) => {
+test('public feature tour starts with Today and keeps its copy with the selected screenshot', async ({ page }) => {
   await page.goto('/beta.html');
-  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Home');
-  await expect(page.locator('#feature-label')).toHaveText('01 / HOME');
+  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Today');
+  await expect(page.locator('#feature-label')).toHaveText('01 / TODAY');
   await page.getByRole('button', { name: 'Next screenshot' }).click();
-  await expect(page.locator('#feature-label')).toHaveText('02 / SOUNDTRACKS');
+  await expect(page.locator('#feature-label')).toHaveText('02 / SOUNDTRACK');
   await expect(page.locator('.tour-slide:visible')).toHaveCount(1);
-  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Soundtracks');
+  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Soundtrack');
   await expect(page.locator('#feature-description')).toContainText('Apple Music');
-  await page.getByRole('button', { name: 'Show Medallions', exact: true }).click();
+  await page.getByRole('button', { name: 'Show Ask JourneyDeck', exact: true }).click();
   await page.getByRole('button', { name: 'Show Memories', exact: true }).click();
   await expect(page.locator('#feature-label')).toHaveText('03 / MEMORIES');
   await expect(page.locator('.tour-slide:visible')).toHaveCount(1);
@@ -18,10 +18,10 @@ test('public feature tour starts with Home and keeps its copy with the selected 
   await expect(page.locator('#feature-description')).toContainText('photos');
   await page.locator('.tour-visual').focus();
   await page.keyboard.press('Home');
-  await expect(page.locator('#feature-label')).toHaveText('01 / HOME');
+  await expect(page.locator('#feature-label')).toHaveText('01 / TODAY');
   await expect(page.locator('.tour-slide:visible')).toHaveCount(1);
-  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Home');
-  await expect(page.getByRole('button', { name: 'Show Home', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Today');
+  await expect(page.getByRole('button', { name: 'Show Today', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('phone layout offers medallions in place and preserves download, social and legal links', async ({ page }) => {
@@ -51,8 +51,8 @@ test('reduced motion keeps all content visible and the feature tour manually usa
   await expect(page.locator('#closing-title')).toHaveCSS('opacity', '1');
   await page.getByRole('button', { name: 'Previous screenshot' }).click();
   await expect(page.locator('.tour-slide:visible')).toHaveCount(1);
-  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Statistics');
-  await expect(page.locator('#feature-label')).toHaveText('05 / STATISTICS');
+  await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Atlas');
+  await expect(page.locator('#feature-label')).toHaveText('05 / ATLAS');
   expect(await page.locator('.tour-slide:visible').evaluate(element => element.getAnimations().length)).toBe(0);
 });
 
@@ -61,7 +61,7 @@ test('the page remains readable without JavaScript', async ({ browser }) => {
   const page = await context.newPage();
   try {
     await page.goto('/beta.html');
-    await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Home');
+    await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Today');
     await expect(page.locator('.tour-controls')).toBeHidden();
     await page.locator('#medallion-fallback').scrollIntoViewIfNeeded();
     await expect(page.locator('#medallion-fallback')).toBeVisible();

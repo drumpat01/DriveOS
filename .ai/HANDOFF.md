@@ -1,10 +1,17 @@
-# JourneyDeck current handoff — September 29, 2026
+# JourneyDeck current handoff — September 30, 2026
 
 ## Objective and checkout
 
 - V4 is being prepared for an October 14, 2026 public launch. Public release, App Review submission, OTA, deploy, commit, and push still require the owner's explicit request. V2 is live. Owner decision (2026-09-30): V4 4.0.0 replaces the live App Store version directly; V3 is never released (frozen, emergency fixes only).
-- Checkout: `D:\JourneyDeckV4`, branch `claude/v4-redesign`, tracking `origin/claude/v4-redesign`. Latest local commits before this work: `fa20e81` (App Review prep), `420d55a` (production connector/icons), `5876b00` (Aurora Glass icon). Verify current branch, status, and diff before acting.
-- This session has **uncommitted** V4 subscription work in membership StoreKit/Swift, Siri plugin, paywalls, tests, and `mobile/recorder/SUBSCRIPTION_SETUP.md`. Do not stage, commit, push, discard, or publish without a user request.
+- Checkout verified September 30: `D:\JourneyDeckV4`, branch `main`, HEAD `e10fd40` (PR 223, store metadata). Tree was clean before the website draft below. Older branch/uncommitted subscription claims are stale; verify current status before acting.
+
+## Website V4 update — publication approved
+
+- Uncommitted changes: `web/privacy.html`, `web/support.html`, `web/beta.html`, `web/beta.js`, `web/assets/v4/`, `server/tests/api.test.ts`, and `docs/website-v4-review.md`. No staging, commit, push, or deploy. Hosted `/` serves `beta.html`.
+- Privacy/support/home updated for V4; screenshots optimized from local raw/final sets. Existing routes/design/scripts preserved. Terms untouched. Review details and connector evidence: `docs/website-v4-review.md`.
+- Discrepancies: sample remains prepared locally on exit (draft reflects code); RevenueCat still mirrors StoreKit billing (disclosure retained); old manual-only 2.0 location wording removed. Open questions: Cloudflare log/METRICS retention and deletion of connector metadata after assistant disconnect/OAuth expiry. Existing site license/Texas terms overlap with Apple's standard EULA; owner should confirm intended relationship.
+- Verification: two targeted public-page/server tests passed; headless Edge at 1440/390px passed home/privacy/support layout, initial images, JS, and Ask carousel checks; diff check passed. Restored missing root dependencies with `npm ci --ignore-scripts`; no lockfile change.
+- Owner approved publishing this exact website update on September 30. Next: publish through a deployment PR into main, verify Render and the live pages, then record the result. Website approval does not authorize App Store submission or release (2.0 is currently live).
 
 ## V4 app and release state
 
