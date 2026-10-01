@@ -489,6 +489,24 @@ test('photo relocation cannot select another owner/file, traverse folders, or in
   assert.equal((await resolver.resolvePrivatePhotoFile({ ...base, localUri })).status, 'missing');
 });
 
+test('a sample Memory photo is relinked after an app update moves the container', async () => {
+  const phone = device(); seed(phone);
+  const id = 'demo_photo_coast-weekend_1';
+  const relative = `journeydeck-private-photos/${encodeURIComponent(phone.user.id)}/${id}.jpg`;
+  const oldUri = `file:///old-app/Documents/${relative}`, currentUri = `file:///current-app/Documents/${relative}`;
+  files.set(currentUri, 'sample-bytes');
+  phone.store.upsertPhoto({ id, userId: phone.user.id, source: 'memory', memoryId: 'memory_v1_fixture',
+    collectionId: null, fileName: 'coast-pacifica.jpg', contentType: 'image/jpeg', byteLength: 12, localUri: oldUri },
+    { syncedToCloud: 1 });
+  const resolver = phone.load(resolve(src, 'private-photo-file.ts'));
+  assert.deepEqual(await resolver.resolvePrivatePhotoFile(phone.store.getPhotoIncludingDeleted(phone.user.id, id)),
+    { localUri: currentUri, status: 'available' });
+  assert.equal(phone.store.getPhotoIncludingDeleted(phone.user.id, id).localUri, currentUri);
+  const base = phone.store.getPhotoIncludingDeleted(phone.user.id, id);
+  for (const bad of ['demo_photo_../x_1', 'demo_photo_coast-weekend', 'demo_photo_Coast_1/../../x'])
+    assert.equal(resolver.currentPrivatePhotoUri({ ...base, id: bad, localUri: oldUri }, 'file:///current-app/Documents/'), null);
+});
+
 test('an iCloud photo survives repeated app-container moves without a content edit or redownload', async () => {
   const phone = device(); seed(phone);
   const id = 'local_cloud-relocation';

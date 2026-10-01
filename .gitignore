@@ -48,3 +48,6 @@ __MACOSX/
 # Raw App Store screenshots stay local (large, may show personal data)
 mobile/recorder/store/screenshots/raw/**/*.png
 mobile/recorder/store/screenshots/final/
+
+# App Store preview videos are large, generated locally
+mobile/recorder/store/preview/
