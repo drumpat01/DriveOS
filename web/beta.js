@@ -1,10 +1,10 @@
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const features = [
-  { label: 'HOME', title: 'A good day starts here.', description: 'Start a journey with one tap. Your route, time, and distance come together in a journal that’s yours to keep.' },
-  { label: 'SOUNDTRACKS', title: 'Hear the memory again.', description: 'The songs you played belong to the story, too. Connect Apple Music to keep a soundtrack alongside your journeys.' },
+  { label: 'TODAY', title: 'A good day starts here.', description: 'Start a journey with one tap. Your route, time, and distance come together in a journal that’s yours to keep.' },
+  { label: 'SOUNDTRACK', title: 'Hear the memory again.', description: 'The songs you played belong to the story, too. Connect Apple Music to keep a soundtrack alongside your journeys.' },
   { label: 'MEMORIES', title: 'Keep the days that stay with you.', description: 'Bring a trip’s journeys into one Memory. Find matching photos, add a note, and turn a weekend away into a chapter you can come back to.' },
-  { label: 'MEDALLIONS', title: 'Little milestones. Lasting keepsakes.', description: 'A ten-song drive earns Long Play. Discover the medallions behind your milestones, then give the real 3D collection a spin below.' },
-  { label: 'STATISTICS', title: 'Look back. See how far you’ve come.', description: 'Your miles, journeys, driving time, and song plays, together at a glance. Explore your recent history and open Atlas for a deeper perspective.' },
+  { label: 'ASK JOURNEYDECK', title: 'Ask your archive.', description: 'A Plus feature for questions about your journeys, in the app and through Siri. Answers come from your archive on the device.' },
+  { label: 'ATLAS', title: 'See your world come together.', description: 'Explore routes, familiar places, and listening habits in Atlas. JourneyDeck Plus unlocks insights calculated on your device.' },
 ];
 
 const tour = document.querySelector('.tour');

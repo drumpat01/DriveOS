@@ -40,14 +40,22 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(String(privacy.headers["content-type"]), /text\/html/);
     assert.match(privacy.body, /JourneyDeck Privacy Policy/i);
     assert.match(privacy.body, /journeydeckapp@gmail\.com/i);
-    assert.match(privacy.body, /JourneyDeck 2\.0 never begins a journey automatically/i);
+    assert.match(privacy.body, /Last updated:<\/strong> September 30, 2026/);
     assert.match(privacy.body, /RevenueCat/i);
-    assert.doesNotMatch(privacy.body, /Automatic Drive Detection|Tessie/i);
+    assert.match(privacy.body, /Connecting an AI assistant/);
+    assert.match(privacy.body, /never writes to iCloud/);
+    assert.match(privacy.body, /both your app-wide setting and that assistant’s setting allow it/);
+    assert.match(privacy.body, /Optional Tessie connection/);
+    assert.match(privacy.body, /Questions and answers are not saved and are not sent to JourneyDeck servers/);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-3/);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
+    assert.match(support.body, /Recording needs an iPhone/);
+    assert.match(support.body, /Every new install gets a 3-day Plus trial/);
+    assert.match(support.body, /Restore Purchases is in Settings &gt; Membership/);
+    assert.match(support.body, /items are still arriving/);
     assert.match(support.body, /mailto:journeydeckapp@gmail\.com/i);
     assert.match(support.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     const soundtrack = await runtime.app.inject({ method: "GET", url: "/apple-music-soundtrack" });
@@ -104,15 +112,15 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.equal(landing.statusCode, 200, landing.body);
     assert.match(String(landing.headers["content-type"]), /text\/html/);
     assert.match(landing.body, /GRAND TOURING/);
-    assert.match(landing.body, /JOURNEYDECK 2\.0 · AVAILABLE NOW/);
+    assert.match(landing.body, /JOURNEYDECK 4\.0/);
     assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-4"/);
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
-    assert.match(landing.body, /aria-label="1 of 5: Home"/);
+    assert.match(landing.body, /aria-label="1 of 5: Today"/);
     assert.match(landing.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(landing.body, /https:\/\/www\.apple\.com\/legal\/internet-services\/itunes\/dev\/stdeula\//);
-    assert.match(landing.body, /IPAD \/ VERSION 2\.0/);
-    assert.match(landing.body, /APPLE WATCH \/ VERSION 2\.0/);
+    assert.match(landing.body, /IPAD \/ YOUR LIBRARY/);
+    assert.match(landing.body, /APPLE WATCH \/ PAIRED IPHONE/);
     assert.match(landing.body, /rel="canonical" href="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /property="og:url" content="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /href="\/login"/i);
@@ -123,10 +131,14 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /id="replay"/);
     assert.match(landing.body, /id="memories"/);
     assert.match(landing.body, /id="membership"/);
+    assert.match(landing.body, /Ask JourneyDeck/);
+    assert.match(landing.body, /Journey Markers/);
+    assert.match(landing.body, /Start a Journey widget/);
+    assert.match(landing.body, /Cinematic Dark, Rosewater, Autumn Drive, and Aurora Glass/);
     assert.match(landing.body, /class="mobile-menu"/);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.match(landing.body, /Follow @JourneyDeck on X/i);
-    assert.doesNotMatch(landing.body, /noindex|2\.0 PREVIEW|Coming soon for iPhone|Follow the launch|Tessie/);
+    assert.doesNotMatch(landing.body, /noindex|2\.0 PREVIEW|Coming soon for iPhone|Follow the launch|latest 45 days|JOURNEYDECK 2\.0/);
     assert.doesNotMatch(landing.body, /@JourneyDeckApp|x\.com\/JourneyDeckApp/i);
 
     for (const [url, mime] of [
@@ -135,12 +147,12 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/site-mobile-nav.css?v=1", /text\/css/],
       ["/v2-features.css?v=1", /text\/css/],
       ["/soundtrack-v2.css?v=1", /text\/css/],
-      ["/assets/v2/route-replay.jpg", /image\/jpeg/],
+      ["/assets/v4/02-journey.webp", /image\/webp/],
       ["/assets/v2/soundtrack.jpg", /image\/jpeg/],
-      ["/assets/v2/memory.jpg", /image\/jpeg/],
-      ["/assets/v2/themes.jpg", /image\/jpeg/],
+      ["/assets/v4/04-memory.webp", /image\/webp/],
+      ["/assets/v4/08-themes.webp", /image\/webp/],
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
-      ["/beta.js?v=grand-tour-1", /javascript/],
+      ["/beta.js?v=v4-1", /javascript/],
       ["/medallions/medallions.css?v=medallions-1", /text\/css/],
       ["/medallions/medallions.js?v=medallions-1", /javascript/],
       ["/medallions/catalog.js", /javascript/],
@@ -149,7 +161,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/assets/medallions/story-collector-light-thumb.webp", /image\/webp/],
       ["/assets/beta/grand-touring-home.webp", /image\/webp/],
       ["/assets/beta/journeydeck-pulse.svg", /image\/svg/],
-      ...["home", "soundtracks", "memories", "medallions", "statistics"].map(name => [`/assets/beta/screens/${name}.webp`, /image\/webp/] as const)
+      ...["01-today", "03-memories", "05-soundtrack", "06-atlas", "07-ask"].map(name => [`/assets/v4/${name}.webp`, /image\/webp/] as const)
     ] as const) {
       const asset = await runtime.app.inject({ method: "GET", url });
       assert.equal(asset.statusCode, 200, url);

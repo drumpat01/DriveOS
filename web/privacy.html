@@ -21,41 +21,64 @@
     <section class="hero">
       <p class="eyebrow">Your data, your journey</p>
       <h1>Privacy Policy</h1>
-      <p class="lede">JourneyDeck is a local-first iPhone driving journal. This policy explains what the public app handles, why it handles it, and the choices you have.</p>
-      <div class="meta"><span><strong>Effective date:</strong> September 2, 2026</span><span><strong>Controller / developer:</strong> Patrick Benjamin Stewart</span></div>
+      <p class="lede">JourneyDeck is a local-first driving journal for iPhone and iPad. This policy explains what the public app handles, why it handles it, and the choices you have.</p>
+      <div class="meta"><span><strong>Last updated:</strong> September 30, 2026</span><span><strong>Controller / developer:</strong> Patrick Benjamin Stewart</span></div>
     </section>
     <section class="content" aria-label="Privacy policy details">
       <article class="card">
         <h2>Information JourneyDeck handles</h2>
         <h3>Journey and location information</h3>
-        <p>When you tap Start Journey, JourneyDeck may use your iPhone’s precise location, timing, speed, heading, and accuracy information to record a route and derive trip details such as distance and drive time. JourneyDeck 2.0 never begins a journey automatically. The iPhone records the GPS route and stores it locally first. Location is optional, but route recording cannot work without it.</p>
-        <p>JourneyDeck requests background location only so a journey you intentionally started can continue while your iPhone is locked or another app is open. You can change or revoke Location access in iOS Settings.</p>
+        <p>When you start a journey, JourneyDeck may use your iPhone’s precise location, timing, speed, heading, and accuracy information to record a route and derive trip details such as distance and drive time. The iPhone records the GPS route and stores it locally first. Location is optional, but route recording cannot work without it.</p>
+        <p>JourneyDeck requests background location only so journey recording you choose to start or enable can continue while your iPhone is locked or another app is open. You can change or revoke Location access in iOS Settings.</p>
         <h3>Profile, labels, memories, and photos</h3>
-        <p>JourneyDeck can store the profile name you choose, place labels, Journeys, Memories that group one or more Journeys, journey notes, and photos you choose to attach. Photos are requested only when you select them.</p>
+        <p>JourneyDeck can store the profile name you choose, place labels, Journeys, Memories that group one or more Journeys, journey notes, and photos you choose to attach. Photos are requested only when you select them. Journey Markers are notes and photos added during a drive. Journey Markers and Memory photos are stored on your device and sync only through your private iCloud when you enable sync.</p>
         <h3>Optional music features</h3>
         <p>You may use Apple Music history for automatic soundtracks or manually tap Identify Song to use ShazamKit for an individual track. ShazamKit uses the microphone only after you tap Identify Song, listens briefly for that one match, and then turns the microphone off. JourneyDeck does not record, retain, or upload microphone audio.</p>
         <h3>Optional Apple services</h3>
         <p>Sign in with Apple and private iCloud continuity are optional. When iCloud sync is enabled, JourneyDeck may sync journey records, routes, labels, Memories, selected photos, and preferences to your private CloudKit database associated with your Apple Account.</p>
+        <h3>iPad, widgets, and Apple Watch</h3>
+        <p>iPad shows your library but does not record journeys. It receives your iPhone’s library through your private iCloud. The Start a Journey widget and Apple Watch app share only the minimum information needed with the iPhone app, such as the last drive, through storage on the device or communication between your paired devices.</p>
+        <h3>Sample library</h3>
+        <p>You can turn on a fictional sample library in Settings &gt; Account. It is created on your device and is never uploaded or synced. Leaving the sample returns you to your own library; the prepared sample remains on the device so you can try it again.</p>
         <h3>Optional membership purchases</h3>
-        <p>When you buy or restore a JourneyDeck Membership, Apple processes the payment. RevenueCat receives purchase and transaction information and a randomly assigned anonymous customer identifier to reconcile subscriptions and report billing activity. JourneyDeck does not send your journey archive, routes, photos, music history, profile name, or Sign in with Apple identifier to RevenueCat.</p>
+        <p>When you buy or restore JourneyDeck Plus, purchase and entitlement status come from Apple’s StoreKit. Apple processes the payment; JourneyDeck does not receive your payment details. RevenueCat receives purchase and transaction information and a randomly assigned anonymous customer identifier to reconcile subscriptions and report billing activity. JourneyDeck does not send your journey archive, routes, photos, music history, profile name, or Sign in with Apple identifier to RevenueCat.</p>
         <h3>Anonymous diagnostics and performance</h3>
         <p>JourneyDeck uses Expo EAS Observe to understand production reliability. Expo may process a random per-installation identifier, app/build/update identifiers, device and operating-system characteristics, startup and rendering timings, update-download performance, memory-pressure warnings, JavaScript error information, and privacy-safe recorder lifecycle events. JourneyDeck does not attach route coordinates, addresses, place names, journey titles, photos, music names, Apple identity, or account identifiers to these events.</p>
       </article>
       <article class="card">
+        <h2>Connecting an AI assistant</h2>
+        <p>Connecting an assistant such as Claude is optional and requires JourneyDeck Plus. Start in Settings &gt; AI Assistants. The connector runs at mcp.journeydeck.me on Cloudflare Workers, Durable Objects, and KV.</p>
+        <p>You sign in with Apple on an authorization page and choose what that assistant may see: Music, Routes &amp; locations, Memories &amp; markers, Photos, and Home &amp; Work. Each assistant has its own switches, which you can edit later in the app, and a Disconnect button. A category is shared only when both your app-wide setting and that assistant’s setting allow it.</p>
+        <p>The connector is read-only. Using your authorization, it reads your own JourneyDeck data from your private iCloud (CloudKit) and never writes to iCloud. The app links itself to the connector with a random secret stored in the iPhone Keychain; only SHA-256 digests of that secret are synced. Access requires an active JourneyDeck Plus subscription, which the connector confirms with Apple’s App Store Server API.</p>
+        <p>Data requested by an assistant is returned to the assistant you connected. That provider then handles it under its own terms and privacy policy, such as <a href="https://www.anthropic.com/legal/privacy">Anthropic’s Privacy Policy</a> for Claude.</p>
+        <h3>Connector storage and diagnostics</h3>
+        <p>The connector stores an encrypted Apple authorization token, connection metadata, sharing choices, and subscription-verification information. Journey records and route data are cached in memory rather than stored as a permanent server archive. A refresh discards an unused cache after more than 15 minutes without use; requests within 30 seconds may reuse the last refresh.</p>
+        <p>Assistant access tokens expire after one hour. Refresh tokens are configured with a 90-day lifetime and a 90-day idle limit, and a daily cleanup removes expired authorization grants and tokens. After the connector detects that Plus is no longer active, it keeps the stored Apple sign-in for up to seven days to allow renewal, then deletes that user’s stored connector session.</p>
+        <p>Operational logs include connection and error events, tool names, request timings, success or failure, record and zone counts, subscription-check outcomes, and a shortened user identifier. Connection-lifetime diagnostics also store timestamps, token-rotation counts, and error status. These diagnostics help operate the connector; they are separate from the journey data returned to your assistant.</p>
+      </article>
+      <article class="card">
+        <h2>Optional Tessie connection</h2>
+        <p>Tesla owners with JourneyDeck Plus can connect their own Tessie account. The Tessie token is stored in the iPhone Keychain for the current profile. JourneyDeck reads vehicle, drive, charge, and route data from Tessie and caches a summary on the device. Disconnecting removes that cached data. This data is separate from JourneyDeck’s recorded journeys and from private iCloud sync.</p>
+      </article>
+      <article class="card">
+        <h2>Ask JourneyDeck</h2>
+        <p>Ask JourneyDeck is a Plus feature available in the app and through Siri. It answers questions using your archive on the device. On devices that support Apple Intelligence, it uses Apple’s on-device model; otherwise, built-in rules answer supported questions. Questions and answers are not saved and are not sent to JourneyDeck servers.</p>
+      </article>
+      <article class="card">
         <h2>How information is used and shared</h2>
         <p>JourneyDeck uses this information to record and display journeys, build your private archive, show optional music context, protect sensitive-place presentation in share cards, provide optional private iCloud continuity, and respond to support requests.</p>
-        <p>JourneyDeck does not use personal information for targeted advertising, cross-app tracking, or sale. It does not share your precise route with advertisers. Map displays may retrieve tiles from the configured map provider. Optional Apple services, RevenueCat purchase processing, and Expo’s update and diagnostics services process only the information described here.</p>
+        <p>JourneyDeck does not use personal information for targeted advertising, cross-app tracking, or sale. It has no ads and does not share your precise route with advertisers. Map displays may retrieve tiles from the configured map provider. Optional Apple services, RevenueCat billing reconciliation, Expo’s update and diagnostics services, Tessie, and the AI connector process the information described here.</p>
       </article>
       <article class="card">
         <h2>Retention, deletion, and your choices</h2>
-        <p>Journey data remains on your iPhone until you delete it, delete the relevant profile, or remove the app. If you enable private iCloud continuity, deleting your JourneyDeck account or profile in the app is intended to remove that profile’s synced private CloudKit data as well.</p>
-        <p>You can revoke Location, Music, Microphone, Photos, and iCloud permissions in iOS Settings. For privacy or deletion requests that cannot be completed in the app, contact us.</p>
+        <p>Journey data remains on your device until you delete it, delete the relevant profile, or remove the app. If you enable private iCloud continuity, deleting your JourneyDeck account or profile in the app is intended to remove that profile’s synced private CloudKit data as well.</p>
+        <p>You can revoke Location, Music, Microphone, Photos, and iCloud permissions in iOS Settings. To disconnect an assistant, open Settings &gt; AI Assistants &gt; Connected assistants &gt; Disconnect. For privacy or deletion requests that cannot be completed in the app, contact us.</p>
         <a class="contact" href="mailto:journeydeckapp@gmail.com?subject=JourneyDeck%20privacy%20request">journeydeckapp@gmail.com</a>
       </article>
       <article class="card">
         <h2>Security, children, and changes</h2>
         <p>JourneyDeck uses iOS-provided secure storage for sensitive local credentials such as an optional owner-backup token. No method of storage or transmission is completely secure, but JourneyDeck is designed to minimize server dependency and keep private journey data under your control.</p>
-        <p>JourneyDeck is not directed to children under 13. We may update this policy as JourneyDeck changes; the current version and effective date will be posted here.</p>
+        <p>JourneyDeck is not directed to children under 13. We may update this policy as JourneyDeck changes; the current version and last updated date will be posted here.</p>
       </article>
     </section>
     <footer class="footer">© 2026 Patrick Benjamin Stewart · <a href="/">Home</a> · <a href="/apple-music-soundtrack">Soundtracks</a> · <a href="/terms">Terms</a> · <a href="/support">Support</a></footer>
