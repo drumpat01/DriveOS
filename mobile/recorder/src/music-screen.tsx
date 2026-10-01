@@ -70,7 +70,8 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
     try { await onRefresh(); }
     finally { setManualRefreshing(false); }
   }, [manualRefreshing, onRefresh]);
-  if (layout.isRegular) return <IpadMusicScreen state={state} daily={ipadDaily} provider={provider} archive={visibleArchive} query={archiveQuery} onQueryChange={setArchiveQuery}
+  // V4 uses one adaptive Soundtrack on iPhone and iPad; the V3 iPad layout stays for non-V4 builds.
+  if (layout.isRegular && !redesign) return <IpadMusicScreen state={state} daily={ipadDaily} provider={provider} archive={visibleArchive} query={archiveQuery} onQueryChange={setArchiveQuery}
     canOpenTracks={canOpenTracks} onTrack={track => void openTrack(track, provider)} onJourney={onJourney} refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} />;
   if (redesign) return <SoundtrackScreen status={state.status} message={state.message} music={state.data} provider={provider} journeys={journeys} details={details}
     canOpenTracks={canOpenTracks} onTrack={track => void openTrack(track, provider)} onJourney={onJourney} onRefresh={onRefresh} />;
