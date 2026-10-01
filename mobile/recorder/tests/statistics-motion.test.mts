@@ -217,10 +217,13 @@ test('real Statistics range and calendar actions drive the motion while preservi
     assert.equal(upgrades, 1); assert.equal(h.state.haptics, 4, 'locked range does not run the data-change haptic');
     await act(() => button('Days').props.onPress());
     const dayButtons = tree.root.findAllByType('Pressable').filter((n: any) => n.props.testID?.startsWith('day-') && !n.props.disabled);
+    // On the first of a month the calendar has no earlier empty day, so this check applies only when one exists.
     const empty = dayButtons.find((n: any) => n.props.accessibilityLabel.includes('0 journeys'));
-    await act(() => empty.props.onPress());
-    const content = tree.root.findByProps({ testID: 'statistics-day-journeys' });
-    assert.equal(content.findAllByType('Pressable').length, 0, 'old date links do not remain clickable');
+    if (empty) {
+      await act(() => empty.props.onPress());
+      const content = tree.root.findByProps({ testID: 'statistics-day-journeys' });
+      assert.equal(content.findAllByType('Pressable').length, 0, 'old date links do not remain clickable');
+    }
     const today = dayButtons.find((n: any) => n.props.accessibilityLabel.includes('2 miles, 1 journeys'));
     await act(() => today.props.onPress());
     await act(() => tree.root.findByProps({ testID: 'statistics-day-journeys' }).findByType('Pressable').props.onPress());
