@@ -28,3 +28,11 @@ export function previousV4Stage(stage: V4Stage, ipad = false): V4Stage | null {
   const steps = v4Steps(ipad), index = steps.indexOf(stage);
   return index > 0 ? steps[index - 1]! : null;
 }
+
+/**
+ * "I have an account" skips the welcome deck only. iPad has nothing else to set up, but an iPhone
+ * still needs location and music on this device; ending there left the old pickers to ask instead.
+ */
+export function haveAccountStage(ipad = false): V4Stage | 'complete' {
+  return ipad ? 'complete' : 'location';
+}
