@@ -455,6 +455,8 @@ export function resolvePrivateConflict<T extends { updatedAt: string; syncRevisi
 
 // --- Sync Engine ------------------------------------------------------------
 
+const MISSING_DEPENDENCY_REASON = 'A related place, journey, or Memory has not arrived yet. Sync the source device, then try again here.';
+
 export class CloudKitSyncEngine {
   private userId: LocalUserId;
   private privateContentV2: boolean;
@@ -612,7 +614,7 @@ export class CloudKitSyncEngine {
       server_record_changed: 'Another device changed this item during sync.',
       unversioned_local_conflict: 'A local edit is kept safely on this device. iCloud has different data without a newer reliable version; this item needs a sync-conflict review.',
       journey_edit_conflict: 'Two devices edited the same original. Both edits are preserved; open Journey Editing Studio to review the conflict before making further changes.',
-      missing_dependency: 'A related place, journey, or Memory has not arrived yet. Sync the source device, then try again here.',
+      missing_dependency: MISSING_DEPENDENCY_REASON,
     };
     const reason = reasons[code] ?? (/^cloudkit_\d{1,4}$/.test(code) ? `iCloud returned error ${code.slice(9)}.` : 'iCloud did not provide a specific reason for this item.');
     // A stable reference identifies the item without exposing its raw record ID.
@@ -645,8 +647,12 @@ export class CloudKitSyncEngine {
 
   public getIssueDetails(): string[] {
     for (const conflict of listJourneyEditConflicts(this.userId)) this.recordUploadFailure(`edit_${conflict.id}`, 'journey_edit_conflict');
-    const details = [...this.issues.values()].slice(0, 5);
-    if (this.issues.size > 5) details.push(`${this.issues.size - 5} more items need attention.`);
+    // Records still waiting on a related item are normal during a first download; summarize them instead of listing refs.
+    const all = [...this.issues.values()];
+    const waiting = all.filter(issue => issue.endsWith(MISSING_DEPENDENCY_REASON));
+    const details = all.filter(issue => !issue.endsWith(MISSING_DEPENDENCY_REASON)).slice(0, 5);
+    if (all.length - waiting.length > 5) details.push(`${all.length - waiting.length - 5} more items need attention.`);
+    if (waiting.length) details.push(`${waiting.length} ${waiting.length === 1 ? 'item is' : 'items are'} still arriving from iCloud. Tap Sync again in a moment to finish your download.`);
     return details;
   }
 
@@ -713,6 +719,8 @@ export class CloudKitSyncEngine {
     for (const record of [...remoteRecords].sort((left, right) => priority[left.recordType] - priority[right.recordType]
       || (left.recordType === 'JourneyEdit' ? editDepth(left) - editDepth(right) : 0))) {
       assertProfileCurrent();
+      // A record that was deferred earlier and is processed again either lands now or is reported again below.
+      this.issues.delete(record.recordName);
       if (record.recordType === 'Journey') {
         const remoteJourney = ckRecordToJourney(record, this.userId);
         if (isEditorManagedJourney(this.userId, remoteJourney.id)) continue;
