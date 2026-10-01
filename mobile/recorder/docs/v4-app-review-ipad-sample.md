@@ -25,11 +25,14 @@ new iPad has an empty library. To let App Review see every screen on either devi
 
 ## Suggested App Review notes (paste into App Store Connect)
 
-> JourneyDeck records drives on iPhone. On iPad it shows the journeys, Memories and soundtracks recorded on the user's iPhone,
-> synced through their private iCloud, so an iPad with no iPhone data shows a "Requires an iPhone" message. To review every screen
-> on iPad without an iPhone, tap **Try sample data** on the empty Today screen (or Settings > Account > Try sample data). This opens
-> a fictional library stored only on the device. Tap **Leave** on Today to remove it. JourneyDeck Plus can be reviewed with the
-> sandbox account from the App Store Connect notes.
+> JourneyDeck records drives on iPhone and shows them on iPhone and iPad. A new install has no drives yet, so to review every
+> feature right away, open **Settings (profile button on Today) > Account > Try sample data** on iPhone or iPad. On an empty iPad,
+> the "Requires an iPhone" card also offers **Try sample data**. This opens a fictional library (drives with routes, songs, four
+> Memories with photos) with full access to every JourneyDeck Plus feature, including Atlas and Ask JourneyDeck. It is stored only on
+> the device and never uploaded. Tap the x to hide the "You're viewing sample data" bar, or Leave to return to your own data.
+>
+> The JourneyDeck Plus purchase and 3-day trial can be reviewed outside the sample: open Settings > Membership or any Plus badge, and use
+> your sandbox Apple Account. Restore Purchases is in Settings > Membership.
 
 ## Note for reviewers
 

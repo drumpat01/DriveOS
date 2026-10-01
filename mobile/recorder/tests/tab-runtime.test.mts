@@ -108,7 +108,7 @@ test('primary layouts adapt to usable space without treating device identity as 
   assert.match(adaptiveLayout, /availableWidth >= REGULAR_MIN_WIDTH && availableHeight >= REGULAR_MIN_HEIGHT/);
   assert.match(shell, /tabs: adaptiveLayout\.isRegular && !REDESIGN_PHONE \? \{/, 'V3 keeps its iPad tabs; V4 shares one adaptive set');
   assert.match(shell, /presentation=\{adaptiveLayout\.isRegular \? 'ipad' : 'iphone'\}/);
-  assert.match(musicScreen, /if \(layout\.isRegular\) return <IpadMusicScreen/);
+  assert.match(musicScreen, /if \(layout\.isRegular && !redesign\) return <IpadMusicScreen/);
   assert.doesNotMatch(musicScreen, /if \(isIpad\(\)\)/);
 });
 
