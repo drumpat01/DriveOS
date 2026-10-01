@@ -4,9 +4,12 @@ import { privateCloudProfileScope } from './private-cloud-profile';
 
 export type PrivatePhotoFile = { localUri: string; status: 'available' | 'missing' | 'empty' | 'unreadable' };
 
+/** Photos the app wrote into Documents: added photos (`local_`) and the bundled sample photos (`demo-photos.ts`). */
+const DOCUMENT_PHOTO_ID = /^(?:local_[a-zA-Z0-9-]+|demo_photo_[a-z0-9-]+_\d+)$/;
+
 /** Reconstruct only the exact app-authored document path, never search other profiles or filenames. */
 export function currentPrivatePhotoUri(photo: LocalPhoto, documentDirectory: string | null): string | null {
-  if (!documentDirectory || !/^local_[a-zA-Z0-9-]+$/.test(photo.id)) return null;
+  if (!documentDirectory || !DOCUMENT_PHOTO_ID.test(photo.id)) return null;
   const extension = photo.contentType === 'image/png' ? 'png' : photo.contentType === 'image/webp' ? 'webp' : 'jpg';
   const relative = `journeydeck-private-photos/${encodeURIComponent(photo.userId)}/${photo.id}.${extension}`;
   // Only repair a previously saved Documents path with the same owner and photo identity.
