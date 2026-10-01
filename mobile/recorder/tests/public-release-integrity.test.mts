@@ -102,7 +102,7 @@ test('V2 disables Tessie while V3 requires an explicit variant flag and verified
   assert.match(tessie, /storedVerifiedVehicleCount/);
   assert.match(tessie, /if \(vehicleCount < 1\)/);
   assert.match(automaticDriveTask, /!current && !\(await tessieAutomaticRecordingEligible\(\)\)/);
-  assert.match(recorder, /const shouldRun = Boolean\(foregroundPermission && backgroundPermission && \(tessieEligible \|\| finishingExistingAutomaticJourney\)\)/);
+  assert.match(recorder, /const shouldRun = !isDemoProfile\(\) && Boolean\(foregroundPermission && backgroundPermission && \(tessieEligible \|\| finishingExistingAutomaticJourney\)\)/);
   assert.match(recorder, /const automaticMode = TESSIE_INTEGRATION_ENABLED &&/);
   assert.doesNotMatch(membershipPaywall, /Tessie|Tesla|Automatic Drive Detection/);
 });
@@ -161,4 +161,16 @@ test('public legal pages are a required, network-verified release gate', () => {
 test('Settings includes the public Privacy Policy required for the App Store release', () => {
   assert.match(shell, /https:\/\/journeydeck\.me\/privacy/);
   assert.match(shell, /Read Privacy Policy/);
+});
+
+test('a drive is never recorded into the sample, and plans open for anyone without an App Store subscription', async () => {
+  const appSource = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
+  const card = await readFile(new URL('../src/share-card-modal.tsx', import.meta.url), 'utf8');
+  // Start in the sample leaves it and starts again in the member's own library.
+  assert.match(appSource, /if \(onLeaveSample && isDemoProfile\(\)\) \{ requestStartJourney\(Date\.now\(\), true\); return onLeaveSample\(\); \}/);
+  assert.match(shell, /onLeaveSample=\{leaveSampleToRecord\}/);
+  // The in-app trial is not an App Store subscription, so Membership shows the plans.
+  assert.match(shell, /onMembership=\{\(\) => membershipStore\.state\.status\.tier === 'paid' \?/);
+  // A locked card theme closes the card before the plans open.
+  assert.match(card, /onLocked=\{upgradeAfterClose\}/);
 });

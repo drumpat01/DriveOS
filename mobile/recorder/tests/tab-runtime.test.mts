@@ -566,7 +566,7 @@ test('every native tab explicitly clears the Dynamic Island and owns its scroll 
   assert.match(shell, /function ConnectionsScreen[\s\S]*?useSafeAreaInsets\(\)/);
   assert.match(shell, /contentInsetAdjustmentBehavior="never"/);
   assert.match(shell, /automaticallyAdjustContentInsets=\{false\}/);
-  assert.match(app, /function RecorderScreen\(\{ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange \}/);
+  assert.match(app, /function RecorderScreen\(\{ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample \}/);
   assert.match(app, /const insets = useSafeAreaInsets\(\)/);
   assert.match(app, /paddingTop: insets\.top \+ 14/);
   assert.match(app, /contentInsetAdjustmentBehavior="never"/);

@@ -337,6 +337,7 @@ type RecorderComponent = ComponentType<{
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
   onProgressChange?: (progress: ActiveJourneyProgress | null) => void;
+  onLeaveSample?: () => Promise<void>;
 }>;
 
 export function JourneyDeckShell({ recorder, children }: { recorder: RecorderComponent; children: ReactNode }) {
@@ -648,6 +649,19 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       } finally { sampleBusy.current = false; finishProfileSwitch(); }
     })();
   }, [dashboard.data.recorder.state, onProfileChanged]);
+
+  /** Start while the sample is open: return to the member's own library, where the recorder then starts the journey. */
+  const leaveSampleToRecord = useCallback(async () => {
+    if (!isDemoProfile() || sampleBusy.current) return;
+    sampleBusy.current = true;
+    try {
+      await prepareForProfileSwitch();
+      exitDemoProfile();
+      onProfileChanged();
+    } catch (error) {
+      Alert.alert('Sample data was not changed', error instanceof Error ? error.message : 'No data was changed.');
+    } finally { sampleBusy.current = false; finishProfileSwitch(); }
+  }, [onProfileChanged]);
 
   // Build the sample (drives, songs, Memories and photos) quietly after the app settles, so turning it on is instant.
   useEffect(() => {
@@ -1015,7 +1029,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     ownerSpotifyEligible={ownerSpotifyEligible}
     spotifyOwnerState={spotifyOwnerState}
     onDataHealth={() => openMore('health')}
-    onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
+    // Only an App Store subscription can be managed by Apple; free members and the in-app trial see the plans.
+    onMembership={() => membershipStore.state.status.tier === 'paid' ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
     onRestoreMembership={membershipStore.restore}
     sampleActive={isDemoProfile(currentUser)} onSampleToggle={REDESIGN_PHONE ? toggleSampleData : undefined}
     onReplayOnboarding={REDESIGN_PHONE ? () => { setFirstRunProgress(saveFirstRunProgress({ stage: 'welcome', recordingMode: firstRunRecordingMode })); } : undefined}
@@ -1038,7 +1053,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   // V4 iPhone: one recorder instance, in the tab bar accessory on iOS 26+ and on Today before that.
   // iPad never records; it shows what the iPhone syncs through iCloud.
   const accessoryRecorder = REDESIGN_PHONE && canRecordDrives() && supportsTabAccessory(Platform.OS, Platform.Version);
-  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
+  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} onLeaveSample={leaveSampleToRecord} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
   const loadTodayProfile = useCallback(() => {
     const appearance = loadProfileAppearance(currentUser);
     return { initials: profileInitialsFor(appearance.displayName), avatarUri: appearance.avatarDataUri ?? null };

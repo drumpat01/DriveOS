@@ -148,11 +148,16 @@ function cardPalette(theme: JourneyShareTheme): CardPalette {
   return theme === 'cinematic' || theme === 'electric' || theme === 'sunset' ? legacyCardPalette(theme) : themeCardPalette(theme);
 }
 
+/** How long the card's dismissal takes before the plans can be presented. */
+export const PLANS_AFTER_CARD_CLOSES_MS = 500;
+
 export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload | null; onClose: () => void }) {
   const uiStyles = useThemedStyles(styles);
   const appTheme = useAppTheme();
   const navigation = useContext(NativeNavigationContext);
   const plusMember = navigation ? navigation.membership.tier === 'paid' : true;
+  // The plans are presented from the app root, and iOS will not show them over this card, so it closes first.
+  const upgradeAfterClose = navigation ? () => { onClose(); setTimeout(navigation.showUpgrade, PLANS_AFTER_CARD_CLOSES_MS); } : undefined;
   const defaultTheme: JourneyShareTheme = V4_SHARE ? (plusMember || !themeRequiresPlus(appTheme.id) ? appTheme.id : 'redline') : 'cinematic';
 
   const cardRef = useRef<View>(null);
@@ -200,8 +205,8 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
     ? <JourneySharePreview ref={cardRef} journey={payload.journey} theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onArtworkReady={() => setJourneyArtworkLoading(false)} />
     : <SummaryShareCard ref={cardRef} payload={payload} photoUri={photoUri} theme={journeyTheme} />);
   const controls = payload?.journey
-    ? <JourneyShareControls theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onTheme={setJourneyTheme} onMapStyle={setJourneyMapStyle} onArtwork={value => { setJourneyArtwork(value); setJourneyArtworkLoading(value !== 'none' && Boolean(payload.journey?.featured?.artworkUrl)); }} onToggleStat={stat => setJourneyStats(current => current.includes(stat) ? current.filter(item => item !== stat) : [...current, stat])} />
-    : V4_SHARE && payload ? <View style={v4Chrome(appTheme.id).controls}><ShareThemeChooser value={journeyTheme} onSelect={setJourneyTheme} /></View> : null;
+    ? <JourneyShareControls onLocked={upgradeAfterClose} theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onTheme={setJourneyTheme} onMapStyle={setJourneyMapStyle} onArtwork={value => { setJourneyArtwork(value); setJourneyArtworkLoading(value !== 'none' && Boolean(payload.journey?.featured?.artworkUrl)); }} onToggleStat={stat => setJourneyStats(current => current.includes(stat) ? current.filter(item => item !== stat) : [...current, stat])} />
+    : V4_SHARE && payload ? <View style={v4Chrome(appTheme.id).controls}><ShareThemeChooser value={journeyTheme} onSelect={setJourneyTheme} onLocked={upgradeAfterClose} /></View> : null;
   const privacyCopy = payload?.journey ? payload.journey.routeTrimmedStart || payload.journey.routeTrimmedEnd ? 'Home and Work route segments are physically removed to the farther of a one-mile boundary or the outer soundtrack moment. Hidden coordinates and song pins never enter the exported image.' : 'Street addresses and exact private coordinates never enter the exported image.' : 'The image excludes precise routes, street addresses, and private coordinates. Only the summary shown above is exported.';
 
   if (V4_SHARE) {
@@ -321,7 +326,8 @@ function JourneyDeckShareMark({ context, palette }: { context?: string; palette?
   </View>;
 }
 
-function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapStyle, onArtwork, onToggleStat }: {
+function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapStyle, onArtwork, onToggleStat, onLocked }: {
+  onLocked?: () => void;
   theme: JourneyShareTheme; mapStyle: JourneyShareMapStyle; artwork: JourneyShareArtwork; stats: JourneyShareStat[];
   onTheme: (value: JourneyShareTheme) => void; onMapStyle: (value: JourneyShareMapStyle) => void; onArtwork: (value: JourneyShareArtwork) => void; onToggleStat: (value: JourneyShareStat) => void;
 }) {
@@ -334,7 +340,7 @@ function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapS
     const colors = redesignColors(appTheme.id, appTheme.palette);
     return <View style={chrome.controls}>
       <Text style={chrome.controlsKicker}>BUILD YOUR CARD</Text>
-      <ShareThemeChooser value={theme} onSelect={onTheme} />
+      <ShareThemeChooser value={theme} onSelect={onTheme} onLocked={onLocked} />
       <ShareChoiceRow label="MAP" value={mapStyle} choices={[['street', 'Street'], ['dim', 'Dimmed'], ['route', 'Route only']]} onSelect={value => onMapStyle(value as JourneyShareMapStyle)} />
       <ShareChoiceRow label="ARTWORK" value={artwork} choices={[['album', 'Featured album'], ['backdrop', 'Album backdrop'], ['none', 'No artwork']]} onSelect={value => onArtwork(value as JourneyShareArtwork)} />
       <Text style={[chrome.controlsKicker, chrome.controlsStatsKicker]}>SHOW ON CARD</Text>
@@ -359,7 +365,7 @@ function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapS
 }
 
 /** Card theme chooser: every app theme, previewed with its own page color, route ink and accent. */
-function ShareThemeChooser({ value, onSelect }: { value: JourneyShareTheme; onSelect: (value: JourneyShareTheme) => void }) {
+function ShareThemeChooser({ value, onSelect, onLocked }: { value: JourneyShareTheme; onSelect: (value: JourneyShareTheme) => void; onLocked?: () => void }) {
   const appTheme = useAppTheme();
   const chrome = v4Chrome(appTheme.id);
   // Plus themes are Plus on cards too; a locked theme opens the paywall.
@@ -371,7 +377,7 @@ function ShareThemeChooser({ value, onSelect }: { value: JourneyShareTheme; onSe
       {v4ShareThemeIds.map(id => {
         const palette = themeCardPalette(id), selected = value === id, locked = !plus && themeRequiresPlus(id);
         return <Pressable key={id} testID={`share-theme-${id}`} accessibilityRole="radio" accessibilityLabel={`${themeCatalog[id].name} card theme${locked ? ', JourneyDeck Plus' : ''}`} accessibilityState={{ checked: selected, selected }}
-          onPress={() => { if (locked) { navigation?.showUpgrade(); return; } if (!selected) { void haptics.selection(); onSelect(id); } }}
+          onPress={() => { if (locked) { if (onLocked) onLocked(); else navigation?.showUpgrade(); return; } if (!selected) { void haptics.selection(); onSelect(id); } }}
           style={({ pressed }) => [chrome.themeChip, selected && chrome.themeChipSelected, pressed && styles.pressed]}>
           <View style={[chrome.themeSwatch, { backgroundColor: palette.background, borderColor: palette.border }]}>
             <View style={[chrome.themeSwatchRoute, { backgroundColor: palette.route }]} />
