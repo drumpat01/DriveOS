@@ -380,7 +380,7 @@ test('the real sync coordinator retains the change token for incomplete dependen
   const coordinator = ipad.load(resolve(src, 'icloud-sync.ts'));
   const first = await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
   assert.ok(first.failedUploads > 0);
-  assert.ok(first.issueDetails.some((detail: string) => detail.includes('has not arrived yet')));
+  assert.ok(first.issueDetails.some((detail: string) => detail.includes('still arriving from iCloud')));
   assert.equal(commits, 0);
   pull = records;
   const second = await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
@@ -643,7 +643,7 @@ test('a same-timestamp journey with a missing remote place defers without aborti
   ]);
   assert.equal(result.deferredCount, 1);
   assert.equal(result.updatedCount, 1, 'an unrelated valid song still imports');
-  assert.match(phone.engine.getIssueDetails()[0], /missing|not arrived/i);
+  assert.match(phone.engine.getIssueDetails()[0], /still arriving from iCloud/i);
   assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
   assert.notEqual(phone.store.getJourney(phone.user.id, 'fixture-journey').startPlaceId, journeyRecord.fields.startPlaceId);
 });

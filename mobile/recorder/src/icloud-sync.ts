@@ -144,6 +144,8 @@ export async function deletePrivateCloudDataForUser(user: LocalUser): Promise<vo
 
 /** Extra pulls per zone while downloaded records still wait on records that arrive later in the same library. */
 const DEFERRED_PULL_RETRIES = 3;
+/** Hard cap on pulls per zone: a large first download keeps going only while each pass resolves more records. */
+const DEFERRED_PULL_MAX_PASSES = 12;
 
 export async function syncCurrentUserWithPrivateICloud(options: { force?: boolean } = {}): Promise<PrivateICloudSyncResult> {
   const user = getCurrentUser();
@@ -245,6 +247,7 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
         // cursor stays put. Pulling again from that cursor ingests them once their dependencies have landed, so a
         // fresh iPad finishes in one sync instead of reporting items that only needed another pass.
         let ingested: Awaited<ReturnType<typeof engine.ingestRemoteRecords>>;
+        let previousDeferred = Infinity;
         for (let pass = 0; ; pass++) {
           const pulled = await pullCloudKitChanges(scope);
           assertSyncProfileCurrent(user);
@@ -252,7 +255,10 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
           deletedRecordNames.push(...pulled.deletedRecordNames);
           ingested = await engine.ingestRemoteRecords(pulled.records, () => assertSyncProfileCurrent(user));
           downloaded += ingested.updatedCount;
-          if (ingested.deferredCount === 0 || pass >= DEFERRED_PULL_RETRIES) break;
+          // Keep going while each pass resolves more records, up to a hard cap; stop at once when a pass makes no progress.
+          const progressing = ingested.deferredCount < previousDeferred;
+          previousDeferred = ingested.deferredCount;
+          if (ingested.deferredCount === 0 || pass >= DEFERRED_PULL_MAX_PASSES || (pass >= DEFERRED_PULL_RETRIES && !progressing)) break;
         }
         failedUploads += ingested.deferredCount;
         // Keep a zone's old cursor when a dependent record has not arrived yet.
