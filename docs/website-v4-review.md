@@ -42,6 +42,8 @@ The site terms have their own app license and a Texas governing-law clause. Appl
 - Root dependencies were absent; `npm ci --ignore-scripts` restored lockfile dependencies without changing manifests or lockfiles.
 - V4 images are WebP derivatives of the existing local screenshot sets; original mobile screenshots were not changed.
 
-## Next step
+## Publication
 
-Publish the approved website update, then verify the production home, privacy, support, and image URLs. This approval covers the website update; the App Store still serves 2.0 at the time of approval.
+Published September 30, 2026 through [PR 224](https://github.com/drumpat01/DriveOS/pull/224), merge `b7e11ef`. Render deploy `dep-daut4j9srm7s73bda640` reports live. Production home, privacy, support, Terms, and health endpoint return 200. The pages, carousel JavaScript, and all eight screenshots match the approved local files. Production browser checks passed at 1440px and 390px, including Ask/Atlas carousel navigation and no JavaScript errors. The post-deploy error-log query returned no entries.
+
+Full release preflight and all four public carousel E2E tests also passed before publication. GitHub merged the PR immediately despite pending CI; Render's actual auto-deploy trigger is commit. The broader [CI run](https://github.com/drumpat01/DriveOS/actions/runs/36810309876) subsequently completed successfully. This approval covers the website update; the App Store still serves 2.0 at the time of approval.
