@@ -4,6 +4,12 @@
 
 ---
 
+## All App Versions Feature and Development Complete (October 1, 2026)
+
+- The owner declared JourneyDeck, including V4 and all previous app versions, feature and development complete.
+- Preserve the completed app baseline. Do not initiate new features, cosmetic polish, refactors, dependency upgrades, or discretionary development. Resume development only for an explicit owner request; the narrower V2 and V3 maintenance restrictions below still apply.
+- Completion does not authorize staging, committing, pushing, building, publishing an OTA, deploying, submitting, or releasing. Each release action still requires explicit owner authorization.
+
 ## V2 Complete — Maintenance Freeze (September 15, 2026)
 
 - JourneyDeck V2 development is complete. The user confirmed submission of version 2.0 / build 31 to App Review; this does not imply Apple approval or public release.

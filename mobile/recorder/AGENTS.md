@@ -1,5 +1,9 @@
 # JourneyDeck Mobile Subsystem (iOS / Expo SDK 58 beta)
 
+## All app versions complete — October 1, 2026
+
+The owner declared JourneyDeck feature and development complete across V4 and all previous app versions. Preserve the completed baseline and do not initiate discretionary development. Resume development only for an explicit owner request, subject to the narrower V2 and V3 restrictions below. Release actions still require explicit authorization. See root `GEMINI.md` for the authoritative completion policy.
+
 ## V2 complete and frozen — September 15, 2026
 
 The user confirmed V2 submission to App Review and declared development complete. No V2 runtime changes are allowed except urgent customer-reported bugs. Keep urgent fixes minimal, document the report and urgency, and run targeted validation. Release actions still require user authorization. See root `GEMINI.md` for the authoritative freeze policy.
