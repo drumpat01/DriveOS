@@ -143,13 +143,12 @@ const responses = {
       report: { resources: { drives: { passed: true }, charges: { passed: true } } }
     }
   },
-  '/api/status': { driveOS: 'online', tessie: true, spotify: true, lastfm: true, lastfmUsername: 'demo-listener', foursquare: true, foursquareCached: 7, playlistScope: true },
+  '/api/status': { driveOS: 'online', tessie: true, spotify: true, lastfm: true, lastfmUsername: 'demo-listener', playlistScope: true },
   '/api/vehicle': { name: 'Aurora', state: 'online', battery: 72, rangeMiles: 185, charging: 'Disconnected', chargeLimit: 80, insideTempF: 72, outsideTempF: 76, latitude: 39.7392, longitude: -104.9903, heading: 194, speedMph: 0, shiftState: 'P', gpsAsOf: 1786377600, odometerMiles: 14096.49 },
   '/api/vehicle/live': { name: 'Aurora', state: 'online', battery: 72, rangeMiles: 185, charging: 'Disconnected', chargeLimit: 80, insideTempF: 72, outsideTempF: 76, latitude: 39.7392, longitude: -104.9903, heading: 194, speedMph: 38, shiftState: 'D', gpsAsOf: 1786377600, odometerMiles: 14096.49 },
   '/api/spotify/recent': { recent, newlyArchived: 4, archiveTotal: 1427, lastFmConfigured: true, lastFmUsername: 'demo-listener' },
   '/api/spotify/auth-status': { authorized: true },
   '/api/lastfm/status': { configured: true, username: 'demo-listener' },
-  '/api/foursquare/status': { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 },
   '/api/drives': { windowDays: 730, drives },
   '/api/drives/recent': { windowDays: 14, limited: true, drives },
   '/api/atlas/journeys': { windowDays: 730, journeys: drives.map(({ id, startedAt, driverProfile, startingLocation, rawStartingLocation, startingLatitude, startingLongitude, endingLocation, rawEndingLocation, endingLatitude, endingLongitude }) => ({ id, startedAt, driverProfile, startingLocation, rawStartingLocation, startingLatitude, startingLongitude, endingLocation, rawEndingLocation, endingLatitude, endingLongitude })) },
@@ -192,8 +191,8 @@ const responses = {
   '/api/statistics': { periodDays: 30, driveCount: 10, totalMiles: 300, totalEnergyKWh: 58, totalBatteryUsed: 100, averageWhMi: 193, soundtrackSongs: 40, autopilotMiles: 203.9, autopilotEligibleMiles: 300, autopilotPercent: 68 },
   '/api/places': { places: [
     { location: '120 Demo Avenue', label: 'Studio', manualLabel: 'Studio', displayName: 'Studio', source: 'manual', uses: 8 },
-    { location: '500 Sample Way', label: '', manualLabel: '', businessName: 'Demo Coffee', businessCategory: 'Coffee Shop', businessDistanceMeters: 18, displayName: 'Demo Coffee', source: 'foursquare', uses: 6 }
-  ], savedCount: 1, newMatches: 0, foursquare: { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 } },
+    { location: '500 Sample Way', label: '', manualLabel: '', businessName: 'Demo Coffee', businessCategory: 'Coffee Shop', businessDistanceMeters: 18, displayName: 'Demo Coffee', source: 'atlas', uses: 6 }
+  ], savedCount: 1, newMatches: 0 },
   '/api/charging': { settings: { electricityRateCents: 12.5 }, summary30: { sessions: 7, energyAddedKWh: 184, cost: 23, superchargerSessions: 1 }, sessions: [] },
   '/api/dashboard/layout': { version: 1, updatedAt: null, layout: null },
   '/api/recap': { recaps: [{ monthKey: '2026-08', monthLabel: 'August 2026', driveCount: 38, miles: 624.8, driveEnergyKWh: 147.3, averageWhMi: 236, batteryUsed: 264, soundtrackPlays: 184, uniqueSongs: 91, favoriteRoute: 'Lakeview, ST to Riverton, ST', favoriteRouteCount: 9, longestDriveMiles: 52.4, longestDriveDate: 'Sat, Aug 8', chargingSessions: 7, chargingEnergyKWh: 184, chargingCost: 23, chargingKnownCostSessions: 7 }], settings: { electricityRateCents: 12.5 } },

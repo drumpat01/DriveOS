@@ -893,8 +893,6 @@ services:
         sync: false
       - key: LASTFM_API_KEY
         sync: false
-      - key: FOURSQUARE_API_KEY
-        sync: false
 '@
 
 $Dockerfile = @'
