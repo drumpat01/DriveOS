@@ -934,44 +934,6 @@ function Start-LastFmConfiguration {
 '@ `
     -Description "web Last.fm setup guard"
 
-$Server = Replace-Exact `
-    -Text $Server `
-    -Old @'
-function Get-FoursquareConfiguration {
-    if (-not (Test-Path $FoursquareConfigFile -PathType Leaf)) { return $null }
-
-    $Config = Read-DriveOSJson -Path $FoursquareConfigFile
-'@ `
-    -New @'
-function Get-FoursquareConfiguration {
-    if ($RuntimeConfig.IsWeb -and $env:FOURSQUARE_API_KEY) {
-        $ApiKey = "$($env:FOURSQUARE_API_KEY)".Trim()
-        $script:FoursquareApiKeyForRedaction = $ApiKey
-        return [PSCustomObject]@{ apiKey = $ApiKey }
-    }
-
-    if (-not (Test-Path $FoursquareConfigFile -PathType Leaf)) { return $null }
-
-    $Config = Read-DriveOSJson -Path $FoursquareConfigFile
-'@ `
-    -Description "web Foursquare environment configuration"
-
-$Server = Replace-Exact `
-    -Text $Server `
-    -Old @'
-function Start-FoursquareConfiguration {
-    $Script = Join-Path $PSScriptRoot "Connect-Foursquare.ps1"
-'@ `
-    -New @'
-function Start-FoursquareConfiguration {
-    if ($RuntimeConfig.IsWeb) {
-        throw "Configure FOURSQUARE_API_KEY in the hosting environment."
-    }
-
-    $Script = Join-Path $PSScriptRoot "Connect-Foursquare.ps1"
-'@ `
-    -Description "web Foursquare setup guard"
-
 # ================================================================
 # 7. Browser Spotify flow
 # ================================================================
@@ -1089,8 +1051,6 @@ services:
       - key: LASTFM_USERNAME
         sync: false
       - key: LASTFM_API_KEY
-        sync: false
-      - key: FOURSQUARE_API_KEY
         sync: false
 '@
 
