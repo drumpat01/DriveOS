@@ -114,4 +114,4 @@ Architecture and migration notes live in [docs/ARCHITECTURE.md](docs/ARCHITECTUR
 - Local runtime data, credentials, logs, and generated databases are excluded from Git.
 - The project is a personal beta and still assumes a trusted owner or household rather than public multi-user onboarding.
 
-JourneyDeck is not affiliated with or endorsed by Tesla, Tessie, Spotify, Apple, Expo, Foursquare, OpenFreeMap, or OpenStreetMap. Product names and trademarks belong to their respective owners.
+JourneyDeck is not affiliated with or endorsed by Tesla, Tessie, Spotify, Apple, Expo, OpenFreeMap, or OpenStreetMap. Product names and trademarks belong to their respective owners.

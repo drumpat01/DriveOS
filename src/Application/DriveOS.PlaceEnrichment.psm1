@@ -45,47 +45,4 @@ function Select-DriveOSPlaceLookupCandidates {
         Select-Object -First $Limit)
 }
 
-function Select-DriveOSFoursquareMatch {
-    param(
-        [object[]]$Places = @(),
-        [ValidateRange(1,250)][int]$MaximumDistanceMeters = 60
-    )
-
-    return @($Places |
-        Where-Object {
-            -not [string]::IsNullOrWhiteSpace([string]$_.name) -and
-            $null -ne $_.distanceMeters -and
-            [double]$_.distanceMeters -ge 0 -and
-            [double]$_.distanceMeters -le $MaximumDistanceMeters
-        } |
-        Sort-Object distanceMeters |
-        Select-Object -First 1)[0]
-}
-
-function Get-DriveOSFoursquareUsageWindow {
-    param(
-        $Usage,
-        [datetime]$Now = (Get-Date),
-        [ValidateRange(1,1000)][int]$DailyLimit = 10,
-        [ValidateRange(1,10000)][int]$MonthlyLimit = 250
-    )
-
-    $Today = $Now.ToString('yyyy-MM-dd')
-    $Month = $Now.ToString('yyyy-MM')
-    $TodayCount = if ($Usage -and "$($Usage.day)" -eq $Today) { [int]$Usage.dayCount } else { 0 }
-    $MonthCount = if ($Usage -and "$($Usage.month)" -eq $Month) { [int]$Usage.monthCount } else { 0 }
-
-    [PSCustomObject]@{
-        day = $Today
-        dayCount = $TodayCount
-        dayLimit = $DailyLimit
-        dayRemaining = [Math]::Max(0, $DailyLimit - $TodayCount)
-        month = $Month
-        monthCount = $MonthCount
-        monthLimit = $MonthlyLimit
-        monthRemaining = [Math]::Max(0, $MonthlyLimit - $MonthCount)
-        canCall = ($TodayCount -lt $DailyLimit -and $MonthCount -lt $MonthlyLimit)
-    }
-}
-
-Export-ModuleMember -Function Get-DriveOSPlaceCacheKey,Select-DriveOSPlaceLookupCandidates,Select-DriveOSFoursquareMatch,Get-DriveOSFoursquareUsageWindow
+Export-ModuleMember -Function Get-DriveOSPlaceCacheKey,Select-DriveOSPlaceLookupCandidates

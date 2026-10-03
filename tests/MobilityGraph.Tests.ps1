@@ -67,7 +67,7 @@ $HomeFenceGraph = New-DriveOSMobilityGraph -Drives @(
     [PSCustomObject]@{id='home-fence';startedAt='2026-08-10T12:00:00Z';startingLocation='Legacy Vendor Label';endingLocation='Store';startingLatitude=35.123456;startingLongitude=-96.654321;endingLatitude=35.20;endingLongitude=-96.80;miles=8;durationMinutes=15}
 ) -Preferences ([PSCustomObject]@{placeGeofences=@($HomeFence);places=@();routines=@()})
 $CorrectedHome = @($HomeFenceGraph.nodes | Where-Object category -eq 'home')[0]
-Assert-Equal $CorrectedHome.label 'Home' 'The 200-foot Home geofence did not override the Foursquare business label.'
+Assert-Equal $CorrectedHome.label 'Home' 'The 200-foot Home geofence did not override the business label.'
 Assert-Equal $HomeFenceGraph.placeGeofences[0].radiusFeet 200 'The graph response does not expose the persisted Home radius.'
 
 $ConsolidatedHomeGraph = New-DriveOSMobilityGraph -Drives @(
@@ -118,7 +118,5 @@ Assert-True ($AtlasStore -match 'new Worker' -and $AtlasStore -match 'patchBoots
 $MapTheme = Get-Content (Join-Path $Root 'web\features\beta-map-theme.js') -Raw
 Assert-True ($MapTheme -match 'Noto%20Sans%20Regular' -and $MapTheme -match 'resourceType === "Glyphs"' -and $Frontend -match 'JourneyDeckMapTheme\?\.options\(options\)') 'Atlas must rewrite unsupported OpenFreeMap glyph stacks to the supported Noto Sans font.'
 Assert-True ($Server -match 'function Get-PlaceCandidates\s*\{\s*param\(\[switch\]\$Enrich\)' -and $Server -match 'Get-PlaceCandidates -Enrich') 'Provider enrichment must require the explicit Atlas scan path.'
-$Migration = Get-Content (Join-Path $Root 'tools\Invoke-AtlasPlaceMigration.ps1') -Raw
-Assert-True ($Migration -match 'Set-DriveOSTursoState[^\r\n]+foursquare-usage[^\r\n]+\$NewUsage\s*\r?\n\s*\$Places\s*=') 'Atlas migration must reserve each provider call durably before issuing it.'
 Assert-True ($Index -match 'mobilityGraphInspector[\s\S]+mobilityChanges') 'Change insights are not positioned in the Atlas sidebar.'
 Write-Host 'Personal Mobility Graph checks passed.' -ForegroundColor Green

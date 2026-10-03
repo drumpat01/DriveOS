@@ -21,7 +21,6 @@ Accounts and credentials:
   - Tessie account and API token for Tesla vehicle and drive features
   - Spotify Developer application and Client ID for Spotify music features
   - Optional Last.fm username and API key for a deeper listening archive
-  - Optional Foursquare Service API key for friendly place names
 
 DriveOS can open without every optional service, but features that depend on a
 missing service will remain unavailable until that service is configured.
@@ -169,24 +168,11 @@ DriveOS validates the credentials, encrypts the API key with Windows DPAPI, and
 downloads scrobbles in multiple pages until the available history is synced.
 Later refreshes continue from the saved local cursor.
 
-
-9. OPTIONAL: CONNECT FOURSQUARE
--------------------------------
-
-Foursquare is used to turn repeated coordinates into more recognizable place
-names. DriveOS caches results and limits requests to conserve quota.
-
-  1. Create a Foursquare developer project and Service API key.
   2. From the DriveOS folder, run:
 
-       .\Connect-Foursquare.ps1
 
   3. Enter the Service API key when prompted.
   4. Refresh DriveOS.
-
-Foursquare developer portal:
-
-  https://location.foursquare.com/developer/
 
 
 10. WHERE DRIVEOS STORES DATA

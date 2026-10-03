@@ -83,5 +83,3 @@ services:
         sync: false
       - key: DRIVEOS_SPOTIFY_SYNC_SECRET
         sync: false
-      - key: FOURSQUARE_API_KEY
-        sync: false

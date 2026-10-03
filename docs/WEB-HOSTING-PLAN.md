@@ -69,7 +69,7 @@ Included:
 3. Existing DriveOS dashboard in a normal browser
 4. Tessie integration
 5. Spotify integration with a public HTTPS OAuth callback
-6. Existing Last.fm and Foursquare integrations where portable
+6. Existing Last.fm integration where portable
 7. Persistent SQLite/runtime storage
 8. Share-card browser download behavior
 9. HTTPS deployment from GitHub
@@ -108,7 +108,7 @@ Web mode should eventually understand values similar to:
 - `DRIVEOS_ENCRYPTION_KEY`
 - `TESSIE_TOKEN`
 - `SPOTIFY_CLIENT_ID`
-- optional Last.fm / Foursquare values
+- optional Last.fm values
 
 No production secret value belongs in Git.
 
@@ -217,7 +217,7 @@ Provider/domain/repository code that is already platform-neutral should be prese
 
 - Spotify hosted OAuth callback
 - portable refresh-token encryption
-- Last.fm/Foursquare web configuration strategy
+- Last.fm web configuration strategy
 
 ### Milestone 5 — Render deployment
 
