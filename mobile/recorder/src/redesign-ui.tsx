@@ -61,7 +61,7 @@ export function canvasForWidth(width: number): RedesignCanvas {
 const TOP_BAND_MIN_INSET = 76;
 const TOP_BAND_GAP = 6;
 /** Width kept clear for the system clock and camera cluster at the trailing end of the band. */
-const TOP_BAND_CLOCK_WIDTH = 112;
+const TOP_BAND_CLOCK_WIDTH = 128;
 const TopBandContext = createContext(0);
 
 /** Tab page: themed page color, soft accent glow, and room for the floating bar. */
@@ -74,12 +74,11 @@ export function RedesignPage({ children, refreshControl, testID, maxWidth = CANV
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
   const canvas = useMemo(() => canvasForWidth(Math.min(width, maxWidth)), [width, maxWidth]);
-  const band = insets.top >= TOP_BAND_MIN_INSET ? insets.top : 0;
-  return <View testID={testID} onLayout={event => setWidth(Math.round(event.nativeEvent.layout.width))} style={[styles.page, { backgroundColor: colors.page }]}>
+  const band = insets.top >= TOP_BAND_MIN_INSET ? insets.top : 0;  return <View testID={testID} onLayout={event => setWidth(Math.round(event.nativeEvent.layout.width))} style={[styles.page, { backgroundColor: colors.page }]}>
     <LinearGradient pointerEvents="none" colors={[colors.glow, colors.page]} locations={[0, 1]} style={styles.glow} />
     <ScrollView refreshControl={refreshControl} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
-      contentContainerStyle={[styles.pageContent, canvas.wide && styles.pageContentWide, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE,
+      contentContainerStyle={[styles.pageContent, canvas.wide && styles.pageContentWide, { paddingTop: band ? TOP_BAND_GAP : insets.top + 14, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE,
         // Duo's vertical tab bar and camera area arrive as left/right insets; the page background still fills the window.
         paddingLeft: (canvas.wide ? 32 : 20) + insets.left, paddingRight: (canvas.wide ? 32 : 20) + insets.right }]}>
       <TopBandContext.Provider value={band}><CanvasContext.Provider value={canvas}><View style={[styles.canvas, { maxWidth }]}>{typeof children === 'function' ? children(canvas) : children}</View></CanvasContext.Provider></TopBandContext.Provider>
