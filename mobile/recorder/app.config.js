@@ -33,7 +33,7 @@ module.exports = ({ config }) => {
   return {
     ...config,
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
-    version: v4Store ? '4.0.0' : v3 ? '3.0.0' : '2.0.0',
+    version: v4Store ? '4.5.0' : v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
     // V4 and V3 Build 40 have separate native and OTA compatibility boundaries. V4 preview.3 adds weekly/annual
     // StoreKit products and the 3-day first-launch trial in native code; its OTAs must not reach Build 44 (preview.2).

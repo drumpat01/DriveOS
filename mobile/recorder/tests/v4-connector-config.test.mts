@@ -15,7 +15,7 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     process.env.APP_VARIANT = 'v4-store';
     process.env.EAS_BUILD_PROFILE = 'v4-testflight';
     const config = configure({ config: base });
-    assert.equal(config.version, '4.0.0');
+    assert.equal(config.version, '4.5.0');
     assert.equal(config.runtimeVersion, '4.0.0-preview.3');
     assert.equal(config.updates.requestHeaders['xprem-branch'], 'v4-testflight');
     assert.equal(config.ios.bundleIdentifier, 'com.journeydeck.recorder');
