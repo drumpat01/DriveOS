@@ -34,6 +34,7 @@ const navigation = load('native-navigation.tsx', {
   './device-layout': { isIpad: () => ipad },
   './adaptive-layout': { useAdaptiveLayout: () => adaptive },
   './detail-screen-frame': { DetailViewportProvider: host('viewport') },
+  './duo-side-tabs': { DuoSideTabs: () => null },
   './card-detail-link': { useCardDetailDismissal: () => {} },
   './memory-flip': { MemoryFlipProvider: host('memory-flip'), MemoryFlipImageContext: React.createContext(false), useMemoryFlip: () => memoryFlip },
   './native-navigation-context': navigationContext,

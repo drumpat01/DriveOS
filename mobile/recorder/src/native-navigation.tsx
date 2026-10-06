@@ -7,11 +7,12 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useAppTheme } from './app-theme';
 import { useCardDetailDismissal } from './card-detail-link';
 import { DetailViewportProvider } from './detail-screen-frame';
+import { DuoSideTabs } from './duo-side-tabs';
 import { useJourneyDeckNavigation, type JourneyDeckTab } from './native-navigation-context';
 import { MemoryFlipImageContext, MemoryFlipProvider, useMemoryFlip } from './memory-flip';
 
 export function JourneyDeckNativeStack() {
-  return <DetailViewportProvider><MemoryFlipProvider><JourneyDeckStackContent /></MemoryFlipProvider></DetailViewportProvider>;
+  return <DetailViewportProvider><MemoryFlipProvider><JourneyDeckStackContent /><DuoSideTabs /></MemoryFlipProvider></DetailViewportProvider>;
 }
 
 function JourneyDeckStackContent() {

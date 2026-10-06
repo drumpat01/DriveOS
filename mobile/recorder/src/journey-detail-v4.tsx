@@ -98,7 +98,7 @@ export function JourneyDetailV4({
   const vehicle = journey.vehicleName || journey.startingBatteryPercent != null || journey.energyUsedKwh != null;
   return <View testID="journey-detail-v4" style={[styles.screen, { backgroundColor: colors.page }]}>
     <ScrollView ref={scroller} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
-      keyboardShouldPersistTaps="handled" contentContainerStyle={[readingColumnStyle, { paddingBottom: insets.bottom + 40 }]}>
+      keyboardShouldPersistTaps="handled" contentContainerStyle={[readingColumnStyle, { paddingBottom: insets.bottom + 40, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <JourneyMarkerRoute key={journey.id} journeyId={journey.id} layout="v4" v4TopInset={insets.top + 64} v4Header={header} v4Middle={middle}
         coordinates={journey.route?.coordinates ?? []} routeSamples={journey.route?.points} photos={replayPhotos} songMoments={songMoments}
         totalSongCount={songCount} startedAt={journey.startedAt} endedAt={journey.endedAt}
@@ -130,7 +130,7 @@ function InfoRow({ label, value, first = false }: { label: string; value: string
 export function JourneyToolbar({ onBack, onShare, onEditLocations, onTrim }: { onBack: () => void; onShare?: () => void; onEditLocations?: () => void; onTrim?: () => void }) {
   const colors = useRedesignColors();
   const insets = useDetailViewportInsets();
-  return <View pointerEvents="box-none" style={[styles.toolbar, { top: insets.top + 6 }]}>
+  return <View pointerEvents="box-none" style={[styles.toolbar, { top: insets.top + 6, left: 16 + insets.left, right: 16 + insets.right }]}>
     <TouchPressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack}
       style={({ pressed }) => [styles.toolButton, { backgroundColor: colors.photoChip, borderColor: colors.photoChipBorder }, pressed && redesignStyles.pressed]}>
       <SymbolView name="chevron.left" tintColor={colors.text} size={18} weight="semibold" />

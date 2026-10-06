@@ -190,7 +190,7 @@ export function RoadsSoFarStep({ header, onDone }: { header: ReactNode; onDone: 
   })();
 
   return <View style={styles.screen}>
-    <ScrollView contentContainerStyle={[styles.content, readingColumnStyle, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[styles.content, readingColumnStyle, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16), marginLeft: insets.left, marginRight: insets.right }]} showsVerticalScrollIndicator={false}>
       {header}
       {content}
     </ScrollView>

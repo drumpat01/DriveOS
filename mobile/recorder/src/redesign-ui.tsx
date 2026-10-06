@@ -57,6 +57,13 @@ export function canvasForWidth(width: number): RedesignCanvas {
   return { width, wide: width >= CANVAS_WIDE_MIN, columns: width >= 980 ? 3 : width >= CANVAS_WIDE_MIN ? 2 : 1 };
 }
 
+/** A top safe-area inset this tall (Duo inner portrait: 82pt) is a band beside the clock; no iPhone or iPad reports one. */
+const TOP_BAND_MIN_INSET = 76;
+const TOP_BAND_GAP = 6;
+/** Width kept clear for the system clock and camera cluster at the trailing end of the band. */
+const TOP_BAND_CLOCK_WIDTH = 112;
+const TopBandContext = createContext(0);
+
 /** Tab page: themed page color, soft accent glow, and room for the floating bar. */
 /** Reading width for tabs that stay a single column on iPad. */
 export const CANVAS_READING_WIDTH = 760;
@@ -67,19 +74,24 @@ export function RedesignPage({ children, refreshControl, testID, maxWidth = CANV
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
   const canvas = useMemo(() => canvasForWidth(Math.min(width, maxWidth)), [width, maxWidth]);
+  const band = insets.top >= TOP_BAND_MIN_INSET ? insets.top : 0;
   return <View testID={testID} onLayout={event => setWidth(Math.round(event.nativeEvent.layout.width))} style={[styles.page, { backgroundColor: colors.page }]}>
     <LinearGradient pointerEvents="none" colors={[colors.glow, colors.page]} locations={[0, 1]} style={styles.glow} />
     <ScrollView refreshControl={refreshControl} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
-      contentContainerStyle={[styles.pageContent, canvas.wide && styles.pageContentWide, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE }]}>
-      <CanvasContext.Provider value={canvas}><View style={[styles.canvas, { maxWidth }]}>{typeof children === 'function' ? children(canvas) : children}</View></CanvasContext.Provider>
+      contentContainerStyle={[styles.pageContent, canvas.wide && styles.pageContentWide, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE,
+        // Duo's vertical tab bar and camera area arrive as left/right insets; the page background still fills the window.
+        paddingLeft: (canvas.wide ? 32 : 20) + insets.left, paddingRight: (canvas.wide ? 32 : 20) + insets.right }]}>
+      <TopBandContext.Provider value={band}><CanvasContext.Provider value={canvas}><View style={[styles.canvas, { maxWidth }]}>{typeof children === 'function' ? children(canvas) : children}</View></CanvasContext.Provider></TopBandContext.Provider>
     </ScrollView>
   </View>;
 }
 
 export function LargeTitle({ kicker, title, trailing }: { kicker?: string; title: string; trailing?: ReactNode }) {
   const colors = useRedesignColors();
-  return <View style={styles.titleRow}>
+  const band = useContext(TopBandContext);
+  // Duo's inner portrait leaves a tall status band beside the clock and camera; the title row lives in it.
+  return <View style={[styles.titleRow, band > 0 && { height: band - TOP_BAND_GAP, alignItems: 'center', paddingRight: TOP_BAND_CLOCK_WIDTH }]}>
     <View style={styles.flex}>
       {kicker ? <Text style={[styles.kicker, { color: colors.textSecondary }]}>{kicker.toUpperCase()}</Text> : null}
       <Text accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.largeTitle, { color: colors.text }]}>{title}</Text>
