@@ -1,0 +1,10 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://journeydeck.me/",
+      "service-desc": [{ "href": "https://journeydeck.me/openapi.json", "type": "application/vnd.oai.openapi+json" }],
+      "service-doc": [{ "href": "https://journeydeck.me/api-docs", "type": "text/html" }],
+      "status": [{ "href": "https://journeydeck.me/healthz", "type": "application/json" }]
+    }
+  ]
+}
