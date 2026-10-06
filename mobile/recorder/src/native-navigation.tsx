@@ -7,7 +7,7 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useAppTheme } from './app-theme';
 import { useCardDetailDismissal } from './card-detail-link';
 import { DetailViewportProvider } from './detail-screen-frame';
-import { DuoSideTabs } from './duo-side-tabs';
+import { DuoSideTabs, setDuoActiveTab } from './duo-side-tabs';
 import { useJourneyDeckNavigation, type JourneyDeckTab } from './native-navigation-context';
 import { MemoryFlipImageContext, MemoryFlipProvider, useMemoryFlip } from './memory-flip';
 
@@ -84,7 +84,7 @@ export function JourneyDeckNativeTabs() {
 }
 export function NativeTabScreen({ tab }: { tab: JourneyDeckTab }) {
   const { tabs, onTabFocus } = useJourneyDeckNavigation();
-  useFocusEffect(useCallback(() => { onTabFocus(tab); }, [onTabFocus, tab]));
+  useFocusEffect(useCallback(() => { onTabFocus(tab); setDuoActiveTab(tab); }, [onTabFocus, tab]));
   return tabs[tab];
 }
 export function NativeMemoryScreen() {
