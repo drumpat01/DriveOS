@@ -24,7 +24,7 @@ function evaluate(sourceText: string, mocks: Record<string, any> = {}, globals: 
   return module.exports;
 }
 const viewport = evaluate(readFileSync(new URL('../src/settings-scroll-view.tsx', import.meta.url), 'utf8'), {
-  'react-native': controls, 'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView') },
+  'react-native': controls, 'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
   './device-layout': { isIpad: () => tablet, readingColumnStyle: { width: '100%', maxWidth: 760, alignSelf: 'center' } }, './release-features': { V4_REDESIGN_ENABLED: false }, './app-theme': { useAppTheme: () => testTheme(light) },
 });
 const viewSource = source.slice(source.indexOf('function ConnectionsScreen('), source.indexOf('function JourneyDeckLogo('));

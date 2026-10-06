@@ -47,7 +47,7 @@ export function MemoryDetailV4({ memory, journeys, details, onClose, onOpenJourn
     <Animated.ScrollView ref={scroller} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
       contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
       onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-      contentContainerStyle={[readingColumnStyle, { paddingBottom: insets.bottom + 48 }]}>
+      contentContainerStyle={[readingColumnStyle, { paddingBottom: insets.bottom + 48, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <Animated.View style={[styles.hero, heroScale]}>
         <View style={[styles.heroMain, { backgroundColor: colors.surfaceStrong }]}><MemoryCoverImage memory={memory} onReady={onReady} /></View>
         <View style={[styles.heroSide, { width: tileWidth }]}>
@@ -155,7 +155,7 @@ export function MemoryDetailV4({ memory, journeys, details, onClose, onOpenJourn
       </View>
     </Animated.ScrollView>
 
-    <View style={[styles.toolbar, { top: insets.top + 6 }]} pointerEvents="box-none">
+    <View style={[styles.toolbar, { top: insets.top + 6, left: 16 + insets.left, right: 16 + insets.right }]} pointerEvents="box-none">
       <TouchPressable accessibilityRole="button" accessibilityLabel="Back" onPress={onClose}
         style={({ pressed }) => [styles.toolButton, { backgroundColor: colors.photoChip, borderColor: colors.photoChipBorder }, pressed && redesignStyles.pressed]}>
         <SymbolView name="chevron.left" tintColor={colors.text} size={18} weight="semibold" />
