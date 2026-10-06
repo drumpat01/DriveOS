@@ -95,6 +95,13 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(robots.statusCode, 200, robots.body);
     assert.match(robots.body, /Sitemap: https:\/\/journeydeck\.me\/sitemap\.xml/i);
     assert.doesNotMatch(robots.body, /Disallow: \/beta/i);
+    const catalog = await runtime.app.inject({ method: "GET", url: "/.well-known/api-catalog" });
+    assert.equal(catalog.statusCode, 200, catalog.body);
+    assert.match(String(catalog.headers["content-type"]), /^application\/linkset\+json/i);
+    const entry = JSON.parse(catalog.body).linkset[0];
+    assert.ok(entry.anchor && entry["service-desc"] && entry["service-doc"] && entry.status);
+    assert.equal((await runtime.app.inject({ method: "GET", url: "/openapi.json" })).statusCode, 200);
+    assert.equal((await runtime.app.inject({ method: "GET", url: "/api-docs" })).statusCode, 200);
     const sitemap = await runtime.app.inject({ method: "GET", url: "/sitemap.xml" });
     assert.equal(sitemap.statusCode, 200, sitemap.body);
     assert.match(String(sitemap.headers["content-type"]), /xml/i);

@@ -1,0 +1,41 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "JourneyDeck Public API",
+    "version": "1.0.0",
+    "description": "Publicly reachable status endpoints for JourneyDeck. All other /api/ routes require an authenticated session and are not part of the public API."
+  },
+  "servers": [{ "url": "https://journeydeck.me" }],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Liveness check",
+        "responses": {
+          "200": {
+            "description": "The service is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean" }, "mode": { "type": "string" } },
+                  "required": ["ok"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "getReadiness",
+        "summary": "Readiness check",
+        "responses": {
+          "200": { "description": "The service and its data store are ready." },
+          "503": { "description": "The service is not ready." }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#081832">
+  <meta name="description" content="Documentation for the public JourneyDeck status API.">
+  <link rel="canonical" href="https://journeydeck.me/api-docs">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon.png?v=app-logo-1">
+  <link rel="stylesheet" href="/public-page.css?v=grand-tour-3">
+  <title>JourneyDeck API Documentation</title>
+</head>
+<body>
+  <main>
+    <h1>JourneyDeck API</h1>
+    <p>JourneyDeck exposes a small public API for service status. All other <code>/api/</code> routes require an authenticated session and are not publicly documented.</p>
+    <h2>Endpoints</h2>
+    <ul>
+      <li><code>GET /healthz</code> &mdash; liveness check. Returns <code>200</code> with a JSON body.</li>
+      <li><code>GET /readyz</code> &mdash; readiness check. Returns <code>200</code> when ready, <code>503</code> otherwise.</li>
+    </ul>
+    <p>The machine-readable description is available as <a href="/openapi.json">OpenAPI 3.1 JSON</a>, and the API catalog is at <a href="/.well-known/api-catalog">/.well-known/api-catalog</a>.</p>
+  </main>
+</body>
+</html>
