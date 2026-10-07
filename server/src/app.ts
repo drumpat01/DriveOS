@@ -28,6 +28,13 @@ const securityHeaders = {
   "permissions-policy": "autoplay=(self \"https://open.spotify.com\"), encrypted-media=(self \"https://open.spotify.com\"), camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()"
 };
 
+const homepageLinks = [
+  '</.well-known/api-catalog>; rel="api-catalog"',
+  '</openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"',
+  '</api-docs>; rel="service-doc"; type="text/html"',
+  '</openapi.json>; rel="describedby"; type="application/vnd.oai.openapi+json"'
+].join(", ");
+
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
@@ -62,7 +69,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);
-  app.addHook("onSend", async (_req, reply, payload) => { for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value); return payload; });
+  app.addHook("onSend", async (req, reply, payload) => { for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value); if (req.url.split("?")[0] === "/") reply.header("link", homepageLinks); return payload; });
   app.addHook("onRequest", async (req, reply) => {
     const requestPath = req.url.split("?")[0];
     if (["/", "/beta", "/beta/"].includes(requestPath) && cfg.mode === "web") return;
