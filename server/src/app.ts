@@ -72,7 +72,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   app.addHook("onSend", async (req, reply, payload) => { for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value); if (req.url.split("?")[0] === "/") reply.header("link", homepageLinks); return payload; });
   app.addHook("onRequest", async (req, reply) => {
     const requestPath = req.url.split("?")[0];
-    if (["/", "/beta", "/beta/"].includes(requestPath) && cfg.mode === "web") return;
+    if (requestPath === "/" && cfg.mode === "web") return;
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
     if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/") && !["/app", "/wife", "/spotify-callback"].includes(requestPath)) return;
     if (requestPath === scheduledSyncPath) {
@@ -209,8 +209,8 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   // same fixed root, so atomic web asset updates become visible immediately.
   await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: true, index: false, decorateReply: true });
   if (cfg.mode === "web") {
-    for (const legacyLandingPath of ["/beta", "/beta/", "/beta.html", "/landing.html"]) {
-      app.get(legacyLandingPath, async (_req, reply) => reply.redirect("/"));
+    for (const retiredLandingPath of ["/beta", "/beta/", "/beta.html", "/landing.html"]) {
+      app.get(retiredLandingPath, async (_req, reply) => reply.code(404).header("x-robots-tag", "noindex, nofollow").sendFile("404.html"));
     }
   }
   app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "beta.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/.well-known/api-catalog", async (_req, reply) => reply.type("application/linkset+json").send(await readFile(join(cfg.webRoot, "api-catalog.json")))); app.get("/api-docs", async (_req, reply) => reply.sendFile("api-docs.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/apple-music-soundtrack", async (_req, reply) => reply.sendFile("apple-music-soundtrack.html")); app.get("/private-driving-journal", async (_req, reply) => reply.sendFile("private-driving-journal.html")); app.get("/driving-journal", async (_req, reply) => reply.code(301).redirect("/private-driving-journal")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));

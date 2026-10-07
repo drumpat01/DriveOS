@@ -182,9 +182,10 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     }
 
     for (const url of ["/beta", "/beta/", "/beta.html", "/landing.html"]) {
-      const legacyLanding = await runtime.app.inject({ method: "GET", url });
-      assert.equal(legacyLanding.statusCode, 302, url);
-      assert.equal(legacyLanding.headers.location, "/", url);
+      const retiredLanding = await runtime.app.inject({ method: "GET", url });
+      assert.equal(retiredLanding.statusCode, 404, url);
+      assert.match(retiredLanding.body, /Page not found/i, url);
+      assert.equal(retiredLanding.headers["x-robots-tag"], "noindex, nofollow", url);
     }
     const nestedBeta = await runtime.app.inject({ method: "GET", url: "/beta/private" });
     assert.equal(nestedBeta.statusCode, 404);
