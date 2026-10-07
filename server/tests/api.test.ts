@@ -133,6 +133,9 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(landing.body, /https:\/\/www\.apple\.com\/legal\/internet-services\/itunes\/dev\/stdeula\//);
     assert.match(landing.body, /IPAD \/ YOUR LIBRARY/);
+    assert.match(landing.body, /property="og:image" content="https:\/\/journeydeck\.me\/assets\/beta\/share-card\.png\?v=1"/);
+    assert.match(landing.body, /name="twitter:image" content="https:\/\/journeydeck\.me\/assets\/beta\/share-card\.png\?v=1"/);
+    assert.match(landing.body, /name="twitter:card" content="summary_large_image"/);
     assert.match(landing.body, /APPLE WATCH \/ PAIRED IPHONE/);
     assert.match(landing.body, /rel="canonical" href="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /property="og:url" content="https:\/\/journeydeck\.me\/"/);
@@ -173,6 +176,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/assets/medallions/soundtrack-100-dark.webp", /image\/webp/],
       ["/assets/medallions/story-collector-light-thumb.webp", /image\/webp/],
       ["/assets/beta/grand-touring-home.webp", /image\/webp/],
+      ["/assets/beta/share-card.png", /image\/png/],
       ["/assets/beta/journeydeck-pulse.svg", /image\/svg/],
       ...["01-today", "03-memories", "05-soundtrack", "06-atlas", "07-ask"].map(name => [`/assets/v4/${name}.webp`, /image\/webp/] as const)
     ] as const) {
