@@ -3,7 +3,8 @@
 The Grand Touring landing page is the canonical public homepage at `/`. Its
 midnight blue, champagne gold, ivory, and evergreen colors follow the app's
 Grand Touring palette. The former `/beta`, `/beta/`, `/beta.html`, and
-`/landing.html` entry points redirect to `/`; private app routes remain separate.
+`/landing.html` entry points return 404 (noindex); the page lives only at `/`.
+Private app routes remain separate.
 
 ## Content and assets
 
