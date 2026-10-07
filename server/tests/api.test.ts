@@ -118,6 +118,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     const landing = await runtime.app.inject({ method: "GET", url: "/" });
     assert.equal(landing.statusCode, 200, landing.body);
     assert.match(String(landing.headers["content-type"]), /text\/html/);
+    const links = String(landing.headers.link);
+    for (const rel of ["api-catalog", "service-desc", "service-doc", "describedby"]) assert.match(links, new RegExp(`rel="${rel}"`));
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 4\.0/);
     assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-4"/);
