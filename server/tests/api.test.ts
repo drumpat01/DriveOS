@@ -102,6 +102,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.ok(entry.anchor && entry["service-desc"] && entry["service-doc"] && entry.status);
     assert.equal((await runtime.app.inject({ method: "GET", url: "/openapi.json" })).statusCode, 200);
     assert.equal((await runtime.app.inject({ method: "GET", url: "/api-docs" })).statusCode, 200);
+    const authMd = await runtime.app.inject({ method: "GET", url: "/auth.md" });
+    assert.equal(authMd.statusCode, 200, authMd.body);
+    assert.match(String(authMd.headers["content-type"]), /markdown/i);
+    assert.match(authMd.body, /^# .*auth\.md/im);
     const sitemap = await runtime.app.inject({ method: "GET", url: "/sitemap.xml" });
     assert.equal(sitemap.statusCode, 200, sitemap.body);
     assert.match(String(sitemap.headers["content-type"]), /xml/i);

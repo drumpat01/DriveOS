@@ -19,7 +19,7 @@ import { loadTessieRouteCoordinates } from "./tessie-route.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
-const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/apple-music-soundtrack", "/private-driving-journal", "/driving-journal", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/.well-known/api-catalog", "/openapi.json", "/api-docs", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico"]);
+const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/apple-music-soundtrack", "/private-driving-journal", "/driving-journal", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/.well-known/api-catalog", "/openapi.json", "/api-docs", "/auth.md", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico"]);
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
