@@ -94,7 +94,9 @@ test("public information and discovery pages are accessible without an authentic
     const robots = await runtime.app.inject({ method: "GET", url: "/robots.txt" });
     assert.equal(robots.statusCode, 200, robots.body);
     assert.match(robots.body, /Sitemap: https:\/\/journeydeck\.me\/sitemap\.xml/i);
+    assert.match(robots.body, /Allow: \//);
     assert.doesNotMatch(robots.body, /Disallow: \/beta/i);
+    assert.doesNotMatch(robots.body, /Disallow: \/google8e611381b21882a8\.html/i);
     const catalog = await runtime.app.inject({ method: "GET", url: "/.well-known/api-catalog" });
     assert.equal(catalog.statusCode, 200, catalog.body);
     assert.match(String(catalog.headers["content-type"]), /^application\/linkset\+json/i);
@@ -113,6 +115,13 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/apple-music-soundtrack<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/private-driving-journal<\/loc>/i);
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
+    assert.doesNotMatch(sitemap.body, /google8e611381b21882a8/i);
+    const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
+    assert.equal(googleVerification.statusCode, 200, googleVerification.body);
+    assert.equal(googleVerification.body.replace(/\r?\n$/, ""), "google-site-verification: google8e611381b21882a8.html");
+    const arbitraryHtml = await runtime.app.inject({ method: "GET", url: "/loading-preview.html" });
+    assert.equal(arbitraryHtml.statusCode, 302, arbitraryHtml.body);
+    assert.equal(arbitraryHtml.headers.location, "/login");
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
@@ -137,6 +146,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /name="twitter:image" content="https:\/\/journeydeck\.me\/assets\/beta\/share-card\.png\?v=1"/);
     assert.match(landing.body, /name="twitter:card" content="summary_large_image"/);
     assert.match(landing.body, /APPLE WATCH \/ PAIRED IPHONE/);
+    assert.match(landing.body, /<meta name="google-site-verification" content="C9F75mNcVf450GCL_J5RBoD5NRkqRig1EwwXUrr0P-w" \/>/);
+    assert.match(String(landing.headers["content-security-policy"]), /default-src 'self'/);
     assert.match(landing.body, /rel="canonical" href="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /property="og:url" content="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /href="\/login"/i);
@@ -156,6 +167,12 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /Follow @JourneyDeck on X/i);
     assert.doesNotMatch(landing.body, /noindex|2\.0 PREVIEW|Coming soon for iPhone|Follow the launch|latest 45 days|JOURNEYDECK 2\.0/);
     assert.doesNotMatch(landing.body, /@JourneyDeckApp|x\.com\/JourneyDeckApp/i);
+
+    const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
+    assert.equal(googleVerification.statusCode, 200, googleVerification.body);
+    assert.equal(googleVerification.body.replace(/\r?\n$/, ""), "google-site-verification: google8e611381b21882a8.html");
+    assert.match(String(googleVerification.headers["content-security-policy"]), /default-src 'self'/);
+    assert.doesNotMatch(String(googleVerification.headers["content-security-policy"]), /google-site-verification/);
 
     for (const [url, mime] of [
       ["/beta.css?v=grand-tour-4", /text\/css/],
