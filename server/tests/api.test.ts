@@ -10,6 +10,20 @@ import { fixtureDatabase, root } from "./helpers.js";
 const auth = { "x-journeydeck-test-auth": "owner" };
 const writeHeaders = { ...auth, origin: "http://127.0.0.1" };
 
+function googleRobotsAllowed(robotsTxt: string, pathName: string) {
+  const rules: Array<{ type: "allow" | "disallow"; pattern: string; length: number }> = [];
+  for (const line of robotsTxt.split(/\r?\n/)) {
+    const match = /^(Allow|Disallow):\s*(\S*)/i.exec(line.trim());
+    if (!match || !match[2]) continue;
+    const pattern = match[2];
+    const regex = new RegExp(`^${pattern.replace(/[.+?^{}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}`);
+    if (regex.test(pathName)) rules.push({ type: match[1].toLowerCase() as "allow" | "disallow", pattern, length: pattern.length });
+  }
+  if (!rules.length) return true;
+  rules.sort((left, right) => right.length - left.length || (left.type === "allow" ? -1 : 1));
+  return rules[0].type === "allow";
+}
+
 test("static web assets added after startup are served from the fixed web root", async () => {
   const fixture = fixtureDatabase(), webRoot = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-static-"));
   const runtime = await createApp({ databasePath: fixture.filename, root, webRoot, allowTestAuth: true, legacyUpstream: "" });
@@ -94,9 +108,20 @@ test("public information and discovery pages are accessible without an authentic
     const robots = await runtime.app.inject({ method: "GET", url: "/robots.txt" });
     assert.equal(robots.statusCode, 200, robots.body);
     assert.match(robots.body, /Sitemap: https:\/\/journeydeck\.me\/sitemap\.xml/i);
-    assert.match(robots.body, /Allow: \//);
+    assert.match(robots.body, /^Allow: \/$/m);
+    assert.match(robots.body, /^Disallow: \/app\$$/m);
+    assert.match(robots.body, /^Disallow: \/app\/$/m);
+    assert.doesNotMatch(robots.body, /^Disallow: \/app$/m);
+    assert.doesNotMatch(robots.body, /^Disallow: \/login$/m);
     assert.doesNotMatch(robots.body, /Disallow: \/beta/i);
     assert.doesNotMatch(robots.body, /Disallow: \/google8e611381b21882a8\.html/i);
+    assert.equal(googleRobotsAllowed(robots.body, "/apple-music-soundtrack"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/private-driving-journal"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/google8e611381b21882a8.html"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/login"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/app"), false);
+    assert.equal(googleRobotsAllowed(robots.body, "/app/x"), false);
+    assert.equal(googleRobotsAllowed(robots.body, "/api/x"), false);
     const catalog = await runtime.app.inject({ method: "GET", url: "/.well-known/api-catalog" });
     assert.equal(catalog.statusCode, 200, catalog.body);
     assert.match(String(catalog.headers["content-type"]), /^application\/linkset\+json/i);
@@ -223,18 +248,32 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     const login = await runtime.app.inject({ method: "GET", url: "/login" });
     assert.equal(login.statusCode, 200, login.body);
     assert.match(login.body, /JourneyDeck Sign In/i);
+    assert.match(login.body, /<meta name="robots" content="noindex, nofollow">/);
+    assert.equal(login.headers["x-robots-tag"], "noindex, nofollow");
     assert.match(login.body, /\/login-grand-touring\.css\?v=grand-tour-1/);
     assert.match(login.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
+    const loginHtml = await runtime.app.inject({ method: "GET", url: "/login.html" });
+    assert.equal(loginHtml.statusCode, 200, loginHtml.body);
+    assert.equal(loginHtml.headers["x-robots-tag"], "noindex, nofollow");
+    const indexHtml = await runtime.app.inject({ method: "GET", url: "/index.html" });
+    assert.equal(indexHtml.statusCode, 200, indexHtml.body);
+    assert.equal(indexHtml.headers["x-robots-tag"], "noindex, nofollow");
+    assert.match(String(indexHtml.headers["content-type"]), /text\/html/);
     assert.ok(fs.readFileSync(path.join(root, "web", "assets", "favicon.png")).equals(fs.readFileSync(path.join(root, "web", "assets", "journeydeck-cinematic-192.png"))));
 
     const privateApp = await runtime.app.inject({ method: "GET", url: "/app" });
     assert.equal(privateApp.statusCode, 302, privateApp.body);
     assert.equal(privateApp.headers.location, "/login");
+    assert.equal(privateApp.headers["x-robots-tag"], "noindex, nofollow");
 
     const authenticatedApp = await runtime.app.inject({ method: "GET", url: "/app", headers: auth });
     assert.equal(authenticatedApp.statusCode, 200, authenticatedApp.body);
+    assert.equal(authenticatedApp.headers["x-robots-tag"], "noindex, nofollow");
     assert.match(String(authenticatedApp.headers["content-type"]), /text\/html/);
     assert.match(authenticatedApp.body, /JourneyDeck/i);
+    const callback = await runtime.app.inject({ method: "GET", url: "/spotify-callback", headers: auth });
+    assert.equal(callback.statusCode, 200, callback.body);
+    assert.equal(callback.headers["x-robots-tag"], "noindex, nofollow");
 
     const loginScript = fs.readFileSync(path.join(root, "web", "login.js"), "utf8");
     assert.match(loginScript, /window\.location\.replace\("\/app"\)/);
@@ -243,6 +282,33 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(wifeScript, /location\.replace\("\/app"\)/);
     const manifest = JSON.parse(fs.readFileSync(path.join(root, "web", "manifest.webmanifest"), "utf8"));
     assert.equal(manifest.start_url, "/app#dashboard");
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
+test("hosted cache headers distinguish versioned assets, unversioned images, and short-lived documents", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
+  try {
+    const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-4" });
+    assert.equal(versionedCss.statusCode, 200, versionedCss.body);
+    assert.equal(versionedCss.headers["cache-control"], "public, max-age=31536000, immutable");
+
+    const unversionedImage = await runtime.app.inject({ method: "GET", url: "/assets/v4/02-journey.webp" });
+    assert.equal(unversionedImage.statusCode, 200, unversionedImage.body);
+    assert.equal(unversionedImage.headers["cache-control"], "public, max-age=604800");
+
+    const unversionedMedallion = await runtime.app.inject({ method: "GET", url: "/assets/medallions/soundtrack-100-dark.webp" });
+    assert.equal(unversionedMedallion.statusCode, 200, unversionedMedallion.body);
+    assert.equal(unversionedMedallion.headers["cache-control"], "public, max-age=604800");
+
+    for (const url of ["/", "/login", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/service-worker.js", "/build.json", "/login.js"]) {
+      const response = await runtime.app.inject({ method: "GET", url });
+      assert.equal(response.statusCode, 200, url);
+      assert.equal(response.headers["cache-control"], "public, max-age=0", url);
+    }
+
+    const bootstrap = await runtime.app.inject({ method: "GET", url: "/api/atlas/bootstrap", headers: auth });
+    assert.equal(bootstrap.statusCode, 200, bootstrap.body);
+    assert.equal(bootstrap.headers["cache-control"], "private, no-cache");
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 

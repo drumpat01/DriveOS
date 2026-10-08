@@ -37,6 +37,50 @@ const homepageLinks = [
 ].join(", ");
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+const versionedStaticPattern = /\.(?:css|js|mjs|map|png|jpe?g|gif|webp|svg|ico|avif|woff2?|ttf|otf|eot)$/i;
+const unversionedAssetPattern = /\.(?:png|jpe?g|gif|webp|svg|ico|avif|woff2?|ttf|otf|eot)$/i;
+const shortLivedCacheNames = new Set(["robots.txt", "sitemap.xml", "manifest.webmanifest", "service-worker.js", "version.json", "build.json"]);
+const staticAssetFolders = ["/assets/", "/medallions/"];
+
+type PublicCacheClass = "versioned-immutable" | "unversioned-asset" | "unchanged";
+
+function requestPathname(url: string) {
+  return url.split("?")[0] || "/";
+}
+
+function hasVersionQuery(url: string) {
+  return new URLSearchParams(url.split("?")[1] || "").has("v");
+}
+
+function publicCacheClass(url: string): PublicCacheClass {
+  const pathname = requestPathname(url);
+  if (pathname.startsWith("/api/")) return "unchanged";
+  const fileName = pathname.slice(pathname.lastIndexOf("/") + 1);
+  if (shortLivedCacheNames.has(fileName) || pathname.endsWith(".html") || pathname === "/") return "unchanged";
+  if (hasVersionQuery(url) && versionedStaticPattern.test(pathname)) return "versioned-immutable";
+  if (staticAssetFolders.some(folder => pathname.startsWith(folder)) && unversionedAssetPattern.test(pathname)) return "unversioned-asset";
+  return "unchanged";
+}
+
+function publicCacheControl(cacheClass: PublicCacheClass) {
+  switch (cacheClass) {
+    case "versioned-immutable":
+      return "public, max-age=31536000, immutable";
+    case "unversioned-asset":
+      return "public, max-age=604800";
+    case "unchanged":
+      return undefined;
+    default: {
+      const exhaustive: never = cacheClass;
+      return exhaustive;
+    }
+  }
+}
+
+function shouldSendRobotsTag(pathname: string, mode: string) {
+  if (pathname === "/login" || pathname === "/login.html") return true;
+  return mode === "web" && (pathname === "/index.html" || pathname === "/app" || pathname === "/spotify-callback");
+}
 
 function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
   const originHeader = String(req.headers.origin || "");
@@ -70,7 +114,15 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);
-  app.addHook("onSend", async (req, reply, payload) => { for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value); if (req.url.split("?")[0] === "/") reply.header("link", homepageLinks); return payload; });
+  app.addHook("onSend", async (req, reply, payload) => {
+    for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value);
+    const pathname = requestPathname(req.url);
+    if (pathname === "/") reply.header("link", homepageLinks);
+    const cacheControl = publicCacheControl(publicCacheClass(req.url));
+    if (cacheControl) reply.header("cache-control", cacheControl);
+    if (shouldSendRobotsTag(pathname, cfg.mode)) reply.header("x-robots-tag", "noindex, nofollow");
+    return payload;
+  });
   app.addHook("onRequest", async (req, reply) => {
     const requestPath = req.url.split("?")[0];
     if (requestPath === "/" && cfg.mode === "web") return;
