@@ -118,7 +118,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     const pathname = requestPathname(req.url);
     if (pathname === "/") reply.header("link", homepageLinks);
     const cacheControl = publicCacheControl(publicCacheClass(req.url));
-    if (cacheControl) reply.header("cache-control", cacheControl);
+    if (cacheControl && (reply.statusCode === 200 || reply.statusCode === 304)) reply.header("cache-control", cacheControl);
     if (shouldSendRobotsTag(pathname, cfg.mode)) reply.header("x-robots-tag", "noindex, nofollow");
     return payload;
   });
