@@ -33,6 +33,15 @@ function metaNameContent(html: string, name: string) {
   return match?.[1] ?? "";
 }
 
+function metaPropertyContent(html: string, property: string) {
+  const match = html.match(new RegExp(`<meta\\s+property="${property}"\\s+content="([^"]*)"`, "i"));
+  return match?.[1] ?? "";
+}
+
+function documentTitle(html: string) {
+  return html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
+}
+
 test("static web assets added after startup are served from the fixed web root", async () => {
   const fixture = fixtureDatabase(), webRoot = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-static-"));
   const runtime = await createApp({ databasePath: fixture.filename, root, webRoot, allowTestAuth: true, legacyUpstream: "" });
@@ -321,6 +330,10 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       const description = metaNameContent(html, "description");
       assert.ok(description, `${page.url} description content`);
       if (rewrittenDescriptions.has(page.url)) assert.doesNotMatch(description, /[\u2013\u2014]/, page.url);
+      if (page.url === "/") {
+        assert.doesNotMatch(documentTitle(html), /[\u2013\u2014]/, "home title");
+        assert.doesNotMatch(metaPropertyContent(html, "og:title"), /[\u2013\u2014]/, "home og:title");
+      }
       for (const block of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
         assert.doesNotThrow(() => JSON.parse(block[1]), `${page.url} JSON-LD`);
       }
