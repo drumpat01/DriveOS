@@ -24,6 +24,15 @@ function googleRobotsAllowed(robotsTxt: string, pathName: string) {
   return rules[0].type === "allow";
 }
 
+function countMatches(html: string, pattern: RegExp) {
+  return [...html.matchAll(pattern)].length;
+}
+
+function metaNameContent(html: string, name: string) {
+  const match = html.match(new RegExp(`<meta\\s+name="${name}"\\s+content="([^"]*)"`, "i"));
+  return match?.[1] ?? "";
+}
+
 test("static web assets added after startup are served from the fixed web root", async () => {
   const fixture = fixtureDatabase(), webRoot = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-static-"));
   const runtime = await createApp({ databasePath: fixture.filename, root, webRoot, allowTestAuth: true, legacyUpstream: "" });
@@ -282,6 +291,40 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(wifeScript, /location\.replace\("\/app"\)/);
     const manifest = JSON.parse(fs.readFileSync(path.join(root, "web", "manifest.webmanifest"), "utf8"));
     assert.equal(manifest.start_url, "/app#dashboard");
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
+test("public marketing pages expose one title, description, canonical, Open Graph tags, and valid JSON-LD", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
+  const pages = [
+    { url: "/", canonical: "https://journeydeck.me/" },
+    { url: "/apple-music-soundtrack", canonical: "https://journeydeck.me/apple-music-soundtrack" },
+    { url: "/private-driving-journal", canonical: "https://journeydeck.me/private-driving-journal" },
+    { url: "/support", canonical: "https://journeydeck.me/support" },
+    { url: "/privacy", canonical: "https://journeydeck.me/privacy" },
+    { url: "/terms", canonical: "https://journeydeck.me/terms" }
+  ] as const;
+  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal"]);
+  try {
+    for (const page of pages) {
+      const response = await runtime.app.inject({ method: "GET", url: page.url });
+      assert.equal(response.statusCode, 200, page.url);
+      const html = response.body;
+      assert.equal(countMatches(html, /<title\b[^>]*>[\s\S]*?<\/title>/gi), 1, `${page.url} title`);
+      assert.equal(countMatches(html, /<meta\s+name="description"/gi), 1, `${page.url} description`);
+      assert.equal(countMatches(html, /<link\s+rel="canonical"/gi), 1, `${page.url} canonical`);
+      assert.ok(html.includes(`rel="canonical" href="${page.canonical}"`), `${page.url} canonical href`);
+      assert.match(html, /property="og:title"/);
+      assert.match(html, /property="og:description"/);
+      assert.ok(html.includes(`property="og:url" content="${page.canonical}"`), `${page.url} og:url`);
+      assert.match(html, /property="og:image"/);
+      const description = metaNameContent(html, "description");
+      assert.ok(description, `${page.url} description content`);
+      if (rewrittenDescriptions.has(page.url)) assert.doesNotMatch(description, /[\u2013\u2014]/, page.url);
+      for (const block of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
+        assert.doesNotThrow(() => JSON.parse(block[1]), `${page.url} JSON-LD`);
+      }
+    }
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
