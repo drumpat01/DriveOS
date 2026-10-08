@@ -277,8 +277,8 @@ test("hosted cache headers distinguish versioned assets, unversioned images, and
     assert.equal(versionedCss.statusCode, 200, versionedCss.body);
     assert.equal(versionedCss.headers["cache-control"], "public, max-age=31536000, immutable");
 
-    const missingVersionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=new" });
-    assert.equal(missingVersionedCss.statusCode, 404, missingVersionedCss.body);
+    const missingVersionedCss = await runtime.app.inject({ method: "GET", url: "/missing.css?v=new" });
+    assert.equal(missingVersionedCss.statusCode, 404);
     assert.notEqual(missingVersionedCss.headers["cache-control"], "public, max-age=31536000, immutable");
 
     const unversionedImage = await runtime.app.inject({ method: "GET", url: "/assets/v4/02-journey.webp" });
