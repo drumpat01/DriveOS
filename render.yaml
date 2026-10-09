@@ -21,10 +21,16 @@ services:
         value: "true"
       - key: DRIVEOS_ATLAS_LEGACY_DATABASE
         value: /var/data/atlas/journeydeck.db
+      - key: DRIVEOS_ATLAS_INLINE_REBUILD
+        value: "true"
+      - key: DRIVEOS_COMPATIBILITY_LAZY
+        value: "true"
       - key: DRIVEOS_COMPATIBILITY_STARTUP_TIMEOUT_MS
-        value: "180000"
-      - key: DRIVEOS_COMPATIBILITY_READY_SUCCESSES
-        value: "2"
+        value: "20000"
+      - key: DRIVEOS_ATLAS_REFRESH_BATCH_SIZE
+        value: "75"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=288"
       - key: DRIVEOS_NODE_HOUSEHOLD_ID
         value: household_primary
       - key: DRIVEOS_NODE_PUBLIC_ORIGIN

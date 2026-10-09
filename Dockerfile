@@ -11,7 +11,7 @@ RUN npm run build:server
 FROM mcr.microsoft.com/powershell:7.4-ubuntu-22.04
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates nginx \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=node-build /usr/local/bin/node /usr/local/bin/node
