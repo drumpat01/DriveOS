@@ -1,13 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import compress from "@fastify/compress";
 import staticPlugin from "@fastify/static";
 import { AtlasStore } from "./atlas-store.js";
 import { tursoAtlasDurableState } from "./atlas-durable-state.js";
 import { authenticate, authenticateRecorder, authenticateScheduledSync, type Principal } from "./auth.js";
 import { compatibilityProcessReady, compatibilityReady } from "./compatibility-readiness.js";
+import { CompatibilitySupervisor } from "./compatibility-supervisor.js";
 import { applyMigrations, openDatabase } from "./database.js";
+import { HostedSnapshotRefresher } from "./hosted-snapshot-refresh.js";
 import { proxyLegacy } from "./legacy-proxy.js";
 import { config as defaultConfig } from "./config.js";
 import { atlasMapSchema, bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } from "./schemas.js";
@@ -103,7 +105,18 @@ type CreateAppOverrides = Partial<typeof defaultConfig> & { lastFmFetch?: typeof
 export async function createApp(overrides: CreateAppOverrides = {}) {
   const { lastFmFetch, tessieFetch, ...configOverrides } = overrides;
   const cfg = { ...defaultConfig, ...configOverrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
-  const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root, cfg.atlasDurableTurso ? tursoAtlasDurableState : undefined);
+  const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root, cfg.atlasDurableTurso ? tursoAtlasDurableState : undefined, cfg.atlasInlineRebuild);
+  const hostedRefresh = new HostedSnapshotRefresher({
+    database, householdId: cfg.householdId, root: cfg.root, dataRoot: cfg.dataRoot, databasePath: cfg.databasePath,
+    atlasDurableTurso: cfg.atlasDurableTurso, atlasLegacyDatabasePath: cfg.atlasLegacyDatabasePath, batchSize: cfg.atlasRefreshBatchSize,
+    refreshSeconds: cfg.atlasRefreshSeconds, enabled: cfg.atlasRefreshEnabled, status: () => store.status()
+  });
+  const compatibility = cfg.compatibilityLazy && cfg.legacyUpstream
+    ? new CompatibilitySupervisor({
+      upstream: cfg.legacyUpstream, publicOrigin: cfg.publicOrigin, command: cfg.compatibilityCommand,
+      scriptPath: cfg.compatibilityScript, startupTimeoutMs: cfg.compatibilityStartupTimeoutMs
+    })
+    : null;
   const recorder = new RecorderStore(database, cfg.householdId, cfg.recorderDurableTurso);
   const recorderMobile = new RecorderMobileStore(
     database,
@@ -112,6 +125,13 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     cfg.tessieToken ? input => loadTessieRouteCoordinates(input, cfg.tessieToken, tessieFetch) : undefined,
   );
   const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
+  const forwardLegacy = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (compatibility) {
+      try { await compatibility.ensureStarted(); }
+      catch (error) { return reply.code(503).send({ error: error instanceof Error ? error.message : "The compatibility API is starting." }); }
+    }
+    return proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin);
+  };
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);
   app.addHook("onSend", async (req, reply, payload) => {
@@ -150,11 +170,20 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   });
   app.get("/healthz", async () => ({ ok: true, mode: "node-hybrid", database: "local-sqlite", legacyCompatibilityConfigured: Boolean(cfg.legacyUpstream), legacyCompatibilityReadOnly: cfg.legacyReadOnly }));
   app.get("/readyz", async (_req, reply) => {
-    const atlas = store.status(), legacyCompatibilityReachable = cfg.compatibilityReadyFile
-      ? await compatibilityProcessReady(cfg.legacyUpstream, cfg.compatibilityReadyFile)
-      : await compatibilityReady(cfg.legacyUpstream, cfg.publicOrigin);
-    const ready = atlas.ready && legacyCompatibilityReachable;
-    return reply.code(ready ? 200 : 503).send({ ok: ready, atlas, legacyCompatibilityReachable });
+    const atlas = store.status();
+    const legacyCompatibilityReachable = !cfg.legacyUpstream
+      ? true
+      : cfg.compatibilityLazy && !compatibility?.started
+        ? false
+        : cfg.compatibilityReadyFile
+          ? await compatibilityProcessReady(cfg.legacyUpstream, cfg.compatibilityReadyFile)
+          : await compatibilityReady(cfg.legacyUpstream, cfg.publicOrigin);
+    return reply.code(200).send({
+      ok: true,
+      atlas,
+      legacyCompatibilityReachable,
+      snapshotStale: hostedRefresh.enabled ? hostedRefresh.isStale() : !atlas.ready
+    });
   });
   app.get("/api/auth/session", async req => ({ authenticated: true, role: req.principal!.role, mode: req.principal!.mode }));
   const recorderIdentifier = { type: "string", minLength: 1, maxLength: 120, pattern: "^[A-Za-z0-9._:-]+$" } as const;
@@ -202,14 +231,24 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     tessieConfigured: Boolean(cfg.tessieToken),
     lastFmFetch
   });
-  app.get("/api/atlas/bootstrap", { schema: { response: { 200: bootstrapSchema, 304: { type: "null" }, 503: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" } } } } } }, async (req, reply) => { const snapshot = store.bootstrap(); if (!snapshot) return reply.code(503).send({ error: "Atlas snapshot is not ready." }); const etag = `W/"${Buffer.from(snapshot.sourceWatermark).toString("base64url")}"`; reply.header("cache-control", "private, no-cache").header("etag", etag); if (req.headers["if-none-match"] === etag) return reply.code(304).send(); return snapshot; });
+  app.get("/api/atlas/bootstrap", { schema: { response: { 200: bootstrapSchema, 304: { type: "null" }, 503: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" } } } } } }, async (req, reply) => {
+    try { await hostedRefresh.refreshIfStale(); } catch (error) { app.log.error({ err: error }, "Atlas source refresh failed"); }
+    const snapshot = store.bootstrap(); if (!snapshot) return reply.code(503).send({ error: "Atlas snapshot is not ready." }); const etag = `W/"${Buffer.from(snapshot.sourceWatermark).toString("base64url")}"`; reply.header("cache-control", "private, no-cache").header("etag", etag); if (req.headers["if-none-match"] === etag) return reply.code(304).send(); return snapshot;
+  });
   app.get<{ Querystring: { west?: string; south?: string; east?: string; north?: string; zoom?: string } }>("/api/atlas/map", { schema: { response: { 200: atlasMapSchema } } }, async (req, reply) => {
+    try { await hostedRefresh.refreshIfStale(); } catch (error) { app.log.error({ err: error }, "Atlas source refresh failed"); }
     const west = Number(req.query.west), south = Number(req.query.south), east = Number(req.query.east), north = Number(req.query.north), zoom = Number(req.query.zoom);
     if (![west, south, east, north, zoom].every(Number.isFinite) || west < -180 || east > 180 || south < -90 || north > 90 || west >= east || south >= north || zoom < 0 || zoom > 18) return reply.code(400).send({ error: "Valid Atlas bounds and zoom are required." } as any);
     reply.header("cache-control", "private, max-age=30"); return store.journeyMap({ west, south, east, north, zoom });
   });
-  app.get<{ Params: { id: string } }>("/api/atlas/places/:id", { schema: { response: { 200: placeDetailSchema } } }, async (req, reply) => { const detail = store.place(req.params.id); return detail || reply.code(404).send({ error: "Place was not found." }); });
-  app.get<{ Querystring: { limit?: string; cursor?: string } }>("/api/atlas/patterns", { schema: { response: { 200: patternQueueSchema } } }, async req => store.patterns(Number(req.query.limit) || 10, String(req.query.cursor || "")));
+  app.get<{ Params: { id: string } }>("/api/atlas/places/:id", { schema: { response: { 200: placeDetailSchema } } }, async (req, reply) => {
+    try { await hostedRefresh.refreshIfStale(); } catch (error) { app.log.error({ err: error }, "Atlas source refresh failed"); }
+    const detail = store.place(req.params.id); return detail || reply.code(404).send({ error: "Place was not found." });
+  });
+  app.get<{ Querystring: { limit?: string; cursor?: string } }>("/api/atlas/patterns", { schema: { response: { 200: patternQueueSchema } } }, async req => {
+    try { await hostedRefresh.refreshIfStale(); } catch (error) { app.log.error({ err: error }, "Atlas source refresh failed"); }
+    return store.patterns(Number(req.query.limit) || 10, String(req.query.cursor || ""));
+  });
   app.get("/api/atlas/snapshot/status", async () => store.status());
   app.post<{ Body: { placeId: string; name: string; category: string; latitude?: number; longitude?: number; radiusFeet?: number } }>("/api/atlas/places/label", { schema: { body: { type: "object", additionalProperties: false, required: ["placeId", "name", "category"], properties: { placeId: { type: "string" }, name: { type: "string", minLength: 1, maxLength: 80 }, category: { type: "string", enum: ["home", "work", "family", "errands", "dining", "wellness", "other"] }, latitude: { type: "number", minimum: -90, maximum: 90 }, longitude: { type: "number", minimum: -180, maximum: 180 }, radiusFeet: { type: "number", minimum: 25, maximum: 5280 } } }, response: { 200: savedSchema } } }, async (req, reply) => {
     const body = req.body || {} as any, name = String(body.name || "").trim(), category = String(body.category || "").toLowerCase();
@@ -252,9 +291,9 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     if (!/^\d+-\d+$/.test(driveId)) return reply.code(400).send({ error: "A valid journey identifier is required." });
     const recorded = await recorder.routeMap(driveId);
     if (recorded) return recorded;
-    return proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin);
+    return forwardLegacy(req, reply);
   });
-  app.all("/api/*", async (req, reply) => proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin));
+  app.all("/api/*", async (req, reply) => forwardLegacy(req, reply));
   // Keep one sandboxed wildcard route rooted at web/. With wildcard disabled,
   // Fastify snapshots the file list during startup; a refreshed HTML shell can
   // then reference newly deployed CSS, JS, or artwork that the running process
@@ -273,6 +312,6 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/")) return reply.code(404).header("x-robots-tag", "noindex, nofollow").sendFile("404.html");
     return reply.code(404).send({ error: "Not found." });
   });
-  app.addHook("onClose", async () => { await store.close(); database.close(); });
-  return { app, database, store, recorder, recorderMobile, config: cfg };
+  app.addHook("onClose", async () => { compatibility?.stop(); await store.close(); database.close(); });
+  return { app, database, store, recorder, recorderMobile, hostedRefresh, compatibility, config: cfg };
 }

@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { Worker } from "node:worker_threads";
 import type { AtlasPatternReviewInput, AtlasPlaceLabelInput } from "./atlas-durable-state.js";
+import { rebuildAtlasSnapshot } from "./snapshot-builder.js";
 import type { AtlasBootstrap, AtlasMapFeature, AtlasMapResponse, AtlasPattern } from "./types.js";
 
 type DurableState = {
@@ -12,7 +13,7 @@ export class AtlasStore {
   private timer?: NodeJS.Timeout;
   private rebuilding?: Promise<void>;
   private readonly mapCache = new Map<string, AtlasMapResponse>();
-  constructor(private readonly database: DatabaseSync, private readonly householdId: string, private readonly databasePath: string, private readonly root: string, private readonly durableState?: DurableState) {}
+  constructor(private readonly database: DatabaseSync, private readonly householdId: string, private readonly databasePath: string, private readonly root: string, private readonly durableState?: DurableState, private readonly inlineRebuild = false) {}
 
   async close() {
     if (this.timer) clearTimeout(this.timer);
@@ -76,16 +77,28 @@ export class AtlasStore {
     return row ? { ready: Boolean(row.id), dirty: Boolean(row.dirty), rebuilding: Boolean(this.rebuilding), snapshotId: row.id || null, generatedAtUtc: row.generated_at_utc || null, sourceWatermark: row.source_watermark || null, schemaVersion: row.schema_version || null, lastError: row.last_error || null } : { ready: false, dirty: true, rebuilding: false, snapshotId: null, lastError: null };
   }
 
-  rebuildNow() {
-    if (this.rebuilding) return this.rebuilding;
-    this.rebuilding = new Promise<void>((resolve, reject) => {
+  private rebuildInline() {
+    return Promise.resolve().then(() => { rebuildAtlasSnapshot(this.database, this.householdId); });
+  }
+
+  private rebuildInWorker() {
+    return new Promise<void>((resolve, reject) => {
       const extension = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-      const worker = new Worker(new URL(`./snapshot-worker${extension}`, import.meta.url), { workerData: { databasePath: this.databasePath, householdId: this.householdId, root: this.root } });
+      const worker = new Worker(new URL(`./snapshot-worker${extension}`, import.meta.url), {
+        workerData: { databasePath: this.databasePath, householdId: this.householdId, root: this.root },
+        execArgv: extension === ".ts" ? ["--import", "tsx"] : process.execArgv
+      });
       let settled = false;
       worker.once("message", (message: { ok: boolean; error?: string }) => { settled = true; if (message.ok) resolve(); else reject(new Error(message.error || "Snapshot rebuild failed")); });
       worker.once("error", error => { settled = true; reject(error); });
       worker.once("exit", code => { if (!settled && code !== 0) reject(new Error(`Snapshot worker exited with code ${code}`)); else if (!settled) resolve(); });
-    }).finally(() => { this.rebuilding = undefined; this.mapCache.clear(); });
+    });
+  }
+
+  rebuildNow() {
+    if (this.rebuilding) return this.rebuilding;
+    this.rebuilding = (this.inlineRebuild ? this.rebuildInline() : this.rebuildInWorker().catch(() => this.rebuildInline()))
+      .finally(() => { this.rebuilding = undefined; this.mapCache.clear(); });
     return this.rebuilding;
   }
 
