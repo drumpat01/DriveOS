@@ -2,11 +2,12 @@ services:
   - type: web
     name: driveos
     runtime: docker
-    plan: free
+    plan: standard
     region: ohio
     branch: main
     autoDeployTrigger: checksPass
     healthCheckPath: /readyz
+    maxShutdownDelaySeconds: 60
     envVars:
       - key: DRIVEOS_ATLAS_NODE_CANARY
         value: "true"
@@ -18,6 +19,8 @@ services:
         value: "true"
       - key: JOURNEYDECK_RECORDER_DURABLE_TURSO
         value: "true"
+      - key: DRIVEOS_ATLAS_LEGACY_DATABASE
+        value: /var/data/atlas/journeydeck.db
       - key: DRIVEOS_ATLAS_INLINE_REBUILD
         value: "true"
       - key: DRIVEOS_COMPATIBILITY_LAZY
