@@ -27,8 +27,8 @@ export function clipUmamiValue(value) {
 export function umamiAppStoreClickDetail(detail) {
   return {
     page: clipUmamiValue(detail?.page),
-    source: clipUmamiValue(detail?.source),
-    campaign: clipUmamiValue(detail?.campaign),
+    source: clipUmamiValue(sanitizeCampaignToken(detail?.source)),
+    campaign: clipUmamiValue(sanitizeCampaignToken(detail?.campaign)),
     href: clipUmamiValue(detail?.href)
   };
 }
@@ -73,14 +73,14 @@ export function readCampaignFromLanding(searchParams, storage) {
   const hasSource = searchParams.has('utm_source');
   const hasCampaign = searchParams.has('utm_campaign');
   if (hasSource || hasCampaign) {
-    const source = hasSource ? String(searchParams.get('utm_source') || '') : '';
-    const campaign = hasCampaign ? String(searchParams.get('utm_campaign') || '') : '';
+    const source = hasSource ? sanitizeCampaignToken(searchParams.get('utm_source')) : '';
+    const campaign = hasCampaign ? sanitizeCampaignToken(searchParams.get('utm_campaign')) : '';
     writeCampaign(storage, source, campaign);
     return { source, campaign };
   }
   return {
-    source: readStorage(storage, UTM_SOURCE_STORAGE_KEY),
-    campaign: readStorage(storage, UTM_CAMPAIGN_STORAGE_KEY)
+    source: sanitizeCampaignToken(readStorage(storage, UTM_SOURCE_STORAGE_KEY)),
+    campaign: sanitizeCampaignToken(readStorage(storage, UTM_CAMPAIGN_STORAGE_KEY))
   };
 }
 

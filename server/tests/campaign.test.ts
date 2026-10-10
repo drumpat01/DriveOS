@@ -20,7 +20,7 @@ import {
   umamiAppStoreClickDetail
 } from "../../web/campaign.js";
 
-const UMAMI_TAG = '<script defer src="https://cloud.umami.is/script.js" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af"></script>';
+const UMAMI_TAG = '<script defer src="https://cloud.umami.is/script.js" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af" data-domains="journeydeck.me"></script>';
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/journeydeck/id6806502526";
 const publicPages = [
@@ -105,6 +105,12 @@ test("landing UTM values persist in session storage and other query params are i
   const sourceOnly = readCampaignFromLanding(new URLSearchParams("utm_source=x"), first);
   assert.deepEqual(sourceOnly, { source: "x", campaign: "" });
   assert.equal(first.data[UTM_CAMPAIGN_STORAGE_KEY], "");
+
+  const dirty = memoryStorage();
+  const cleaned = readCampaignFromLanding(new URLSearchParams("utm_source=X_Source!&utm_campaign=Launch Oct"), dirty);
+  assert.deepEqual(cleaned, { source: "x_source", campaign: "launch-oct" });
+  assert.equal(dirty.data[UTM_SOURCE_STORAGE_KEY], "x_source");
+  assert.equal(dirty.data[UTM_CAMPAIGN_STORAGE_KEY], "launch-oct");
 });
 
 test("App Store anchors keep their exact href without UTM and gain ct when a campaign is present", () => {
@@ -233,6 +239,20 @@ test("Umami click forward clips values to 200 characters and is a safe no-op whe
   assert.equal(calls[0].detail.href.length, 200);
   assert.equal(calls[0].detail.source, "x");
   assert.equal(calls[0].detail.campaign, "launch_oct13");
+  const dirtyCalls: Array<{ name: string; detail: ReturnType<typeof umamiAppStoreClickDetail> }> = [];
+  forwardAppStoreClickToUmami({
+    umami: {
+      track(name: string, detail: ReturnType<typeof umamiAppStoreClickDetail>) {
+        dirtyCalls.push({ name, detail });
+      }
+    }
+  }, { page: "/", source: "X_Source!", campaign: "Launch Oct", href: APP_STORE_URL });
+  assert.deepEqual(dirtyCalls[0].detail, {
+    page: "/",
+    source: "x_source",
+    campaign: "launch-oct",
+    href: APP_STORE_URL
+  });
   assert.doesNotThrow(() => forwardAppStoreClickToUmami({}, { page: "/", source: "x", campaign: "launch_oct13", href: APP_STORE_URL }));
   assert.doesNotThrow(() => forwardAppStoreClickToUmami({
     umami: {
@@ -247,7 +267,7 @@ test("served public pages keep the plain App Store URL and load the first-party 
   const fixture = fixtureDatabase();
   const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
-    const script = await runtime.app.inject({ method: "GET", url: "/campaign.js?v=2" });
+    const script = await runtime.app.inject({ method: "GET", url: "/campaign.js?v=3" });
     assert.equal(script.statusCode, 200, script.body);
     assert.match(String(script.headers["content-type"]), /javascript/);
     assert.match(script.body, /APP_STORE_PROVIDER_TOKEN/);
@@ -259,13 +279,15 @@ test("served public pages keep the plain App Store URL and load the first-party 
     for (const url of publicPages) {
       const page = await runtime.app.inject({ method: "GET", url });
       assert.equal(page.statusCode, 200, url);
-      assert.match(page.body, /src="\/campaign\.js\?v=2"/, url);
+      assert.match(page.body, /src="\/campaign\.js\?v=3"/, url);
       assert.ok(page.body.includes(UMAMI_TAG), url);
+      assert.match(page.body, /data-domains="journeydeck\.me"/, url);
       assert.match(page.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526"/, url);
       assert.doesNotMatch(page.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?ct=/, url);
       assert.doesNotMatch(page.body, /googletagmanager|gtag\(|plausible|cloudflareinsights/i, url);
       assert.match(String(page.headers["content-security-policy"]), /script-src[^;]*https:\/\/cloud\.umami\.is/, url);
-      assert.match(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/cloud\.umami\.is/, url);
+      assert.match(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/gateway\.umami\.is/, url);
+      assert.doesNotMatch(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/cloud\.umami\.is/, url);
     }
 
     const home = await runtime.app.inject({ method: "GET", url: "/" });
