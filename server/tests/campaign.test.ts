@@ -47,7 +47,8 @@ test("campaign token sanitizer keeps lowercase letters, digits, and hyphens", ()
   assert.equal(sanitizeCampaignToken("--Hello--World--"), "hello-world");
   assert.equal(sanitizeCampaignToken("!!!"), "");
   assert.equal(sanitizeCampaignToken("a".repeat(45)), "a".repeat(40));
-  assert.equal(sanitizeCampaignToken(`${"a".repeat(39)}-zzz`).length, 40);
+  assert.equal(sanitizeCampaignToken(`${"a".repeat(39)}bcd`), `${"a".repeat(39)}b`);
+  assert.equal(sanitizeCampaignToken(`${"a".repeat(39)}-zzz`), "a".repeat(39));
   assert.doesNotMatch(sanitizeCampaignToken(`${"a".repeat(39)}-zzz`), /-$/);
 });
 
