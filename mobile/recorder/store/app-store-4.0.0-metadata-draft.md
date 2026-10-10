@@ -1,6 +1,6 @@
 # 4.0.0 App Store text
 
-Written to the 4.0.0 draft in App Store Connect on 2026-09-30 (localization `b92fcf52-d186-4ac6-be18-b9c779ead33b`). When written, the [VERIFY] markers were removed, the medallion count was left generic, and the "free trial for eligible new subscribers" phrase was dropped because the App Store introductory offers are being deleted (one trial only: the 3-day in-app Plus trial). Re-check these claims on a device before submission.
+Written to the 4.0.0 draft in App Store Connect on 2026-09-30 (localization `b92fcf52-d186-4ac6-be18-b9c779ead33b`). When written, the [VERIFY] markers were removed, the medallion count was left generic, and the "free trial for eligible new subscribers" phrase was dropped because the App Store introductory offers are being deleted (the in-app 3-day Plus trial was removed October 10, 2026; there is no free trial). Re-check these claims on a device before submission.
 
 Items marked VERIFY are claims the code suggests but a person should confirm on a device before they go live.
 
@@ -49,7 +49,7 @@ YOUR ARCHIVE, KEPT PRIVATE
 Your archive is stored on your device first. Optional private iCloud sync keeps your library available across your iPhone and iPad using your Apple Account. Sign-in, music permissions and iCloud sync are optional. Set private Home, Work and School locations and create share cards with sensitive-place protection.
 
 JOURNEYDECK PLUS
-Every new install includes a 3-day JourneyDeck Plus trial. After that, JourneyDeck stays free for recording and shows today's journeys. An auto-renewable membership (weekly or annual, with a free trial for eligible new subscribers) unlocks your complete history, Atlas, Ask JourneyDeck, premium themes and icons, and optional Tessie and Claude connections. Older journeys are never deleted when a membership ends. Restore Purchases is on the membership screen. [VERIFY: trial and free-tier wording against App Store offers]
+JourneyDeck is free for recording and shows today's journeys, and a new install opens a sample library so you can explore every screen first. An auto-renewable membership (weekly or annual) unlocks your complete history, Atlas, Ask JourneyDeck, premium themes and icons, and optional Tessie and Claude connections. Older journeys are never deleted when a membership ends. Restore Purchases is on the membership screen. [VERIFY: trial and free-tier wording against App Store offers]
 
 iPad shows and syncs your library but does not record; recording needs an iPhone. Apple Watch controls recording on your paired iPhone and does not record routes independently. JourneyDeck is not a navigation app. Set up recording before driving and do not interact with the app while operating a vehicle.
 
