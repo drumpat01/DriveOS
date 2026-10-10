@@ -3,9 +3,8 @@ const APP_STORE_HOSTS = new Set(['apps.apple.com', 'www.apps.apple.com']);
 export const UTM_SOURCE_STORAGE_KEY = 'journeydeck:utm_source';
 export const UTM_CAMPAIGN_STORAGE_KEY = 'journeydeck:utm_campaign';
 
-// Apple only attributes App Store campaigns when pt is set.
-// Patrick will supply this provider token from App Store Connect.
-export const APP_STORE_PROVIDER_TOKEN = '';
+// Apple campaign links use pt (provider token), ct (campaign token), and mt=8 (App Store).
+export const APP_STORE_PROVIDER_TOKEN = '129344416';
 
 // Shown on the home hero when the visitor arrived from X. The HTML default stays in place for crawlers and no-JS users.
 export const X_HEADLINE_VARIANT = 'Keep the drive.<br><span class="gold">Keep the song.</span>';
@@ -63,9 +62,10 @@ export function rewriteAppStoreHref(href, source, campaign, providerToken = APP_
   } catch {
     return href;
   }
-  url.searchParams.set('ct', token);
   const provider = String(providerToken || '').trim();
   if (provider) url.searchParams.set('pt', provider);
+  url.searchParams.set('ct', token);
+  url.searchParams.set('mt', '8');
   return url.toString();
 }
 

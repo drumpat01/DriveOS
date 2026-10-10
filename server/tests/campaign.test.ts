@@ -23,6 +23,7 @@ import {
 const UMAMI_TAG = '<script defer src="https://cloud.umami.is/script.js" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af" data-domains="journeydeck.me"></script>';
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/journeydeck/id6806502526";
+const APPLE_CAMPAIGN_QUERY = "pt=129344416&ct=x-launch_oct13&mt=8";
 const publicPages = [
   "/",
   "/apple-music-soundtrack",
@@ -68,24 +69,42 @@ test("Apple campaign tokens combine source and campaign and stay within 40 chara
   assert.equal(buildAppleCampaignToken("x", "a".repeat(50)).length, 40);
 });
 
-test("App Store href rewrite adds ct, adds pt only when the provider token is set, and ignores other landing params", () => {
-  assert.equal(APP_STORE_PROVIDER_TOKEN, "");
+test("App Store href rewrite adds pt, ct, and mt with UTM, keeps HTML hrefs without UTM, and preserves see-all=reviews", () => {
+  assert.equal(APP_STORE_PROVIDER_TOKEN, "129344416");
   assert.equal(rewriteAppStoreHref(APP_STORE_URL, "", ""), APP_STORE_URL);
-  assert.equal(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), `${APP_STORE_URL}?ct=x-launch_oct13`);
-  assert.equal(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13", ""), `${APP_STORE_URL}?ct=x-launch_oct13`);
+  assert.equal(rewriteAppStoreHref(`${APP_STORE_URL}?see-all=reviews`, "", ""), `${APP_STORE_URL}?see-all=reviews`);
+  assert.equal(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), `${APP_STORE_URL}?${APPLE_CAMPAIGN_QUERY}`);
+  assert.equal(
+    rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13", ""),
+    `${APP_STORE_URL}?ct=x-launch_oct13&mt=8`
+  );
   assert.equal(
     rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13", "123456"),
-    `${APP_STORE_URL}?ct=x-launch_oct13&pt=123456`
+    `${APP_STORE_URL}?pt=123456&ct=x-launch_oct13&mt=8`
   );
   assert.equal(
     rewriteAppStoreHref(`${APP_STORE_URL}?see-all=reviews`, "x", "launch_oct13"),
-    `${APP_STORE_URL}?see-all=reviews&ct=x-launch_oct13`
+    `${APP_STORE_URL}?see-all=reviews&${APPLE_CAMPAIGN_QUERY}`
+  );
+  assert.equal(
+    rewriteAppStoreHref(`${APP_STORE_URL}?${APPLE_CAMPAIGN_QUERY}`, "x", "launch_oct13"),
+    `${APP_STORE_URL}?${APPLE_CAMPAIGN_QUERY}`
+  );
+  assert.equal(
+    rewriteAppStoreHref(`${APP_STORE_URL}?see-all=reviews&${APPLE_CAMPAIGN_QUERY}`, "x", "launch_oct13"),
+    `${APP_STORE_URL}?see-all=reviews&${APPLE_CAMPAIGN_QUERY}`
   );
   assert.equal(rewriteAppStoreHref("/support", "x", "launch_oct13"), "/support");
   assert.equal(rewriteAppStoreHref("https://x.com/JourneyDeck", "x", "launch_oct13"), "https://x.com/JourneyDeck");
   assert.equal(isAppStoreHref(APP_STORE_URL), true);
   assert.equal(isAppStoreHref(`${APP_STORE_URL}?utm_medium=social`), true);
   assert.doesNotMatch(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /utm_/);
+  assert.match(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /[?&]pt=129344416(?:&|$)/);
+  assert.match(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /[?&]ct=x-launch_oct13(?:&|$)/);
+  assert.match(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /[?&]mt=8(?:&|$)/);
+  assert.doesNotMatch(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /(?:[?&]pt=.*){2}/);
+  assert.doesNotMatch(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /(?:[?&]ct=.*){2}/);
+  assert.doesNotMatch(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /(?:[?&]mt=.*){2}/);
 });
 
 test("landing UTM values persist in session storage and other query params are ignored", () => {
@@ -113,7 +132,7 @@ test("landing UTM values persist in session storage and other query params are i
   assert.equal(dirty.data[UTM_CAMPAIGN_STORAGE_KEY], "launch-oct");
 });
 
-test("App Store anchors keep their exact href without UTM and gain ct when a campaign is present", () => {
+test("App Store anchors keep their exact href without UTM and gain pt, ct, and mt when a campaign is present", () => {
   const documentLike = {
     links: [
       { href: APP_STORE_URL },
@@ -137,8 +156,8 @@ test("App Store anchors keep their exact href without UTM and gain ct when a cam
 
   applyAppStoreCampaigns(documentLike, "x", "launch_oct13");
   assert.deepEqual(documentLike.links.map(link => link.href), [
-    `${APP_STORE_URL}?ct=x-launch_oct13`,
-    `${APP_STORE_URL}?see-all=reviews&ct=x-launch_oct13`,
+    `${APP_STORE_URL}?${APPLE_CAMPAIGN_QUERY}`,
+    `${APP_STORE_URL}?see-all=reviews&${APPLE_CAMPAIGN_QUERY}`,
     "/support"
   ]);
 });
@@ -267,10 +286,11 @@ test("served public pages keep the plain App Store URL and load the first-party 
   const fixture = fixtureDatabase();
   const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
-    const script = await runtime.app.inject({ method: "GET", url: "/campaign.js?v=3" });
+    const script = await runtime.app.inject({ method: "GET", url: "/campaign.js?v=4" });
     assert.equal(script.statusCode, 200, script.body);
     assert.match(String(script.headers["content-type"]), /javascript/);
     assert.match(script.body, /APP_STORE_PROVIDER_TOKEN/);
+    assert.match(script.body, /129344416/);
     assert.match(script.body, /journeydeck:appstore-click/);
     assert.match(script.body, /umami\?\.track/);
     assert.doesNotMatch(script.body, /\bfetch\s*\(|XMLHttpRequest|sendBeacon|gtag|googletagmanager|analytics\.js/);
@@ -279,7 +299,7 @@ test("served public pages keep the plain App Store URL and load the first-party 
     for (const url of publicPages) {
       const page = await runtime.app.inject({ method: "GET", url });
       assert.equal(page.statusCode, 200, url);
-      assert.match(page.body, /src="\/campaign\.js\?v=3"/, url);
+      assert.match(page.body, /src="\/campaign\.js\?v=4"/, url);
       assert.ok(page.body.includes(UMAMI_TAG), url);
       assert.match(page.body, /data-domains="journeydeck\.me"/, url);
       assert.match(page.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526"/, url);

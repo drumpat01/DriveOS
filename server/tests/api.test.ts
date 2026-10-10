@@ -229,7 +229,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/assets/v4/08-themes.webp", /image\/webp/],
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
       ["/beta.js?v=v4-1", /javascript/],
-      ["/campaign.js?v=3", /javascript/],
+      ["/campaign.js?v=4", /javascript/],
       ["/medallions/medallions.css?v=medallions-1", /text\/css/],
       ["/medallions/medallions.js?v=medallions-1", /javascript/],
       ["/medallions/catalog.js", /javascript/],
