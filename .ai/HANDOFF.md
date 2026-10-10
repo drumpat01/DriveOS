@@ -2,26 +2,25 @@
 
 ## Current objective
 
-Ship first-party App Store campaign pass-through on public journeydeck.me pages for the Oct 13 X launch. Do not merge. Do not touch deploy, hosting, DNS, or add analytics.
+Finish App Store campaign pass-through plus cookieless Umami click tracking on public journeydeck.me pages for the Oct 13 X launch. Do not merge. Do not touch deploy, hosting, or DNS.
 
 ## Checkout
 
 - Branch `cursor/app-store-campaign-passthrough-e92c` / #258, based on `main` `cff39eb`.
-- Head: `d177881` (sanitizer test fix after `1629b6c`).
 
 ## Material changes
 
-- `web/campaign.js` reads `utm_source` and `utm_campaign`, stores them in `sessionStorage`, rewrites App Store hrefs with Apple `ct`, and adds `pt` only when `APP_STORE_PROVIDER_TOKEN` is set (empty for now).
-- Same script loads on home, Soundtracks, private driving journal, Support, Privacy, and Terms.
-- App Store clicks dispatch `journeydeck:appstore-click` on `window`. No network, cookies, or third-party code.
-- When the source is `x`, home `#hero-title` swaps to `Keep the drive. Keep the song.` The HTML default stays `Take the road. Keep the story.`
-- Tests: `server/tests/campaign.test.ts`.
+- `web/campaign.js` reads `utm_source` and `utm_campaign`, stores them in `sessionStorage`, and rewrites App Store hrefs with Apple `ct`. `ct` keeps `[a-z0-9_-]`, max 40 chars. Example: `ct=x-launch_oct13`.
+- `pt` is omitted while `APP_STORE_PROVIDER_TOKEN` is empty.
+- Public pages load Umami Cloud (`cloud.umami.is`, website id `a5f66e11-ec7d-4133-8e1a-f8e6c08593af`). Cookieless. Not on the app shell or `/login`.
+- App Store clicks dispatch `journeydeck:appstore-click`, then `window.umami?.track('appstore_click', detail)` with values clipped to 200 chars. Missing or blocked Umami is a no-op and does not block navigation.
+- Fastify CSP allows `https://cloud.umami.is` in `script-src` and `connect-src`.
+- X home headline variant: `Keep the drive. Keep the song.`
 
 ## Verification
 
-- `npm run check:server`, `npm run lint:server`, and `npm run test:server` passed locally.
-- Playwright `tests/e2e/public-beta.spec.ts` passed.
-- Browser check at 390px and 1280px: headline height unchanged (87.6px / 147.9px), button becomes `...id6806502526?ct=x-launch-oct`, and the value survives a click through to Privacy.
+- Targeted server tests and public Playwright suite passed on the first campaign pass.
+- Umami addition still needs local `test:server` and CI on the latest head.
 
 ## Unresolved / owner decisions
 
@@ -30,5 +29,5 @@ Ship first-party App Store campaign pass-through on public journeydeck.me pages 
 
 ## Next steps
 
-1. Wait for JourneyDeck CI on #258.
+1. Land #258 after CI is green and the owner reviews.
 2. Do not merge until the owner asks.

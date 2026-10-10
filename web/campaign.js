@@ -13,11 +13,32 @@ export const X_HEADLINE_VARIANT = 'Keep the drive.<br><span class="gold">Keep th
 export function sanitizeCampaignToken(value) {
   return String(value || '')
     .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/[^a-z0-9_-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
     .replace(/-+$/g, '');
+}
+
+export function clipUmamiValue(value) {
+  return String(value ?? '').slice(0, 200);
+}
+
+export function umamiAppStoreClickDetail(detail) {
+  return {
+    page: clipUmamiValue(detail?.page),
+    source: clipUmamiValue(detail?.source),
+    campaign: clipUmamiValue(detail?.campaign),
+    href: clipUmamiValue(detail?.href)
+  };
+}
+
+export function forwardAppStoreClickToUmami(windowLike, detail) {
+  try {
+    windowLike?.umami?.track?.('appstore_click', umamiAppStoreClickDetail(detail));
+  } catch {
+    // Umami can be blocked or missing. Never block App Store navigation.
+  }
 }
 
 export function buildAppleCampaignToken(source, campaign) {
@@ -83,6 +104,9 @@ export function initPublicCampaign(windowLike, documentLike = windowLike?.docume
   const campaign = readCampaignFromLanding(new URLSearchParams(windowLike.location.search || ''), windowLike.sessionStorage);
   applyAppStoreCampaigns(documentLike, campaign.source, campaign.campaign, APP_STORE_PROVIDER_TOKEN);
   applyHomeHeadlineVariant(documentLike, campaign.source);
+  windowLike.addEventListener?.('journeydeck:appstore-click', event => {
+    forwardAppStoreClickToUmami(windowLike, event.detail);
+  });
   documentLike.addEventListener('click', event => {
     const anchor = event.target?.closest?.('a[href]');
     if (!anchor || !isAppStoreHref(anchor.getAttribute('href') || anchor.href)) return;
