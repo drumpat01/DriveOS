@@ -40,7 +40,6 @@ const shared: Record<string, unknown> = {
   './glass-material': { GlassBackdrop: () => null, useGlassCardStyle: () => null },
   './header-image-sources': { headerImageSource: (source: unknown) => source },
   './album-artwork': { highQualityAlbumArtwork: (uri: string | null) => uri },
-  './plus-trial-banner': { PlusTrialBanner: (props: any) => props.trialEndsAt ? React.createElement('PlusTrialBanner', props) : null },
   './local-archive-events': { subscribeLocalArchiveChanges: () => () => {}, notifyLocalArchiveChanged() {} },
   './device-layout': { DEVICE_NAME: 'iPhone', isIpad: () => false, readingColumnStyle: { width: '100%', maxWidth: 760, alignSelf: 'center' }, useReadingWidth: (max = 760) => Math.min(viewportWidth, max) },
   './haptics': { haptics: { selection() {}, primaryAction() {} } },
@@ -163,14 +162,7 @@ test('Today renders the last drive, the week, On this day and recent memories in
     onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
   assert.match(texts(empty), /The road remembers/);
   assert.equal(empty.root.findAllByType('inline-recorder').length, 1, 'before iOS 26 the recorder sits on Today');
-  assert.equal(empty.root.findAllByType('PlusTrialBanner').length, 0, 'no banner without a running trial');
   await act(async () => empty.unmount());
-  let trial: any;
-  const endsAt = Date.now() + 2.5 * 86_400_000;
-  await act(async () => { trial = create(React.createElement(TodayScreen, { primary: { status: 'ready', data: { journeys: [], details: [], search: [] } }, memories: [], loadProfile: () => ({ initials: 'PS', avatarUri: null }),
-    trialEndsAt: endsAt, onPlus() {}, onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
-  assert.equal(trial.root.findByType('PlusTrialBanner').props.trialEndsAt, endsAt, 'the trial banner sits on Today while Plus is free');
-  await act(async () => trial.unmount());
 });
 
 test('Soundtrack names the anthem, switches ranges and stays usable without music', async () => {
@@ -572,15 +564,14 @@ test('Sample data: Today shows a bar to leave it, and the empty iPad card offers
   await act(async () => { tree.unmount(); });
 });
 
-test('The trial banner shows on Today normally and is hidden while the sample library is open', async () => {
+test('Today shows the sample-data bar only while the sample library is open', async () => {
   themeId = 'redline';
   let tree: any;
-  const render = (sampleActive: boolean) => React.createElement(TodayScreen, { primary, memories, loadProfile: () => ({ initials: 'PS', avatarUri: null }), trialEndsAt: Date.now() + 86_400_000, onPlus() {}, sampleActive, onExitSample() {},
+  const render = (sampleActive: boolean) => React.createElement(TodayScreen, { primary, memories, loadProfile: () => ({ initials: 'PS', avatarUri: null }), sampleActive, onExitSample() {},
     onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} });
   await act(async () => { tree = create(render(false)); });
-  assert.equal(tree.root.findAllByType('PlusTrialBanner').length, 1);
+  assert.doesNotMatch(texts(tree), /viewing sample data/i);
   await act(async () => { tree.update(render(true)); });
-  assert.equal(tree.root.findAllByType('PlusTrialBanner').length, 0);
   assert.match(texts(tree), /viewing sample data/i);
   await act(async () => { tree.unmount(); });
 });

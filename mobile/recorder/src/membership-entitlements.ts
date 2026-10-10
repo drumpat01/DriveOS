@@ -56,16 +56,6 @@ export function withPreviewAtlasAccess(
     : entitlements;
 }
 
-/** A free member inside the Plus trial gets Plus access until trialEndsAt. Paid members are unchanged. */
-export function withPlusTrial(
-  entitlements: JourneyDeckMembershipEntitlements,
-  trialEndsAt: number | null,
-  now = Date.now(),
-): JourneyDeckMembershipEntitlements {
-  if (entitlements.tier === 'paid' || trialEndsAt === null || now >= trialEndsAt) return entitlements;
-  return { ...entitlementsForMembershipTier('paid'), tessieAccess: entitlements.tessieAccess, trialEndsAt };
-}
-
 export function membershipHistoryCutoff(entitlements: JourneyDeckMembershipEntitlements, now = Date.now()): number {
   if (entitlements.timelineHistoryDays === null) return Number.NEGATIVE_INFINITY;
   const midnight = new Date(now);

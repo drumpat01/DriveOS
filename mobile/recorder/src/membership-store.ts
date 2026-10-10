@@ -12,8 +12,7 @@ import {
   type JourneyDeckMembershipProduct,
   type JourneyDeckMembershipStatus,
 } from '../modules/journeydeck-membership';
-import { entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, sameMembershipEntitlements, withPlusTrial, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
-import { loadOrStartPlusTrial, plusTrialEndsAt } from './plus-trial';
+import { entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, sameMembershipEntitlements, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { isDemoProfile } from './auth';
 import { PREVIEW_ATLAS_UNLOCKED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED, V4_REDESIGN_ENABLED } from './release-features';
 import { publishProEntitlement } from './pro-entitlement-sync';
@@ -43,8 +42,6 @@ export function useJourneyDeckMembership() {
   const [productsLoading, setProductsLoading] = useState(false);
   const [purchasePending, setPurchasePending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
-  const [trialClock, setTrialClock] = useState(() => Date.now());
   const productLoadGeneration = useRef(0);
   const statusLoadGeneration = useRef(0);
   const statusRef = useRef(status);
@@ -157,7 +154,7 @@ export function useJourneyDeckMembership() {
     void refresh();
     const refreshTimer = setInterval(() => void refresh(), 15 * 60_000);
     const appStateSubscription = AppState.addEventListener('change', nextState => {
-      if (nextState === 'active') { setTrialClock(Date.now()); void refresh(); }
+      if (nextState === 'active') void refresh();
     });
     return () => {
       mounted.current = false;
@@ -178,19 +175,6 @@ export function useJourneyDeckMembership() {
     return () => clearTimeout(timer);
   }, [refresh, status]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void loadOrStartPlusTrial().then(started => { if (!cancelled) setTrialStartedAt(started); }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
-  const trialEndsAt = trialStartedAt === null ? null : plusTrialEndsAt(trialStartedAt, trialClock);
-  useEffect(() => {
-    if (trialEndsAt === null || trialEndsAt <= trialClock) return;
-    // Lock Plus again the moment the trial ends, even if the app stays open.
-    const timer = setTimeout(() => setTrialClock(Date.now()), Math.min(trialEndsAt - trialClock + 1_000, 2_147_483_647));
-    return () => clearTimeout(timer);
-  }, [trialClock, trialEndsAt]);
-
   // Every StoreKit refresh (15-minute timer, app resume) yields a new status
   // object. Keep the previous entitlements identity when nothing changed so
   // consumers' callbacks/effects (archive reloads, private iCloud sync) do not rerun.
@@ -200,12 +184,12 @@ export function useJourneyDeckMembership() {
     // The sample library is a fixed demo: show all of it, never Plus-gated, whatever the device's membership.
     const next = isDemoProfile()
       ? { ...entitlementsForMembershipTier('paid'), tessieAccess: false }
-      : withPreviewAtlasAccess(withPlusTrial(verified, trialEndsAt, trialClock), PREVIEW_ATLAS_UNLOCKED);
+      : withPreviewAtlasAccess(verified, PREVIEW_ATLAS_UNLOCKED);
     const previous = entitlementsRef.current;
     if (previous && sameMembershipEntitlements(previous, next)) return previous;
     entitlementsRef.current = next;
     return next;
-  }, [status, trialEndsAt, trialClock]);
+  }, [status]);
   const state: JourneyDeckMembershipState = { phase, status, entitlements, products, productsLoading, purchasePending, message };
   return { state, refresh, loadProducts, purchase, restore };
 }

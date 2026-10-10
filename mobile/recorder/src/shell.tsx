@@ -992,6 +992,13 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const enteredApp = useRef(false);
   if (appVisible) enteredApp.current = true;
   const navigationReady = appVisible || enteredApp.current;
+  // A new member who skips the plans at setup lands in the sample library instead of an empty, locked app.
+  const sampleAfterSetup = useRef(false);
+  useEffect(() => {
+    if (!sampleAfterSetup.current || !appVisible || dashboard.data.recorder.state !== 'ready') return;
+    sampleAfterSetup.current = false;
+    if (membershipStore.state.status.tier !== 'paid' && !isDemoProfile()) toggleSampleData();
+  }, [appVisible, dashboard.data.recorder.state, membershipStore.state.status.tier, toggleSampleData]);
   const membershipMemories = useMemo<LoadState<MemoriesCatalog>>(() => {
     const visibleJourneyIds = new Set(primarySections.data?.journeys.map(journey => journey.id) ?? journeys.data.map(journey => journey.id));
     const sanitizedMemoryItems = memories.data.memories.map(memory => ({
@@ -1074,7 +1081,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     } : {
       music: <MusicScreen redesign={REDESIGN_PHONE} state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => REDESIGN_PHONE || membershipCanAccessDate(membership, journey.startedAt)) }} isLocked={REDESIGN_PHONE ? startedAt => !membershipCanAccessDate(membership, startedAt) : undefined} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
-      home: REDESIGN_PHONE ? <TodayScreen trialEndsAt={membershipStore.state.status.tier === 'paid' ? null : membership.trialEndsAt} onPlus={() => setMembershipPaywallVisible(true)} userId={currentUser.id} primary={primarySections} memories={membershipMemories.data.memories} recorder={accessoryRecorder ? undefined : redesignRecorder}
+      home: REDESIGN_PHONE ? <TodayScreen userId={currentUser.id} primary={primarySections} memories={membershipMemories.data.memories} recorder={accessoryRecorder ? undefined : redesignRecorder}
         onAsk={V3_ASK_JOURNEYDECK_ENABLED ? () => router.push('/ask-journeydeck') : undefined}
         extraCards={{
           fiftyStates: V3_FIFTY_STATES_ENABLED ? <FiftyStatesHomeWidget userId={currentUser.id} onPress={openFiftyStates} dense /> : undefined,
@@ -1243,7 +1250,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
             : null,
         } : null}
         onClose={() => {
-          if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : ROADS_STEP_ENABLED ? 'photos' : 'instructions'); return; }
+          if (firstRunStage === 'membership') { sampleAfterSetup.current = REDESIGN_PHONE; advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : ROADS_STEP_ENABLED ? 'photos' : 'instructions'); return; }
           setMembershipPaywallVisible(false);
         }}
         onLoadProducts={membershipStore.loadProducts}
