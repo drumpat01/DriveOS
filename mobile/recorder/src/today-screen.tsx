@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode, useEffect } from 'react';
 import { isIpad } from './device-layout';
-import { PlusTrialBanner } from './plus-trial-banner';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
@@ -57,11 +56,8 @@ function useTodayLayout(userId: string, available: TodayCardId[]) {
   return { layout, save, reset: () => save(defaultTodayLayout(available)) };
 }
 
-export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh, userId = 'default', onAsk, extraCards = {}, trialEndsAt = null, onPlus, onSync, sampleActive = false, onExitSample }: {
+export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh, userId = 'default', onAsk, extraCards = {}, onSync, sampleActive = false, onExitSample }: {
   primary: PrimaryDataState;
-  /** While the first-launch Plus trial runs: its end, for the banner under the title. */
-  trialEndsAt?: number | null;
-  onPlus?: () => void;
   userId?: string;
   /** Opens Ask JourneyDeck; omitted when Ask is unavailable. */
   onAsk?: () => void;
@@ -161,7 +157,6 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
         <SymbolView name="xmark" tintColor={colors.textSecondary} size={13} weight="semibold" />
       </TouchPressable>
     </View> : null}
-    {onPlus && !sampleActive ? <PlusTrialBanner trialEndsAt={trialEndsAt} onPress={onPlus} now={now} /> : null}
     {recorder ? <View testID="today-inline-recorder">{recorder}</View> : null}
     {primary.status === 'error' && !primary.data ? <Surface style={styles.notice}><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{primary.message ?? 'Your library could not load. Pull down to try again.'}</Text></Surface> : null}
     <View style={canvas.wide ? styles.cardGrid : styles.cardColumn}>

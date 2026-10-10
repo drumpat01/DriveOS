@@ -27,7 +27,6 @@ function deferred<T>() {
 
 async function harness(overrides: Record<string, any> = {}) {
   let control: any, tree: any, listener: any, appStateListener: any;
-  let trialLoads = 0;
   let requestedProducts: readonly string[] | undefined;
   const timers = new Map<number, { callback: () => void; delay: number }>();
   let nextTimer = 0;
@@ -36,12 +35,7 @@ async function harness(overrides: Record<string, any> = {}) {
     './membership-entitlements': entitlements,
     './pro-entitlement-sync': { publishProEntitlement: async () => {} },
     './release-features': { PREVIEW_ATLAS_UNLOCKED: false, V4_REDESIGN_ENABLED: overrides.v4 === true },
-    // Trial expired by default so these tests exercise StoreKit alone.
     './auth': { isDemoProfile: () => false },
-    './plus-trial': {
-      loadOrStartPlusTrial: async () => { trialLoads++; return overrides.trialStartedAt ?? 1; },
-      plusTrialEndsAt: (startedAt: number, now: number) => now < startedAt ? null : startedAt + 7 * 86_400_000,
-    },
     '../modules/journeydeck-membership': {
       isJourneyDeckMembershipNativeAvailable: true,
       JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS: ['com.journeydeck.recorder.pro.weekly', 'com.journeydeck.recorder.pro.annual'],
@@ -68,7 +62,6 @@ async function harness(overrides: Record<string, any> = {}) {
   await act(async () => { tree = create(React.createElement(Content)); });
   return {
     get control() { return control; }, timers,
-    get trialLoads() { return trialLoads; },
     get requestedProducts() { return requestedProducts; },
     emit: async (status: any) => { await act(async () => { listener(status); }); },
     foreground: async () => { await act(async () => { appStateListener('active'); }); },
@@ -76,11 +69,10 @@ async function harness(overrides: Record<string, any> = {}) {
   };
 }
 
-test('V4 offers weekly and annual, with Plus free for the first days after the app first opens', async () => {
-  const h = await harness({ v4: true, trialStartedAt: Date.now() });
+test('V4 offers weekly and annual, and a new free device has no Plus until it subscribes', async () => {
+  const h = await harness({ v4: true });
   try {
-    assert.equal(h.trialLoads, 1, 'V4 starts its trial the first time the app opens');
-    assert.equal(h.control.state.entitlements.tier, 'paid', 'Plus is unlocked during the trial');
+    assert.equal(h.control.state.entitlements.tier, 'free', 'there is no free trial of Plus');
     await act(async () => { await h.control.loadProducts(); });
     assert.deepEqual(h.requestedProducts, ['com.journeydeck.recorder.pro.weekly', 'com.journeydeck.recorder.pro.annual']);
   } finally { await h.dispose(); }
@@ -253,19 +245,8 @@ test('an unchanged StoreKit refresh keeps entitlements identity so dependent rel
   } finally { await h.dispose(); }
 });
 
-test('a free device inside its 7-day trial gets Plus until the trial ends', async () => {
-  const h = await harness({ trialStartedAt: Date.now() - 86_400_000 });
-  await act(async () => { await Promise.resolve(); });
-  assert.equal(h.control.state.entitlements.tier, 'paid');
-  assert.equal(h.control.state.entitlements.atlasAccess, true);
-  assert.equal(h.control.state.entitlements.timelineHistoryDays, null);
-  assert.ok(h.control.state.entitlements.trialEndsAt > Date.now());
-  assert.ok([...h.timers.values()].some(timer => timer.delay > 5 * 86_400_000), 'a timer relocks at the trial end');
-  await h.dispose();
-});
-
-test('a free device after its trial sees only today and has Plus locked', async () => {
-  const h = await harness({ trialStartedAt: Date.now() - 8 * 86_400_000 });
+test('a free device sees only today and has Plus locked', async () => {
+  const h = await harness();
   await act(async () => { await Promise.resolve(); });
   assert.equal(h.control.state.entitlements.tier, 'free');
   assert.equal(h.control.state.entitlements.atlasAccess, false);

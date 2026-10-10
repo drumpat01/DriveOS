@@ -20,9 +20,6 @@ module.exports = config => {
     mod.modResults.JourneyDeckAskURLScheme = scheme;
     // Siri checks StoreKit itself; TestFlight builds that unlock Plus in the app unlock it for Siri too.
     mod.modResults.JourneyDeckPlusUnlocked = config.extra?.features?.testflightPlusUnlocked === true;
-    // Plus trial from the first launch: 3 days on V4, 7 on V3 (src/plus-trial.ts). Siri reads the same Keychain item.
-    mod.modResults.JourneyDeckPlusTrialFromFirstLaunch = true;
-    mod.modResults.JourneyDeckPlusTrialDays = config.extra?.features?.redesign === true ? 3 : 7;
     mod.modResults.JourneyDeckSiriTestingEnabled = process.env.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING === '1';
     return mod;
   });

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import {
   currentMembershipEntitlements, entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership,
-  membershipCanAccessDate, membershipHistoryCutoff, withPlusTrial,
+  membershipCanAccessDate, membershipHistoryCutoff,
 } from '../src/membership-entitlements.ts';
 
 test('free members receive Statistics and a today-only timeline', () => {
@@ -61,13 +61,4 @@ test('free history starts at local midnight today while paid history has no cuto
   assert.equal(membershipCanAccessDate(free, new Date(2026, 8, 27, 7).toISOString(), now), true);
   assert.equal(membershipCanAccessDate(free, new Date(2026, 8, 26, 23).toISOString(), now), false);
   assert.equal(membershipCanAccessDate(paid, '2020-01-01T00:00:00.000Z', now), true);
-});
-
-test('the Plus trial unlocks a free member until it ends and never changes a paid one', () => {
-  const now = Date.parse('2026-09-27T12:00:00Z'), ends = now + 86_400_000;
-  const free = entitlementsForMembershipTier('free'), paid = entitlementsForMembershipTier('paid');
-  assert.deepEqual(withPlusTrial(free, ends, now), { ...paid, trialEndsAt: ends });
-  assert.equal(withPlusTrial(free, ends, ends), free);
-  assert.equal(withPlusTrial(free, null, now), free);
-  assert.equal(withPlusTrial(paid, ends, now), paid);
 });
