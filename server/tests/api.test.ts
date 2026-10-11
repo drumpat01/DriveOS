@@ -85,7 +85,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
     assert.match(support.body, /Recording needs an iPhone/);
-    assert.match(support.body, /Every new install gets a 3-day Plus trial/);
+    assert.match(support.body, /A weekly or annual subscription unlocks full history/);
     assert.match(support.body, /Restore Purchases is in Settings &gt; Membership/);
     assert.match(support.body, /items are still arriving/);
     assert.match(support.body, /mailto:journeydeckapp@gmail\.com/i);
@@ -338,6 +338,20 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       for (const block of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
         assert.doesNotThrow(() => JSON.parse(block[1]), `${page.url} JSON-LD`);
       }
+    }
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
+test("hosted home and Support HTML do not advertise a 3-day Plus trial", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
+  try {
+    const home = await runtime.app.inject({ method: "GET", url: "/" });
+    const support = await runtime.app.inject({ method: "GET", url: "/support" });
+    assert.equal(home.statusCode, 200, home.body);
+    assert.equal(support.statusCode, 200, support.body);
+    for (const [name, body] of [["home", home.body], ["Support", support.body]] as const) {
+      assert.doesNotMatch(body, /3-day/, name);
+      assert.doesNotMatch(body, /Plus trial/, name);
     }
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
