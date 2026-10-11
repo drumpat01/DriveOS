@@ -13,6 +13,7 @@ import {
   compareGeneratedAtSince,
   evaluateLoginUmami,
   evaluatePublicPageHtml,
+  evaluateUmamiScripts,
   extractAppStoreHrefs,
   extractDocumentTitle,
   findForbiddenTrialPhrases,
@@ -24,6 +25,8 @@ import {
   loadExpectations,
   parseJsonLdBlocks,
   parseVerifyLiveArgs,
+  runChecksContinuing,
+  scriptSrcHost,
   validateExpectations,
   withCacheBust
 } from "../../tools/verify-live/lib.mjs";
@@ -167,6 +170,67 @@ test("cache-busting, URL joining, CSP classification, and report text stay ASCII
   assert.match(report, /service restart \/ snapshot time/);
   assert.match(report, /not deploy time/);
   assert.match(report, /^PASS$/m);
+  assert.doesNotMatch(report, /[\u2013\u2014]/);
+});
+
+test("Umami matching counts every cloud.umami.is script, not only exact src matches", () => {
+  const exact = `<script defer src="https://cloud.umami.is/script.js" data-website-id="${expectations.umami.websiteId}" data-domains="${expectations.umami.dataDomains}"></script>`;
+  const queried = `<script src="https://cloud.umami.is/script.js?v=2" data-website-id="${expectations.umami.websiteId}" data-domains="${expectations.umami.dataDomains}"></script>`;
+  const wrongId = `<script src="https://cloud.umami.is/script.js" data-website-id="00000000-0000-0000-0000-000000000000" data-domains="example.com"></script>`;
+  const otherHost = `<script src="https://example.com/umami.js" data-website-id="${expectations.umami.websiteId}" data-domains="${expectations.umami.dataDomains}"></script>`;
+  assert.equal(scriptSrcHost("https://cloud.umami.is/script.js?v=2"), "cloud.umami.is");
+  assert.equal(findUmamiScripts(exact, expectations).length, 1);
+  assert.equal(findUmamiScripts(queried, expectations).length, 1);
+  assert.equal(findUmamiScripts(wrongId, expectations).length, 1);
+  assert.equal(findUmamiScripts(`${exact}${wrongId}`, expectations).length, 2);
+  assert.equal(findUmamiScripts(otherHost, expectations).length, 0);
+  assert.equal(evaluateUmamiScripts(findUmamiScripts(exact, expectations), expectations, { requireOne: true }).pass, true);
+  assert.equal(evaluateUmamiScripts(findUmamiScripts(queried, expectations), expectations, { requireOne: true }).pass, true);
+  assert.equal(evaluateUmamiScripts(findUmamiScripts(wrongId, expectations), expectations, { requireOne: true }).pass, false);
+  assert.equal(evaluateUmamiScripts(findUmamiScripts(`${exact}${wrongId}`, expectations), expectations, { requireOne: true }).pass, false);
+  const extra = evaluatePublicPageHtml(`<!doctype html><html><head>
+    <title>JourneyDeck</title><meta name="description" content="A private journal.">
+    <link rel="canonical" href="https://journeydeck.me/"><meta property="og:title" content="JourneyDeck">
+    <meta property="og:description" content="A private journal."><meta property="og:url" content="https://journeydeck.me/">
+    <meta property="og:image" content="https://journeydeck.me/card.png">${exact}${wrongId}
+  </head><body></body></html>`, "/", expectations, 200);
+  const umamiCheck = extra.find((check) => check.name === "page:/ umami");
+  assert.equal(umamiCheck?.pass, false);
+  assert.equal((umamiCheck?.observed as { count: number }).count, 2);
+  const loginWrong = evaluateLoginUmami(`<html><head>${wrongId}</head></html>`, expectations, 200);
+  assert.equal(loginWrong.find((check) => check.name === "page:/login umami")?.pass, false);
+  const loginClean = evaluateLoginUmami("<html><head><title>Sign In</title></head></html>", expectations, 200);
+  assert.equal(loginClean.find((check) => check.name === "page:/login umami")?.pass, true);
+});
+
+test("check runner records thrown browser steps as FAIL and keeps running", async () => {
+  const checks = await runChecksContinuing([
+    {
+      name: "browser 390x844 campaign app-store-hrefs",
+      work: async () => {
+        throw new Error("page.waitForFunction: Timeout 8000ms exceeded. no App Store links found");
+      }
+    },
+    {
+      name: "browser 390x844 default headline",
+      work: async () => ({ pass: true, observed: "Take the road. Keep the story." })
+    }
+  ]);
+  assert.equal(checks[0].pass, false);
+  assert.match(String((checks[0].observed as { error: string }).error), /no App Store links found/);
+  assert.equal(checks[1].pass, true);
+  const report = formatHumanReport({
+    checks,
+    base: "http://127.0.0.1:8795",
+    timestamp: "2026-10-11T21:00:00.000Z",
+    ok: false
+  });
+  assert.match(report, /^FAIL browser 390x844 campaign app-store-hrefs /m);
+  assert.match(report, /no App Store links found/);
+  assert.match(report, /^PASS browser 390x844 default headline /m);
+  assert.match(report, /^FAIL$/m);
+  const json = JSON.stringify({ ok: false, checks });
+  assert.match(json, /no App Store links found/);
   assert.doesNotMatch(report, /[\u2013\u2014]/);
 });
 

@@ -32,8 +32,8 @@ Remove leftover 3-day Plus trial wording from public marketing pages in `web/`. 
 
 ## Verify-live CLI (October 11, 2026)
 
-Current objective: add a reusable live-site verifier and feature map. Do not merge, deploy, or change visible pages.
+Current objective: live-site verifier follow-ups on PR 262. Do not merge.
 
-- Branch `cursor/verify-live-cli-0e37` off `main`.
-- Added `tools/verify-live/verify-live.mjs`, `tools/verify-live/lib.mjs`, `tools/verify-live/expectations.json`, `tools/verify-live/FEATURE_MAP.md`, `server/tests/verify-live.test.ts`, and npm script `verify:live`.
+- Branch `cursor/verify-live-cli-0e37`. Umami matching now counts every `cloud.umami.is` script. Browser/check throws become FAIL and the run continues.
+- Keep the narrow `.gitleaks.toml` allowlist for public campaign ct `x-launch_oct13`. `gitleaks git` still flags the first commit's `expectedCampaignToken` field name.
 - `/readyz` `generatedAtUtc` is service restart / snapshot time, not deploy time.

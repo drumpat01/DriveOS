@@ -146,17 +146,73 @@ export function parseJsonLdBlocks(blocks) {
   return { count: blocks.length, parsed, errors, pass: errors.length === 0 };
 }
 
+export function scriptSrcHost(src, base = "https://journeydeck.me") {
+  try {
+    return new URL(String(src || ""), base).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+export function umamiScriptHost(expectations) {
+  return scriptSrcHost(expectations.umami.scriptSrc);
+}
+
 export function findUmamiScripts(html, expectations) {
+  const expectedHost = umamiScriptHost(expectations);
   return [...html.matchAll(/<script\b[^>]*>/gi)]
     .map((match) => match[0])
-    .filter((tag) => {
-      const src = attrValue(tag, "src");
-      const websiteId = attrValue(tag, "data-website-id");
-      const domains = attrValue(tag, "data-domains");
-      return src === expectations.umami.scriptSrc
-        && websiteId === expectations.umami.websiteId
-        && domains === expectations.umami.dataDomains;
-    });
+    .map((tag) => ({
+      src: attrValue(tag, "src"),
+      websiteId: attrValue(tag, "data-website-id"),
+      dataDomains: attrValue(tag, "data-domains")
+    }))
+    .filter((script) => script.src && scriptSrcHost(script.src) === expectedHost);
+}
+
+export function evaluateUmamiScripts(scripts, expectations, { requireOne = true } = {}) {
+  const observed = {
+    count: scripts.length,
+    scripts: scripts.map((script) => ({
+      src: script.src,
+      websiteId: script.websiteId,
+      dataDomains: script.dataDomains
+    })),
+    expectedWebsiteId: expectations.umami.websiteId,
+    expectedDataDomains: expectations.umami.dataDomains
+  };
+  if (!requireOne) {
+    return { pass: scripts.length === 0, observed };
+  }
+  const only = scripts[0];
+  const pass = scripts.length === 1
+    && only.websiteId === expectations.umami.websiteId
+    && only.dataDomains === expectations.umami.dataDomains;
+  return { pass, observed };
+}
+
+export function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function runNamedCheck(name, work) {
+  try {
+    const result = await work();
+    if (result && typeof result === "object" && "pass" in result) {
+      return makeCheck(name, result.pass, result.observed);
+    }
+    return makeCheck(name, true, result ?? null);
+  } catch (error) {
+    return makeCheck(name, false, { error: errorMessage(error) });
+  }
+}
+
+export async function runChecksContinuing(steps) {
+  const checks = [];
+  for (const step of steps) {
+    checks.push(await runNamedCheck(step.name, step.work));
+  }
+  return checks;
 }
 
 export function findForbiddenTrialPhrases(html, phrases) {
@@ -277,7 +333,7 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   const ogUrl = extractPropertyMetas(html, "og:url");
   const ogImage = extractPropertyMetas(html, "og:image");
   const jsonLd = parseJsonLdBlocks(extractJsonLdBlocks(html));
-  const umami = findUmamiScripts(html, expectations);
+  const umami = evaluateUmamiScripts(findUmamiScripts(html, expectations), expectations, { requireOne: true });
   const trialHits = findForbiddenTrialPhrases(html, expectations.forbiddenTrialPhrases);
   return [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
@@ -289,16 +345,16 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} og:url`, ogUrl.count === 1 && ogUrl.value === expectedCanonical, { ...ogUrl, expected: expectedCanonical }),
     makeCheck(`page:${pathname} og:image`, ogImage.count === 1 && Boolean(ogImage.value), ogImage),
     makeCheck(`page:${pathname} json-ld`, jsonLd.pass, { count: jsonLd.count, errors: jsonLd.errors }),
-    makeCheck(`page:${pathname} umami`, umami.length === 1, { count: umami.length, websiteId: expectations.umami.websiteId, dataDomains: expectations.umami.dataDomains }),
+    makeCheck(`page:${pathname} umami`, umami.pass, umami.observed),
     makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits })
   ];
 }
 
 export function evaluateLoginUmami(html, expectations, statusCode) {
-  const umami = findUmamiScripts(html, expectations);
+  const umami = evaluateUmamiScripts(findUmamiScripts(html, expectations), expectations, { requireOne: false });
   return [
     makeCheck(`page:${expectations.loginPath} status`, statusCode === 200, statusCode),
-    makeCheck(`page:${expectations.loginPath} umami`, umami.length === 0, { count: umami.length })
+    makeCheck(`page:${expectations.loginPath} umami`, umami.pass, umami.observed)
   ];
 }
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { chromium } from "@playwright/test";
 import {
+  DEFAULT_BASE_URL,
   READYZ_CAVEAT,
   assertCampaignAppStoreHrefs,
   assertDefaultAppStoreHrefs,
   classifyConsoleError,
   compareGeneratedAtSince,
+  errorMessage,
   evaluateLoginUmami,
   evaluatePublicPageHtml,
   extractAppStoreHrefs,
@@ -19,8 +21,21 @@ import {
   withCacheBust
 } from "./lib.mjs";
 
-const args = parseVerifyLiveArgs(process.argv.slice(2));
-const expectations = loadExpectations();
+let args = { base: DEFAULT_BASE_URL, json: false, since: null };
+let expectations;
+try {
+  args = parseVerifyLiveArgs(process.argv.slice(2));
+  expectations = loadExpectations();
+} catch (error) {
+  const timestamp = new Date().toISOString();
+  const checks = [makeCheck("verifier", false, { error: errorMessage(error) })];
+  if (args.json || process.argv.includes("--json")) {
+    process.stdout.write(`${JSON.stringify({ ok: false, base: args.base, timestamp, checks, blockedRequests: [], consoleErrors: [] }, null, 2)}\n`);
+  } else {
+    process.stdout.write(formatHumanReport({ checks, base: args.base, timestamp, ok: false }));
+  }
+  process.exit(1);
+}
 const timestamp = new Date().toISOString();
 const cacheToken = `t${Date.now().toString(36)}`;
 const checks = [];
@@ -35,14 +50,24 @@ function recordCheck(check) {
 
 async function fetchResource(pathAndQuery, { json = false } = {}) {
   const url = withCacheBust(joinBasePath(args.base, pathAndQuery), cacheToken);
-  const response = await fetch(url, { redirect: "manual" });
-  const text = await response.text();
-  return {
-    url,
-    status: response.status,
-    text,
-    json: json ? safeJson(text) : null
-  };
+  try {
+    const response = await fetch(url, { redirect: "manual" });
+    const text = await response.text();
+    return {
+      url,
+      status: response.status,
+      text,
+      json: json ? safeJson(text) : null
+    };
+  } catch (error) {
+    return {
+      url,
+      status: 0,
+      text: "",
+      json: null,
+      error: errorMessage(error)
+    };
+  }
 }
 
 function safeJson(text) {
@@ -112,78 +137,119 @@ async function readPageState(page) {
   return { headline, hrefs, violations };
 }
 
+function appStoreHrefsFrom(hrefs) {
+  return hrefs.filter((href) => {
+    try {
+      return expectations.blocked.appStoreHosts.includes(new URL(href, args.base).hostname);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function failBrowserViewport(viewport, error, phases) {
+  const message = errorMessage(error);
+  for (const phase of phases) {
+    recordCheck(makeCheck(`browser ${viewport.name} ${phase}`, false, { error: message }));
+  }
+}
+
+async function runCampaignVisit(browser, viewport) {
+  const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+  try {
+    const page = await context.newPage();
+    await installVerifierRoutes(page);
+    await page.goto(withCacheBust(joinBasePath(args.base, `/${expectations.campaign.query}`), cacheToken), { waitUntil: "load" });
+    await page.waitForSelector("#hero-title");
+    await page.waitForFunction((token) => {
+      return [...document.querySelectorAll("a[href]")].some((anchor) => {
+        try {
+          return new URL(anchor.href).searchParams.get("ct") === token;
+        } catch {
+          return false;
+        }
+      });
+    }, expectations.campaign.expectedCt);
+    const state = await readPageState(page);
+    cspViolations.push(...state.violations);
+    const hrefs = appStoreHrefsFrom(state.hrefs);
+    recordCheck(makeCheck(
+      `browser ${viewport.name} campaign headline`,
+      headlineMatches(state.headline, expectations.headlines.x),
+      normalizeHeadline(state.headline)
+    ));
+    const hrefCheck = assertCampaignAppStoreHrefs(hrefs, expectations);
+    recordCheck(makeCheck(
+      `browser ${viewport.name} campaign app-store-hrefs`,
+      hrefCheck.pass,
+      { hrefs, problems: hrefCheck.problems }
+    ));
+  } catch (error) {
+    failBrowserViewport(viewport, error, ["campaign headline", "campaign app-store-hrefs"]);
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
+async function runDefaultVisit(browser, viewport, servedHomeHrefs) {
+  const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+  try {
+    const page = await context.newPage();
+    await installVerifierRoutes(page);
+    await page.goto(withCacheBust(joinBasePath(args.base, "/"), cacheToken), { waitUntil: "load" });
+    await page.waitForSelector("#hero-title");
+    await page.waitForFunction(() => [...document.scripts].some((script) => String(script.src || "").includes("/campaign.js")));
+    const state = await readPageState(page);
+    cspViolations.push(...state.violations);
+    const hrefs = appStoreHrefsFrom(state.hrefs);
+    recordCheck(makeCheck(
+      `browser ${viewport.name} default headline`,
+      headlineMatches(state.headline, expectations.headlines.default),
+      normalizeHeadline(state.headline)
+    ));
+    const hrefCheck = assertDefaultAppStoreHrefs(hrefs, servedHomeHrefs, expectations);
+    recordCheck(makeCheck(
+      `browser ${viewport.name} default app-store-hrefs`,
+      hrefCheck.pass,
+      { hrefs, served: servedHomeHrefs, problems: hrefCheck.problems }
+    ));
+  } catch (error) {
+    failBrowserViewport(viewport, error, ["default headline", "default app-store-hrefs"]);
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 async function runBrowserChecks(servedHomeHrefs) {
-  const browser = await chromium.launch({ headless: true });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+  } catch (error) {
+    for (const viewport of expectations.viewports) {
+      failBrowserViewport(viewport, error, [
+        "campaign headline",
+        "campaign app-store-hrefs",
+        "default headline",
+        "default app-store-hrefs"
+      ]);
+    }
+    return;
+  }
   try {
     for (const viewport of expectations.viewports) {
-      const campaignContext = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
-      const campaignPage = await campaignContext.newPage();
-      await installVerifierRoutes(campaignPage);
-      await campaignPage.goto(withCacheBust(joinBasePath(args.base, `/${expectations.campaign.query}`), cacheToken), { waitUntil: "load" });
-      await campaignPage.waitForSelector("#hero-title");
-      await campaignPage.waitForFunction((token) => {
-        return [...document.querySelectorAll("a[href]")].some((anchor) => {
-          try {
-            return new URL(anchor.href).searchParams.get("ct") === token;
-          } catch {
-            return false;
-          }
-        });
-      }, expectations.campaign.expectedCt);
-      const campaignState = await readPageState(campaignPage);
-      cspViolations.push(...campaignState.violations);
-      const campaignHrefs = campaignState.hrefs.filter((href) => {
-        try {
-          const hostname = new URL(href, args.base).hostname;
-          return expectations.blocked.appStoreHosts.includes(hostname);
-        } catch {
-          return false;
-        }
-      });
-      recordCheck(makeCheck(
-        `browser ${viewport.name} campaign headline`,
-        headlineMatches(campaignState.headline, expectations.headlines.x),
-        normalizeHeadline(campaignState.headline)
-      ));
-      const campaignHrefCheck = assertCampaignAppStoreHrefs(campaignHrefs, expectations);
-      recordCheck(makeCheck(
-        `browser ${viewport.name} campaign app-store-hrefs`,
-        campaignHrefCheck.pass,
-        { hrefs: campaignHrefs, problems: campaignHrefCheck.problems }
-      ));
-      await campaignContext.close();
-
-      const defaultContext = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
-      const defaultPage = await defaultContext.newPage();
-      await installVerifierRoutes(defaultPage);
-      await defaultPage.goto(withCacheBust(joinBasePath(args.base, "/"), cacheToken), { waitUntil: "load" });
-      await defaultPage.waitForSelector("#hero-title");
-      await defaultPage.waitForFunction(() => [...document.scripts].some((script) => String(script.src || "").includes("/campaign.js")));
-      const defaultState = await readPageState(defaultPage);
-      cspViolations.push(...defaultState.violations);
-      const defaultHrefs = defaultState.hrefs.filter((href) => {
-        try {
-          const hostname = new URL(href, args.base).hostname;
-          return expectations.blocked.appStoreHosts.includes(hostname);
-        } catch {
-          return false;
-        }
-      });
-      recordCheck(makeCheck(
-        `browser ${viewport.name} default headline`,
-        headlineMatches(defaultState.headline, expectations.headlines.default),
-        normalizeHeadline(defaultState.headline)
-      ));
-      const defaultHrefCheck = assertDefaultAppStoreHrefs(defaultHrefs, servedHomeHrefs, expectations);
-      recordCheck(makeCheck(
-        `browser ${viewport.name} default app-store-hrefs`,
-        defaultHrefCheck.pass,
-        { hrefs: defaultHrefs, served: servedHomeHrefs, problems: defaultHrefCheck.problems }
-      ));
-      await defaultContext.close();
+      await runCampaignVisit(browser, viewport);
+      await runDefaultVisit(browser, viewport, servedHomeHrefs);
+    }
+  } catch (error) {
+    for (const viewport of expectations.viewports) {
+      const recorded = new Set(checks.filter((check) => check.name.startsWith(`browser ${viewport.name} `)).map((check) => check.name));
+      for (const phase of ["campaign headline", "campaign app-store-hrefs", "default headline", "default app-store-hrefs"]) {
+        const name = `browser ${viewport.name} ${phase}`;
+        if (!recorded.has(name)) recordCheck(makeCheck(name, false, { error: errorMessage(error) }));
+      }
     }
   } finally {
-    await browser.close();
+    if (browser) await browser.close().catch(() => {});
   }
 }
 
@@ -200,73 +266,101 @@ function evaluateCspCheck() {
   }));
 }
 
-async function run() {
-  let servedHomeHrefs = [];
-  for (const pathname of expectations.publicPages) {
-    const page = await fetchResource(pathname);
-    if (pathname === "/") servedHomeHrefs = extractAppStoreHrefs(page.text, expectations);
-    for (const check of evaluatePublicPageHtml(page.text, pathname, expectations, page.status)) {
-      recordCheck(check);
-    }
-  }
-
-  const login = await fetchResource(expectations.loginPath);
-  for (const check of evaluateLoginUmami(login.text, expectations, login.status)) {
-    recordCheck(check);
-  }
-
-  await runBrowserChecks(servedHomeHrefs);
-  evaluateCspCheck();
-
-  const ready = await fetchResource("/readyz", { json: true });
-  const body = ready.json && typeof ready.json === "object" ? ready.json : {};
-  const generatedAtUtc = body.atlas?.generatedAtUtc ?? null;
-  const readyzOk = ready.status === 200 && body.ok === true;
-  recordCheck(makeCheck("readyz", readyzOk, {
-    status: ready.status,
-    ok: body.ok ?? null,
-    generatedAtUtc,
-    atlas: body.atlas ?? null,
-    label: "service restart / snapshot time",
-    caveat: READYZ_CAVEAT
-  }));
-  if (args.since) {
-    const comparison = compareGeneratedAtSince(generatedAtUtc, args.since);
-    recordCheck(makeCheck("readyz since", comparison.pass, {
-      generatedAtUtc,
-      since: args.since,
-      reason: comparison.reason,
-      label: "service restart / snapshot time"
-    }));
-  }
-
-  const ok = checks.every((check) => check.pass);
+function writeReport(readyz) {
+  const ok = checks.length > 0 && checks.every((check) => check.pass);
   const report = {
     ok,
     base: args.base,
     timestamp,
     checks,
-    readyz: {
-      status: ready.status,
-      ok: body.ok ?? null,
-      generatedAtUtc,
-      atlas: body.atlas ?? null,
-      since: args.since,
-      label: "service restart / snapshot time",
-      caveat: READYZ_CAVEAT
-    },
+    readyz,
     blockedRequests,
     consoleErrors
   };
   if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
-    process.stdout.write(formatHumanReport({ checks, base: args.base, timestamp, ok, readyz: report.readyz }));
+    process.stdout.write(formatHumanReport({ checks, base: args.base, timestamp, ok, readyz }));
   }
   process.exitCode = ok ? 0 : 1;
 }
 
+async function run() {
+  let readyz = {
+    status: null,
+    ok: null,
+    generatedAtUtc: null,
+    atlas: null,
+    since: args.since,
+    label: "service restart / snapshot time",
+    caveat: READYZ_CAVEAT
+  };
+  try {
+    let servedHomeHrefs = [];
+    for (const pathname of expectations.publicPages) {
+      const page = await fetchResource(pathname);
+      if (page.error) {
+        recordCheck(makeCheck(`page:${pathname} status`, false, { error: page.error, status: page.status }));
+        continue;
+      }
+      if (pathname === "/") servedHomeHrefs = extractAppStoreHrefs(page.text, expectations);
+      for (const check of evaluatePublicPageHtml(page.text, pathname, expectations, page.status)) {
+        recordCheck(check);
+      }
+    }
+
+    const login = await fetchResource(expectations.loginPath);
+    if (login.error) {
+      recordCheck(makeCheck(`page:${expectations.loginPath} status`, false, { error: login.error, status: login.status }));
+    } else {
+      for (const check of evaluateLoginUmami(login.text, expectations, login.status)) {
+        recordCheck(check);
+      }
+    }
+
+    await runBrowserChecks(servedHomeHrefs);
+    evaluateCspCheck();
+
+    const ready = await fetchResource("/readyz", { json: true });
+    const body = ready.json && typeof ready.json === "object" ? ready.json : {};
+    const generatedAtUtc = body.atlas?.generatedAtUtc ?? null;
+    const readyzOk = !ready.error && ready.status === 200 && body.ok === true;
+    readyz = {
+      status: ready.status,
+      ok: body.ok ?? null,
+      generatedAtUtc,
+      atlas: body.atlas ?? null,
+      since: args.since,
+      label: "service restart / snapshot time",
+      caveat: READYZ_CAVEAT,
+      ...(ready.error ? { error: ready.error } : {})
+    };
+    recordCheck(makeCheck("readyz", readyzOk, readyz));
+    if (args.since) {
+      const comparison = compareGeneratedAtSince(generatedAtUtc, args.since);
+      recordCheck(makeCheck("readyz since", comparison.pass, {
+        generatedAtUtc,
+        since: args.since,
+        reason: comparison.reason,
+        label: "service restart / snapshot time"
+      }));
+    }
+  } catch (error) {
+    recordCheck(makeCheck("verifier", false, { error: errorMessage(error) }));
+  }
+  writeReport(readyz);
+}
+
 run().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack || error.message : String(error)}\n`);
-  process.exitCode = 1;
+  recordCheck(makeCheck("verifier", false, { error: errorMessage(error) }));
+  writeReport({
+    status: null,
+    ok: null,
+    generatedAtUtc: null,
+    atlas: null,
+    since: args.since,
+    label: "service restart / snapshot time",
+    caveat: READYZ_CAVEAT,
+    error: errorMessage(error)
+  });
 });

@@ -33,8 +33,10 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 ## Umami tag
 
 - Owner: the public HTML files above. Login must stay untagged (`web/login.html`).
-- Expected script: `https://cloud.umami.is/script.js` with website id `a5f66e11-ec7d-4133-8e1a-f8e6c08593af` and `data-domains="journeydeck.me"`.
-- Checks: `page:<path> umami` on every public page (exactly one matching tag) and `page:/login umami` (zero tags).
+- The CLI counts every `<script>` whose `src` host is `cloud.umami.is`, including query-string variants. It does not ignore a second tag just because the website id differs.
+- Public pages: exactly one such tag, and that tag must have website id `a5f66e11-ec7d-4133-8e1a-f8e6c08593af` and `data-domains="journeydeck.me"`.
+- `/login`: zero `cloud.umami.is` scripts of any kind.
+- Checks: `page:<path> umami` on every public page and `page:/login umami`.
 
 ## Trial wording
 
