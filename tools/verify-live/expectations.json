@@ -1,0 +1,61 @@
+{
+  "publicPages": [
+    "/",
+    "/apple-music-soundtrack",
+    "/private-driving-journal",
+    "/support",
+    "/privacy",
+    "/terms"
+  ],
+  "loginPath": "/login",
+  "canonicalOrigin": "https://journeydeck.me",
+  "umami": {
+    "scriptSrc": "https://cloud.umami.is/script.js",
+    "websiteId": "a5f66e11-ec7d-4133-8e1a-f8e6c08593af",
+    "dataDomains": "journeydeck.me"
+  },
+  "forbiddenTrialPhrases": [
+    "3-day",
+    "plus trial",
+    "free trial"
+  ],
+  "appStore": {
+    "baseUrl": "https://apps.apple.com/us/app/journeydeck/id6806502526",
+    "providerToken": "129344416",
+    "mediaType": "8",
+    "reviewsParam": "reviews"
+  },
+  "campaign": {
+    "query": "?utm_source=x&utm_medium=social&utm_campaign=launch_oct13",
+    "expectedCampaignToken": "x-launch_oct13"
+  },
+  "headlines": {
+    "default": {
+      "lead": "Take the road.",
+      "accent": "Keep the story."
+    },
+    "x": {
+      "lead": "Keep the drive.",
+      "accent": "Keep the song."
+    }
+  },
+  "viewports": [
+    {
+      "name": "390x844",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "name": "1280x800",
+      "width": 1280,
+      "height": 800
+    }
+  ],
+  "blocked": {
+    "analyticsHost": "gateway.umami.is",
+    "appStoreHosts": [
+      "apps.apple.com",
+      "www.apps.apple.com"
+    ]
+  }
+}

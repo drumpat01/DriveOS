@@ -29,3 +29,11 @@ Remove leftover 3-day Plus trial wording from public marketing pages in `web/`. 
 ## Next steps
 
 1. Keep the PR open for review. Do not merge or deploy from this session.
+
+## Verify-live CLI (October 11, 2026)
+
+Current objective: add a reusable live-site verifier and feature map. Do not merge, deploy, or change visible pages.
+
+- Branch `cursor/verify-live-cli-0e37` off `main`.
+- Added `tools/verify-live/verify-live.mjs`, `tools/verify-live/lib.mjs`, `tools/verify-live/expectations.json`, `tools/verify-live/FEATURE_MAP.md`, `server/tests/verify-live.test.ts`, and npm script `verify:live`.
+- `/readyz` `generatedAtUtc` is service restart / snapshot time, not deploy time.

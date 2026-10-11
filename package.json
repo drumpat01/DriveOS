@@ -22,7 +22,8 @@
     "rollback:atlas": "node --import tsx server/tools/migrate.ts down",
     "rebuild:atlas": "node --import tsx server/tools/rebuild-atlas.ts",
     "start:server": "node server/dist/index.js",
-    "dev:server": "tsx server/src/index.ts"
+    "dev:server": "tsx server/src/index.ts",
+    "verify:live": "node tools/verify-live/verify-live.mjs"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.0",
