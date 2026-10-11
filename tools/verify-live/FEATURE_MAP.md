@@ -50,8 +50,8 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - Owner: `web/campaign.js`, loaded as `/campaign.js?v=4` from the public HTML files. Home headline markup starts in `web/beta.html` `#hero-title`.
 - Campaign values persist in `sessionStorage`, so the default visit uses a fresh browser context.
 - Test campaign query: `?utm_source=x&utm_medium=social&utm_campaign=launch_oct13`.
-- Expected App Store extras: `pt=129344416`, `ct=x-launch_oct13`, `mt=8`. The reviews link keeps `see-all=reviews`.
-- Default visit: headline `Take the road.` / `Keep the story.`, and App Store hrefs exactly as served in the HTML with none of `pt`, `ct`, or `mt`.
+- Expected App Store extras: `pt=129344416`, `ct=x-launch_oct13`, `mt=8`. Every App Store link must stay on `https://apps.apple.com/us/app/journeydeck/id6806502526`. The reviews link keeps `see-all=reviews`.
+- Default visit: headline `Take the road.` / `Keep the story.`, and App Store hrefs exactly as served in the HTML (same URLs and the same number of repeated CTAs) with none of `pt`, `ct`, or `mt`.
 - X visit: headline `Keep the drive.` / `Keep the song.`.
 - Checks, at `390x844` and `1280x800`: `browser <viewport> campaign headline`, `browser <viewport> campaign app-store-hrefs`, `browser <viewport> default headline`, `browser <viewport> default app-store-hrefs`.
 

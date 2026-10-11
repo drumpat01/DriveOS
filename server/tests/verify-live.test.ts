@@ -132,6 +132,18 @@ test("App Store href assertions keep campaign tokens, reviews, and the served de
   assert.equal(defaultCheck.pass, true, defaultCheck.problems.join("; "));
   const rewritten = assertDefaultAppStoreHrefs(campaign, served, expectations);
   assert.equal(rewritten.pass, false);
+  const otherApp = "https://apps.apple.com/us/app/other/id0000000000";
+  const wrongListing = assertCampaignAppStoreHrefs([`${otherApp}?${CAMPAIGN_QUERY}`, `${otherApp}?see-all=reviews&${CAMPAIGN_QUERY}`], expectations);
+  assert.equal(wrongListing.pass, false);
+  assert.match(wrongListing.problems.join("; "), /not the JourneyDeck App Store listing/);
+  const wrongDefault = assertDefaultAppStoreHrefs([otherApp, `${otherApp}?see-all=reviews`], [otherApp, `${otherApp}?see-all=reviews`], expectations);
+  assert.equal(wrongDefault.pass, false);
+  const droppedDuplicate = assertDefaultAppStoreHrefs(
+    [APP_STORE, APP_STORE, `${APP_STORE}?see-all=reviews`],
+    [APP_STORE, APP_STORE, APP_STORE, `${APP_STORE}?see-all=reviews`],
+    expectations
+  );
+  assert.equal(droppedDuplicate.pass, false);
   assert.deepEqual(extractAppStoreHrefs(`<a href="${APP_STORE}"></a><a href="/support"></a>`, expectations), [APP_STORE]);
 });
 

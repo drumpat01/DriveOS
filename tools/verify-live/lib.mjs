@@ -239,12 +239,24 @@ export function inspectAppStoreHref(href, expectations) {
   const url = new URL(href, expectations.appStore.baseUrl);
   return {
     href,
-    originPath: `${url.origin}${url.pathname}`,
+    originPath: `${url.origin}${url.pathname.replace(/\/$/, "")}`,
     pt: url.searchParams.get("pt"),
     ct: url.searchParams.get("ct"),
     mt: url.searchParams.get("mt"),
     seeAll: url.searchParams.get("see-all")
   };
+}
+
+export function appStoreOriginPath(expectations) {
+  const url = new URL(expectations.appStore.baseUrl);
+  return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
+}
+
+export function hrefListsMatch(left, right) {
+  if (left.length !== right.length) return false;
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((href, index) => href === sortedRight[index]);
 }
 
 export function extractAppStoreHrefs(html, expectations) {
@@ -255,7 +267,9 @@ export function assertCampaignAppStoreHrefs(hrefs, expectations) {
   const inspected = hrefs.map((href) => inspectAppStoreHref(href, expectations));
   const problems = [];
   if (inspected.length === 0) problems.push("no App Store links found");
+  const listing = appStoreOriginPath(expectations);
   for (const item of inspected) {
+    if (item.originPath !== listing) problems.push(`${item.href} is not the JourneyDeck App Store listing`);
     if (item.pt !== expectations.appStore.providerToken) problems.push(`${item.href} missing pt=${expectations.appStore.providerToken}`);
     if (item.ct !== expectations.campaign.expectedCt) problems.push(`${item.href} missing ct=${expectations.campaign.expectedCt}`);
     if (item.mt !== expectations.appStore.mediaType) problems.push(`${item.href} missing mt=${expectations.appStore.mediaType}`);
@@ -273,14 +287,19 @@ export function assertDefaultAppStoreHrefs(hrefs, servedHrefs, expectations) {
   const inspected = hrefs.map((href) => inspectAppStoreHref(href, expectations));
   const problems = [];
   if (inspected.length === 0) problems.push("no App Store links found");
+  const listing = appStoreOriginPath(expectations);
   for (const item of inspected) {
+    if (item.originPath !== listing) problems.push(`${item.href} is not the JourneyDeck App Store listing`);
     if (item.pt !== null) problems.push(`${item.href} has pt`);
     if (item.ct !== null) problems.push(`${item.href} has ct`);
     if (item.mt !== null) problems.push(`${item.href} has mt`);
   }
-  const browserSet = new Set(hrefs);
-  const servedSet = new Set(servedHrefs);
-  if (browserSet.size !== servedSet.size || [...servedSet].some((href) => !browserSet.has(href))) {
+  for (const href of servedHrefs) {
+    if (inspectAppStoreHref(href, expectations).originPath !== listing) {
+      problems.push(`served ${href} is not the JourneyDeck App Store listing`);
+    }
+  }
+  if (!hrefListsMatch(hrefs, servedHrefs)) {
     problems.push("browser App Store hrefs do not match the HTML as served");
   }
   return {
