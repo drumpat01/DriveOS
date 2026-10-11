@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -11,7 +14,7 @@ permissions:
 
 concurrency:
   group: journeydeck-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
