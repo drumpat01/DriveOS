@@ -165,9 +165,9 @@ test("cache-busting, URL joining, CSP classification, and report text stay ASCII
     readyz: { generatedAtUtc: "2026-10-11T20:31:30.000Z" }
   });
   assert.match(report, /service restart \/ snapshot time/);
+  assert.match(report, /not deploy time/);
   assert.match(report, /^PASS$/m);
   assert.doesNotMatch(report, /[\u2013\u2014]/);
-  assert.doesNotMatch(report, /deploy time/);
 });
 
 test("in-process web app HTML satisfies the verify-live public page checks", async () => {
