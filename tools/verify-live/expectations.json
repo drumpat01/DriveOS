@@ -27,7 +27,7 @@
   },
   "campaign": {
     "query": "?utm_source=x&utm_medium=social&utm_campaign=launch_oct13",
-    "expectedCampaignToken": "x-launch_oct13"
+    "expectedCt": "x-launch_oct13"
   },
   "headlines": {
     "default": {

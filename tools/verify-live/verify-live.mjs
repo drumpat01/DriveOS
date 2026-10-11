@@ -129,7 +129,7 @@ async function runBrowserChecks(servedHomeHrefs) {
             return false;
           }
         });
-      }, expectations.campaign.expectedCampaignToken);
+      }, expectations.campaign.expectedCt);
       const campaignState = await readPageState(campaignPage);
       cspViolations.push(...campaignState.violations);
       const campaignHrefs = campaignState.hrefs.filter((href) => {

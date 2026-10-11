@@ -30,7 +30,7 @@ import {
 
 const expectations = loadExpectations();
 const APP_STORE = expectations.appStore.baseUrl;
-const CAMPAIGN_QUERY = `pt=${expectations.appStore.providerToken}&ct=${expectations.campaign.expectedCampaignToken}&mt=${expectations.appStore.mediaType}`;
+const CAMPAIGN_QUERY = `pt=${expectations.appStore.providerToken}&ct=${expectations.campaign.expectedCt}&mt=${expectations.appStore.mediaType}`;
 
 test("verify-live argument parser accepts --base, --json, and --since", () => {
   assert.deepEqual(parseVerifyLiveArgs([]), { base: "https://journeydeck.me", json: false, since: null });
@@ -64,7 +64,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.appStore.providerToken, "129344416");
   assert.equal(expectations.appStore.mediaType, "8");
   assert.equal(expectations.campaign.query, "?utm_source=x&utm_medium=social&utm_campaign=launch_oct13");
-  assert.equal(expectations.campaign.expectedCampaignToken, "x-launch_oct13");
+  assert.equal(expectations.campaign.expectedCt, "x-launch_oct13");
   assert.equal(expectations.headlines.default.lead, "Take the road.");
   assert.equal(expectations.headlines.default.accent, "Keep the story.");
   assert.equal(expectations.headlines.x.lead, "Keep the drive.");
