@@ -56,6 +56,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/",
     "/apple-music-soundtrack",
     "/private-driving-journal",
+    "/road-trip-journal-app",
     "/road-trip-tracker-app",
     "/support",
     "/privacy",
