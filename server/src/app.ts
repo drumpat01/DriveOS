@@ -22,7 +22,7 @@ import { loadTessieRouteCoordinates } from "./tessie-route.js";
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
 const googleSiteVerificationPath = "/google8e611381b21882a8.html";
-const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/apple-music-soundtrack", "/private-driving-journal", "/driving-journal", "/road-trip-tracker-app", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/.well-known/api-catalog", "/openapi.json", "/api-docs", "/auth.md", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico", googleSiteVerificationPath]);
+const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/apple-music-soundtrack", "/private-driving-journal", "/driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/.well-known/api-catalog", "/openapi.json", "/api-docs", "/auth.md", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico", googleSiteVerificationPath]);
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
@@ -84,6 +84,24 @@ function shouldSendRobotsTag(pathname: string, mode: string) {
   return mode === "web" && (pathname === "/index.html" || pathname === "/app" || pathname === "/spotify-callback");
 }
 
+function requestIsHttps(req: FastifyRequest) {
+  if (req.protocol === "https") return true;
+  const forwarded = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  return forwarded === "https";
+}
+
+function publicOriginIsHttps(publicOrigin: string) {
+  try {
+    return new URL(publicOrigin).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function shouldSendHsts(req: FastifyRequest, mode: string, publicOrigin: string) {
+  return mode === "web" && publicOriginIsHttps(publicOrigin) && requestIsHttps(req);
+}
+
 function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
   const originHeader = String(req.headers.origin || "");
   if (!originHeader) return true;
@@ -136,6 +154,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   app.decorateRequest("principal", null);
   app.addHook("onSend", async (req, reply, payload) => {
     for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value);
+    if (shouldSendHsts(req, cfg.mode, cfg.publicOrigin)) reply.header("strict-transport-security", "max-age=31536000");
     const pathname = requestPathname(req.url);
     if (pathname === "/") reply.header("link", homepageLinks);
     const cacheControl = publicCacheControl(publicCacheClass(req.url));
@@ -305,7 +324,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
       app.get(retiredLandingPath, async (_req, reply) => reply.code(404).header("x-robots-tag", "noindex, nofollow").sendFile("404.html"));
     }
   }
-  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "beta.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/.well-known/api-catalog", async (_req, reply) => reply.type("application/linkset+json").send(await readFile(join(cfg.webRoot, "api-catalog.json")))); app.get("/api-docs", async (_req, reply) => reply.sendFile("api-docs.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/apple-music-soundtrack", async (_req, reply) => reply.sendFile("apple-music-soundtrack.html")); app.get("/private-driving-journal", async (_req, reply) => reply.sendFile("private-driving-journal.html")); app.get("/road-trip-tracker-app", async (_req, reply) => reply.sendFile("road-trip-tracker-app.html")); app.get("/driving-journal", async (_req, reply) => reply.code(301).redirect("/private-driving-journal")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
+  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "beta.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/.well-known/api-catalog", async (_req, reply) => reply.type("application/linkset+json").send(await readFile(join(cfg.webRoot, "api-catalog.json")))); app.get("/api-docs", async (_req, reply) => reply.sendFile("api-docs.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/apple-music-soundtrack", async (_req, reply) => reply.sendFile("apple-music-soundtrack.html")); app.get("/private-driving-journal", async (_req, reply) => reply.sendFile("private-driving-journal.html")); app.get("/road-trip-journal-app", async (_req, reply) => reply.sendFile("road-trip-journal-app.html")); app.get("/road-trip-tracker-app", async (_req, reply) => reply.sendFile("road-trip-tracker-app.html")); app.get("/travel-journal-app-with-photos", async (_req, reply) => reply.sendFile("travel-journal-app-with-photos.html")); app.get("/driving-history-app", async (_req, reply) => reply.sendFile("driving-history-app.html")); app.get("/driving-journal", async (_req, reply) => reply.code(301).redirect("/private-driving-journal")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.get(googleSiteVerificationPath, async (_req, reply) => reply.type("text/html; charset=utf-8").send(await readFile(join(cfg.webRoot, "google8e611381b21882a8.html"), "utf8")));
   app.setNotFoundHandler(async (req, reply) => {
     const requestPath = req.url.split("?")[0];

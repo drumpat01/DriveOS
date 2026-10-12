@@ -97,7 +97,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(soundtrack.body, /href="\/privacy"/);
     assert.match(soundtrack.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(soundtrack.body, /aria-current="page">Soundtracks<\/a>/);
-    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.jpg/);
+    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.webp/);
     assert.match(soundtrack.body, /Identify Song uses ShazamKit/);
     assert.match(soundtrack.body, /rel="preload" as="image"/);
     assert.match(soundtrack.body, /grand-touring-home-800\.webp\?v=1/);
@@ -124,6 +124,18 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(journal.body, /fetchpriority="high"/);
     assert.match(journal.body, /srcset="/);
     assert.doesNotMatch(journal.body, /class="hero-photo"[^>]*loading="lazy"/);
+    const roadTripJournal = await runtime.app.inject({ method: "GET", url: "/road-trip-journal-app" });
+    assert.equal(roadTripJournal.statusCode, 200, roadTripJournal.body);
+    assert.match(String(roadTripJournal.headers["content-type"]), /text\/html/);
+    assert.match(roadTripJournal.body, /<h1>Road trip journal app for iPhone<\/h1>/);
+    assert.match(roadTripJournal.body, /A private road trip journal for iPhone\. Start a journey, and JourneyDeck keeps the route, the miles and the music\./);
+    assert.match(roadTripJournal.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(roadTripJournal.body, /What is a road trip journal app\?/);
+    assert.match(roadTripJournal.body, /href="\/privacy"/);
+    assert.match(roadTripJournal.body, /href="\/apple-music-soundtrack"/);
+    assert.match(roadTripJournal.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(roadTripJournal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-journal-app"/);
+    assert.doesNotMatch(roadTripJournal.body, /[\u2013\u2014]/);
     const roadTripTracker = await runtime.app.inject({ method: "GET", url: "/road-trip-tracker-app" });
     assert.equal(roadTripTracker.statusCode, 200, roadTripTracker.body);
     assert.match(String(roadTripTracker.headers["content-type"]), /text\/html/);
@@ -136,13 +148,41 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(roadTripTracker.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(roadTripTracker.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-tracker-app"/);
     assert.doesNotMatch(roadTripTracker.body, /[\u2013\u2014]/);
+    const travelPhotos = await runtime.app.inject({ method: "GET", url: "/travel-journal-app-with-photos" });
+    assert.equal(travelPhotos.statusCode, 200, travelPhotos.body);
+    assert.match(String(travelPhotos.headers["content-type"]), /text\/html/);
+    assert.match(travelPhotos.body, /<h1>Travel journal app with photos for iPhone<\/h1>/);
+    assert.match(travelPhotos.body, /Group your drives into Memories, then add your own photos and notes\. The route, the pictures and the soundtrack stay together, privately on your iPhone\./);
+    assert.match(travelPhotos.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(travelPhotos.body, /Is there a travel journal app with photos for iPhone\?/);
+    assert.match(travelPhotos.body, /href="\/privacy"/);
+    assert.match(travelPhotos.body, /href="\/apple-music-soundtrack"/);
+    assert.match(travelPhotos.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(travelPhotos.body, /rel="canonical" href="https:\/\/journeydeck\.me\/travel-journal-app-with-photos"/);
+    assert.doesNotMatch(travelPhotos.body, /[\u2013\u2014]/);
+    const drivingHistory = await runtime.app.inject({ method: "GET", url: "/driving-history-app" });
+    assert.equal(drivingHistory.statusCode, 200, drivingHistory.body);
+    assert.match(String(drivingHistory.headers["content-type"]), /text\/html/);
+    assert.match(drivingHistory.body, /<h1>Driving history app for iPhone<\/h1>/);
+    assert.match(drivingHistory.body, /<p class="lede">A private history of the roads you choose to keep: routes, places, photos and the songs that played. All on your iPhone.<\/p>/);
+    assert.match(drivingHistory.body, /THE ROAD \/ FREE/);
+    assert.match(drivingHistory.body, /Manually start a journey on iPhone to save your route, distance, and drive time on your device/);
+    assert.doesNotMatch(drivingHistory.body, /ATLAS \/ JOURNEYDECK PLUS/);
+    assert.match(drivingHistory.body, /JourneyDeck is a personal drive journal, not a DMV driving record, not an insurance report, and not a mileage tax log/);
+    assert.match(drivingHistory.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(drivingHistory.body, /Is this the same as Apple Maps drive history\?/);
+    assert.match(drivingHistory.body, /href="\/privacy"/);
+    assert.match(drivingHistory.body, /href="\/apple-music-soundtrack"/);
+    assert.match(drivingHistory.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(drivingHistory.body, /rel="canonical" href="https:\/\/journeydeck\.me\/driving-history-app"/);
+    assert.doesNotMatch(drivingHistory.body, /[\u2013\u2014]/);
     const journalAlias = await runtime.app.inject({ method: "GET", url: "/driving-journal" });
     assert.equal(journalAlias.statusCode, 301);
     assert.equal(journalAlias.headers.location, "/private-driving-journal");
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
-    for (const page of [privacy, support, soundtrack, journal, roadTripTracker, terms]) {
+    for (const page of [privacy, support, soundtrack, journal, roadTripJournal, roadTripTracker, travelPhotos, drivingHistory, terms]) {
       assert.match(page.body, /class="site-header"/);
       assert.match(page.body, /class="desktop-nav" aria-label="Main navigation"/);
       assert.match(page.body, /href="\/apple-music-soundtrack"/);
@@ -161,7 +201,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.doesNotMatch(robots.body, /Disallow: \/google8e611381b21882a8\.html/i);
     assert.equal(googleRobotsAllowed(robots.body, "/apple-music-soundtrack"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/private-driving-journal"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/road-trip-journal-app"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/road-trip-tracker-app"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/travel-journal-app-with-photos"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/driving-history-app"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/google8e611381b21882a8.html"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/login"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/app"), false);
@@ -184,7 +227,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/terms<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/apple-music-soundtrack<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/private-driving-journal<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-journal-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-tracker-app<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-with-photos<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/driving-history-app<\/loc>/i);
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
     assert.doesNotMatch(sitemap.body, /google8e611381b21882a8/i);
     const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
@@ -226,10 +272,13 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /class="feature-cta" href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /class="feature-cta" href="\/private-driving-journal">See the private driving journal overview/);
+    assert.match(landing.body, /class="feature-cta" href="\/road-trip-journal-app">See the road trip journal app/);
     assert.match(landing.body, /id="replay"/);
     assert.match(landing.body, /class="feature-cta" href="\/road-trip-tracker-app">See the road trip tracker app/);
     assert.match(landing.body, /id="memories"/);
+    assert.match(landing.body, /class="feature-cta" href="\/travel-journal-app-with-photos">See the travel journal with photos/);
     assert.match(landing.body, /id="membership"/);
+    assert.match(landing.body, /class="feature-cta" href="\/driving-history-app">See the driving history app/);
     assert.match(landing.body, /Ask JourneyDeck/);
     assert.match(landing.body, /Journey Markers/);
     assert.match(landing.body, /Start a Journey widget/);
@@ -260,8 +309,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
       ["/beta.js?v=v4-1", /javascript/],
       ["/campaign.js?v=4", /javascript/],
-      ["/medallions/medallions.css?v=medallions-1", /text\/css/],
-      ["/medallions/medallions.js?v=medallions-1", /javascript/],
+      ["/medallions/medallions.css?v=medallions-2", /text\/css/],
+      ["/medallions/medallions.js?v=medallions-2", /javascript/],
       ["/medallions/catalog.js", /javascript/],
       ["/medallions/viewer.js?v=medallions-1", /javascript/],
       ["/assets/medallions/soundtrack-100-dark.webp", /image\/webp/],
@@ -342,12 +391,15 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/", canonical: "https://journeydeck.me/" },
     { url: "/apple-music-soundtrack", canonical: "https://journeydeck.me/apple-music-soundtrack" },
     { url: "/private-driving-journal", canonical: "https://journeydeck.me/private-driving-journal" },
+    { url: "/road-trip-journal-app", canonical: "https://journeydeck.me/road-trip-journal-app" },
     { url: "/road-trip-tracker-app", canonical: "https://journeydeck.me/road-trip-tracker-app" },
+    { url: "/travel-journal-app-with-photos", canonical: "https://journeydeck.me/travel-journal-app-with-photos" },
+    { url: "/driving-history-app", canonical: "https://journeydeck.me/driving-history-app" },
     { url: "/support", canonical: "https://journeydeck.me/support" },
     { url: "/privacy", canonical: "https://journeydeck.me/privacy" },
     { url: "/terms", canonical: "https://journeydeck.me/terms" }
   ] as const;
-  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-tracker-app"]);
+  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app"]);
   try {
     for (const page of pages) {
       const response = await runtime.app.inject({ method: "GET", url: page.url });
