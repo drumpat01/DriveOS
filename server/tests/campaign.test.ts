@@ -30,6 +30,7 @@ const publicPages = [
   "/private-driving-journal",
   "/road-trip-journal-app",
   "/road-trip-tracker-app",
+  "/travel-journal-app-with-photos",
   "/support",
   "/privacy",
   "/terms"
