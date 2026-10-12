@@ -114,7 +114,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(roadTripTracker.statusCode, 200, roadTripTracker.body);
     assert.match(String(roadTripTracker.headers["content-type"]), /text\/html/);
     assert.match(roadTripTracker.body, /<h1>Road trip tracker app for iPhone<\/h1>/);
-    assert.match(roadTripTracker.body, /JourneyDeck records the route of journeys you start on iPhone/);
+    assert.match(roadTripTracker.body, /Record the roads you choose\. JourneyDeck saves each route, its distance and drive time privately on your iPhone\./);
     assert.match(roadTripTracker.body, /<h2>Frequently asked questions<\/h2>/);
     assert.match(roadTripTracker.body, /Is there an iPhone app that tracks your route\?/);
     assert.match(roadTripTracker.body, /href="\/privacy"/);
