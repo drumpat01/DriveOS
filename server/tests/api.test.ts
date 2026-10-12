@@ -114,7 +114,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(travelPhotos.statusCode, 200, travelPhotos.body);
     assert.match(String(travelPhotos.headers["content-type"]), /text\/html/);
     assert.match(travelPhotos.body, /<h1>Travel journal app with photos for iPhone<\/h1>/);
-    assert.match(travelPhotos.body, /built around the drives you choose to record/);
+    assert.match(travelPhotos.body, /Group your drives into Memories, then add your own photos and notes\. The route, the pictures and the soundtrack stay together, privately on your iPhone\./);
     assert.match(travelPhotos.body, /<h2>Frequently asked questions<\/h2>/);
     assert.match(travelPhotos.body, /Is there a travel journal app with photos for iPhone\?/);
     assert.match(travelPhotos.body, /href="\/privacy"/);
