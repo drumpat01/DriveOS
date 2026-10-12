@@ -1,0 +1,31 @@
+.skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; transform: translateY(-150%); min-height: 44px; padding: 12px 16px; border-radius: 7px; background: var(--ivory, #f6f0e2); color: var(--navy, #081832); font-size: 14px; font-weight: 650; text-decoration: none; }
+.skip-link:focus { transform: none; }
+.site-header, .header-actions { flex-wrap: nowrap; }
+.site-header .brand { white-space: nowrap; }
+.header-actions .button { white-space: nowrap; flex-shrink: 0; }
+.desktop-nav a { display: inline-flex; align-items: center; min-height: 24px; padding: 6px 2px; }
+.footer a, .footer-bottom a { display: inline-flex; align-items: center; min-height: 24px; padding: 4px 2px; }
+.page-actions { gap: 16px; }
+.contact, .secondary-action { min-height: 52px; }
+.tour-dots button { min-width: 24px; width: 24px; }
+.text-link, .hero-soundtrack-link, .feature-cta, .hero-baseline a { min-height: 24px; }
+section.hero::before,
+section.hero.has-photo::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(90deg, #081832f8 0%, #081832f4 58%, #081832e8 100%);
+  pointer-events: none;
+}
+.hero > :not(.hero-photo) { position: relative; z-index: 2; }
+@media (max-width: 620px) {
+  section.hero::before,
+  section.hero.has-photo::before { background: linear-gradient(90deg, #081832f8, #081832e8); }
+}
+@media (max-width: 390px) {
+  .site-header { gap: 8px; padding-inline: 12px; flex-wrap: nowrap; }
+  .header-actions { gap: 6px; flex-wrap: nowrap; }
+  .header-actions .button-small { gap: 6px; padding-inline: 10px; white-space: nowrap; }
+  .brand { font-size: 17px; }
+}
