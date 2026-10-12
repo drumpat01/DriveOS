@@ -110,13 +110,25 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(journal.body, /href="\/apple-music-soundtrack"/);
     assert.match(journal.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(journal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/private-driving-journal"/);
+    const roadTripJournal = await runtime.app.inject({ method: "GET", url: "/road-trip-journal-app" });
+    assert.equal(roadTripJournal.statusCode, 200, roadTripJournal.body);
+    assert.match(String(roadTripJournal.headers["content-type"]), /text\/html/);
+    assert.match(roadTripJournal.body, /<h1>Road trip journal app for iPhone<\/h1>/);
+    assert.match(roadTripJournal.body, /JourneyDeck is a road trip journal app for iPhone/);
+    assert.match(roadTripJournal.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(roadTripJournal.body, /What is a road trip journal app\?/);
+    assert.match(roadTripJournal.body, /href="\/privacy"/);
+    assert.match(roadTripJournal.body, /href="\/apple-music-soundtrack"/);
+    assert.match(roadTripJournal.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(roadTripJournal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-journal-app"/);
+    assert.doesNotMatch(roadTripJournal.body, /[\u2013\u2014]/);
     const journalAlias = await runtime.app.inject({ method: "GET", url: "/driving-journal" });
     assert.equal(journalAlias.statusCode, 301);
     assert.equal(journalAlias.headers.location, "/private-driving-journal");
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
-    for (const page of [privacy, support, soundtrack, journal, terms]) {
+    for (const page of [privacy, support, soundtrack, journal, roadTripJournal, terms]) {
       assert.match(page.body, /class="site-header"/);
       assert.match(page.body, /class="desktop-nav" aria-label="Main navigation"/);
       assert.match(page.body, /href="\/apple-music-soundtrack"/);
@@ -135,6 +147,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.doesNotMatch(robots.body, /Disallow: \/google8e611381b21882a8\.html/i);
     assert.equal(googleRobotsAllowed(robots.body, "/apple-music-soundtrack"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/private-driving-journal"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/road-trip-journal-app"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/google8e611381b21882a8.html"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/login"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/app"), false);
@@ -157,6 +170,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/terms<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/apple-music-soundtrack<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/private-driving-journal<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-journal-app<\/loc>/i);
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
     assert.doesNotMatch(sitemap.body, /google8e611381b21882a8/i);
     const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
@@ -198,6 +212,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /class="feature-cta" href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /class="feature-cta" href="\/private-driving-journal">See the private driving journal overview/);
+    assert.match(landing.body, /class="feature-cta" href="\/road-trip-journal-app">See the road trip journal app/);
     assert.match(landing.body, /id="replay"/);
     assert.match(landing.body, /id="memories"/);
     assert.match(landing.body, /id="membership"/);
@@ -310,11 +325,12 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/", canonical: "https://journeydeck.me/" },
     { url: "/apple-music-soundtrack", canonical: "https://journeydeck.me/apple-music-soundtrack" },
     { url: "/private-driving-journal", canonical: "https://journeydeck.me/private-driving-journal" },
+    { url: "/road-trip-journal-app", canonical: "https://journeydeck.me/road-trip-journal-app" },
     { url: "/support", canonical: "https://journeydeck.me/support" },
     { url: "/privacy", canonical: "https://journeydeck.me/privacy" },
     { url: "/terms", canonical: "https://journeydeck.me/terms" }
   ] as const;
-  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal"]);
+  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app"]);
   try {
     for (const page of pages) {
       const response = await runtime.app.inject({ method: "GET", url: page.url });
