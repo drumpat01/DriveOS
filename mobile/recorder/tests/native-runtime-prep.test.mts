@@ -53,3 +53,9 @@ test('native CloudKit rejects unsupported and oversized downloaded assets before
   assert.match(nativeCloud, /guard size > 0 && size <= maximumBytes/);
   assert.match(nativeCloud, /else if assetRecordTypes\.contains\(record\.recordType\) && !\(record\["deletedAt"\] is String\)/);
 });
+
+test('native CloudKit parses local asset URLs without force-unwrapping', () => {
+  assert.doesNotMatch(nativeCloud, /URL\(string: path\)!/);
+  assert.match(nativeCloud, /if let parsed = URL\(string: path\), parsed\.isFileURL/);
+  assert.match(nativeCloud, /throw JourneyDeckCloudKitError\.make\(7,/);
+});

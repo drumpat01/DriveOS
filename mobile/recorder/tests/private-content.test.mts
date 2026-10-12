@@ -49,6 +49,8 @@ assert.doesNotMatch(appData, /async saveCollection|async uploadCollectionPhoto|a
 assert.match(appData, /return savePrivateMemoryPhoto\(memoryId/, 'Memory photos no longer require the JourneyDeck server');
 assert.match(appData, /upsertPrivatePreference\(userId, 'vehicle\.preferences'/, 'vehicle preferences join the private sync model');
 assert.match(nativeModule, /CKAsset\(fileURL:/, 'native CloudKit transport uploads photos as CKAsset');
+assert.doesNotMatch(nativeModule, /URL\(string: path\)!/, 'local CloudKit asset paths are parsed without a force-unwrap');
+assert.match(nativeModule, /if let parsed = URL\(string: path\), parsed\.isFileURL/, 'file URLs are bound once instead of parsed twice');
 assert.match(nativeModule, /JourneyDeckPrivateAssets/, 'downloaded CloudKit assets are copied out of the temporary staging area');
 assert.match(nativeModule, /maximumPhotoAssetBytes/, 'native photo transport enforces a size boundary');
 assert.match(nativeModule, /remoteDeleted != localDeleted \? remoteDeleted/, 'native conflict handling makes equal-revision tombstones authoritative');
