@@ -31,6 +31,10 @@ a:hover { color: var(--ivory); }
 .button-small { min-height: 42px; padding: 11px 18px; gap: 20px; font-size: 12px; }
 .page { width: min(100% - 40px, 940px); margin: 0 auto; padding: 30px 0 max(52px, env(safe-area-inset-bottom)); }
 .hero { position: relative; isolation: isolate; overflow: hidden; min-height: 310px; padding: clamp(30px, 6vw, 58px); border: 1px solid #d4b15a80; border-radius: 14px; background: linear-gradient(90deg, #081832f5 0%, #081832e8 52%, #0818328a 100%), url('/assets/beta/grand-touring-home.webp') center 55% / cover; box-shadow: 0 28px 70px #0004; }
+.hero.has-photo { background: #081832; }
+.hero.has-photo::before { content: ""; position: absolute; z-index: 1; inset: 0; background: linear-gradient(90deg, #081832f5 0%, #081832e8 52%, #0818328a 100%); pointer-events: none; }
+.hero-photo { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 55%; pointer-events: none; }
+.hero.has-photo > :not(.hero-photo) { position: relative; z-index: 2; }
 .hero::after { content: ""; position: absolute; z-index: 1; inset: auto 0 0; height: 5px; background: linear-gradient(90deg, var(--gold), #e9cf91 42%, transparent); pointer-events: none; }
 .eyebrow { margin: 0 0 16px; color: var(--gold); font-size: .68rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
 h1 { max-width: 760px; margin: 0; font-size: clamp(2.35rem, 6vw, 4.5rem); font-weight: 500; letter-spacing: -.055em; line-height: 1.08; }
@@ -58,6 +62,9 @@ strong { color: var(--ivory); }
 @media (max-width: 620px) {
   .page { width: min(100% - 28px, 940px); }
   .hero { min-height: 0; background: linear-gradient(90deg, #081832f5, #081832c9), url('/assets/beta/grand-touring-home.webp') center / cover; }
+  .hero.has-photo { background: #081832; }
+  .hero.has-photo::before { background: linear-gradient(90deg, #081832f5, #081832c9); }
+  .hero-photo { object-position: center; }
   .contact, .secondary-action { width: 100%; }
 }
 @media (max-width: 1000px) { .site-header { padding-inline: 36px; } .desktop-nav { gap: 17px; } }
