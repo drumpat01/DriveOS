@@ -12,7 +12,7 @@ Ship four themed road-trip SEO landing pages in one draft PR. Do not merge or de
 
 - New public pages: `/route-66-road-trip-journal`, `/pacific-coast-highway-road-trip-journal`, `/national-parks-road-trip-journal`, `/texas-hill-country-road-trip-journal`.
 - Wired like #268/#270/#273/#276: `publicPaths`, `app.get` sendFile, sitemap, server tests, verify-live expectations, feature map, canonical/meta/OG/JSON-LD/Umami, plain App Store CTA plus `campaign.js`.
-- Copy from the draft, minus unconfirmed personal lines (kids anecdote, kolaches, George Strait, PCH "what was playing"). No em/en dashes. Journeys start only when the user taps Start Journey.
+- Copy from the draft, minus unconfirmed personal lines, plus design-review FAQ and intro fixes. JSON-LD FAQ text matches the visible FAQ. No em/en dashes. Journeys start only when the user taps Start Journey.
 - Cross-links from `/road-trip-journal-app`, `/private-driving-journal`, and the Apple Music soundtrack footer.
 
 ## Verification
