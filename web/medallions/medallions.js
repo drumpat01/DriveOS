@@ -15,7 +15,10 @@ let revision = 0;
 let visible = false;
 let started = false;
 let rendererModule;
-const imageUrl = (id, themeId, thumb = false) => `/assets/medallions/${id}-${themeId}${thumb ? '-thumb' : ''}.webp`;
+const imageUrl = (id, themeId, variant = false) => {
+  const suffix = variant === "pick" ? "-pick" : variant ? "-thumb" : "";
+  return `/assets/medallions/${id}-${themeId}${suffix}.webp`;
+};
 const motion = () => ({ reduceMotion: preference.matches, active: visible && !document.hidden });
 
 for (const medal of medallions) {
@@ -45,7 +48,7 @@ function updateCopy(medal, themeId) {
   fallback.alt = `${medal.name} in ${theme.selectedOptions[0].textContent}`;
   for (const button of collection.children) {
     button.setAttribute('aria-pressed', String(button.dataset.id === medal.id));
-    button.querySelector('img').src = imageUrl(button.dataset.id, themeId, true);
+    button.querySelector('img').src = imageUrl(button.dataset.id, themeId, "pick");
   }
 }
 
