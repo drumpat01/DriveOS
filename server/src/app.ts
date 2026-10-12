@@ -84,6 +84,24 @@ function shouldSendRobotsTag(pathname: string, mode: string) {
   return mode === "web" && (pathname === "/index.html" || pathname === "/app" || pathname === "/spotify-callback");
 }
 
+function requestIsHttps(req: FastifyRequest) {
+  if (req.protocol === "https") return true;
+  const forwarded = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  return forwarded === "https";
+}
+
+function publicOriginIsHttps(publicOrigin: string) {
+  try {
+    return new URL(publicOrigin).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function shouldSendHsts(req: FastifyRequest, mode: string, publicOrigin: string) {
+  return mode === "web" && publicOriginIsHttps(publicOrigin) && requestIsHttps(req);
+}
+
 function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
   const originHeader = String(req.headers.origin || "");
   if (!originHeader) return true;
@@ -136,6 +154,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   app.decorateRequest("principal", null);
   app.addHook("onSend", async (req, reply, payload) => {
     for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value);
+    if (shouldSendHsts(req, cfg.mode, cfg.publicOrigin)) reply.header("strict-transport-security", "max-age=31536000");
     const pathname = requestPathname(req.url);
     if (pathname === "/") reply.header("link", homepageLinks);
     const cacheControl = publicCacheControl(publicCacheClass(req.url));
