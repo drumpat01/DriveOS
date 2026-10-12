@@ -192,4 +192,17 @@ assert.match(recorderStorageSrc, /insertGpsPoints\(/, 'completed recordings pers
 assert.match(recorderStorageSrc, /upsertMusicEntry\(/, 'completed recordings persist local soundtrack observations');
 assert.match(recorderStorageSrc, /mirrorCompletedSessionToLocalStore\(sessionId\)/, 'completion invokes local-master ingest');
 
-console.log('✅  local-store: all 17 checks passed.');
+// ============================================================
+// 18. Corrupt private-place backup rows cannot crash delete or queue
+// ============================================================
+
+assert.match(src, /tryParsePrivatePlace/, 'private place helpers skip unreadable backup rows');
+assert.match(src, /function privatePlacePreferences[\s\S]*tryParsePrivatePlace\(preference\.valueJson\)[\s\S]*if \(!value\) return false/,
+  'Home/Work delete filters skip a corrupt library.place.v1 row instead of throwing');
+assert.match(src, /function queuePrivatePlace[\s\S]*tryParsePrivatePlace\(preference\.valueJson\)[\s\S]*if \(!parsed\) continue/,
+  'place queueing continues when a sibling private-place preference is unreadable');
+assert.match(src, /export function privateCloudPlaceId[\s\S]*tryParsePrivatePlace\(preference\.valueJson\)/,
+  'cloud place identity falls back to the local id when the backup row is unreadable');
+assert.doesNotMatch(src, /(?<![A-Za-z])parsePrivatePlace\(/, 'strict place parsing is no longer used as a filter');
+
+console.log('✅  local-store: all 18 checks passed.');

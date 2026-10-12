@@ -122,5 +122,9 @@ assert.match(podspec, /frameworks.*CloudKit/, 'links the native CloudKit framewo
 assert.match(app, /enrichCompletedJourney[\s\S]*processPendingCompletionJobs/, 'starts the durable completion worker after a journey finishes');
 assert.match(completionJobs, /apple_music_history[\s\S]*private_cloud_sync/, 'orders local music enrichment before private iCloud sync');
 assert.match(completionJobs, /syncCurrentUserWithPrivateICloud\(\{ force: true \}\)/, 'the durable completion worker performs private iCloud sync');
+assert.match(src, /tryParsePrivatePlace\(remote\.valueJson\)/, 'private-place ingest uses tolerant parsing');
+assert.match(src, /if \(remote\.key\.startsWith\(PRIVATE_PLACE_PREFIX\)\) \{[\s\S]*const place = tryParsePrivatePlace\(remote\.valueJson\);[\s\S]*if \(!place\) continue;/,
+  'a well-formed JSON object that fails place validation skips that row instead of aborting the CloudKit pull');
+assert.doesNotMatch(src, /(?<![A-Za-z])parsePrivatePlace\(/, 'strict place parsing cannot throw out of PrivatePreference ingest');
 
 console.log('✅  cloudkit-sync: all checks passed.');
