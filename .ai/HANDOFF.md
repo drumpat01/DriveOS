@@ -1,30 +1,30 @@
-# JourneyDeck current handoff, October 11, 2026
+# JourneyDeck current handoff, October 12, 2026
 
 ## Current objective
 
-Finish review of the live-site verifier on PR 262. Do not merge, deploy, or change visible pages.
+Catch recorder DB failures in the Expo background location task so GPS points are not silently dropped. Open a PR only; do not merge. Do not touch Render or website deploy config.
 
 ## Checkout
 
-- Branch `cursor/verify-live-cli-0e37` off `main`.
-- PR: https://github.com/drumpat01/DriveOS/pull/262
+- Branch `cursor/location-task-db-resilience-eb64` off `main`.
+- PR: https://github.com/drumpat01/DriveOS/pull/267
+- Backlog source: item 3 / ranked item 4 in `docs/ios-backlog-2026-10-12.md` on PR #264.
 
 ## Material changes
 
-- `tools/verify-live/`: CLI (`npm run verify:live`), expectations, feature map, and check logic.
-- `server/tests/verify-live.test.ts`: offline logic tests (fixtures and the in-process app). CI does not reach journeydeck.me.
-- `.gitleaks.toml`: narrow allowlist for the public App Store campaign ct `x-launch_oct13` because `gitleaks git` still flags the first commit's `expectedCampaignToken` field name.
+- `mobile/recorder/src/location-task.ts`: catch write failures at the task boundary; retry `prepareJourneyDeckDatabase` via `retryJourneyDeckDatabase`; retry `recordLocations` once; buffer unsaved points (cap 1_200) and flush on the next healthy tick; log `recorder.completion_failed` with `stage` and `buffered`. Native automatic sessions still do not persist Expo GPS.
+- `mobile/recorder/tests/location-task.test.mts`: VM-harness coverage for retry, buffer/flush, startup recovery, native discard, and no re-buffer after a successful write.
 
 ## Verification
 
-- `node --test --import tsx server/tests/verify-live.test.ts`
-- `npm run verify:live -- --base http://127.0.0.1:8795` with `DRIVEOS_MODE=web`
+- `node --experimental-strip-types --test tests/location-task.test.mts` (7 pass)
+- Source-inspection suites that read `location-task.ts`: database-startup, manual-recording-failsafe, server-independence, phase3-native-release, public-release-integrity, startup-diagnostics (51 pass)
 
 ## Unresolved / owner decisions
 
-- `/readyz` `generatedAtUtc` is service restart / snapshot time, not deploy time. A commit SHA on `/readyz` is a follow-up, not this PR.
-- Terms still contains the generic legal phrase `trial terms`. That is outside this verifier PR.
+- In-memory buffer is lost if iOS kills the JS process before the next healthy tick. Durable buffering would need a `storage.ts` change; the backlog asked to keep the catch at the task boundary.
+- Full `npm run typecheck` in `mobile/recorder/` was not run here (Expo `node_modules` not installed in this environment).
 
 ## Next steps
 
-1. Keep PR 262 open for review. Do not merge or deploy from this session.
+1. Keep PR 267 open for review. Do not merge or deploy from this session.
