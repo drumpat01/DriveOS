@@ -114,7 +114,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(roadTripJournal.statusCode, 200, roadTripJournal.body);
     assert.match(String(roadTripJournal.headers["content-type"]), /text\/html/);
     assert.match(roadTripJournal.body, /<h1>Road trip journal app for iPhone<\/h1>/);
-    assert.match(roadTripJournal.body, /JourneyDeck is a road trip journal app for iPhone/);
+    assert.match(roadTripJournal.body, /A private road trip journal for iPhone\. Start a journey, and JourneyDeck keeps the route, the miles and the music\./);
     assert.match(roadTripJournal.body, /<h2>Frequently asked questions<\/h2>/);
     assert.match(roadTripJournal.body, /What is a road trip journal app\?/);
     assert.match(roadTripJournal.body, /href="\/privacy"/);
