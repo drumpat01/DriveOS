@@ -97,7 +97,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(soundtrack.body, /href="\/privacy"/);
     assert.match(soundtrack.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(soundtrack.body, /aria-current="page">Soundtracks<\/a>/);
-    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.jpg/);
+    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.webp/);
     assert.match(soundtrack.body, /Identify Song uses ShazamKit/);
     assert.match(soundtrack.body, /rel="preload" as="image"/);
     assert.match(soundtrack.body, /grand-touring-home-800\.webp\?v=1/);
@@ -275,8 +275,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
       ["/beta.js?v=v4-1", /javascript/],
       ["/campaign.js?v=4", /javascript/],
-      ["/medallions/medallions.css?v=medallions-1", /text\/css/],
-      ["/medallions/medallions.js?v=medallions-1", /javascript/],
+      ["/medallions/medallions.css?v=medallions-2", /text\/css/],
+      ["/medallions/medallions.js?v=medallions-2", /javascript/],
       ["/medallions/catalog.js", /javascript/],
       ["/medallions/viewer.js?v=medallions-1", /javascript/],
       ["/assets/medallions/soundtrack-100-dark.webp", /image\/webp/],
