@@ -32,6 +32,10 @@ const publicPages = [
   "/road-trip-tracker-app",
   "/travel-journal-app-with-photos",
   "/driving-history-app",
+  "/route-66-road-trip-journal",
+  "/pacific-coast-highway-road-trip-journal",
+  "/national-parks-road-trip-journal",
+  "/texas-hill-country-road-trip-journal",
   "/support",
   "/privacy",
   "/terms"
