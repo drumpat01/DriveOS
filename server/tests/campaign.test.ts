@@ -28,6 +28,7 @@ const publicPages = [
   "/",
   "/apple-music-soundtrack",
   "/private-driving-journal",
+  "/travel-journal-app-with-photos",
   "/support",
   "/privacy",
   "/terms"
