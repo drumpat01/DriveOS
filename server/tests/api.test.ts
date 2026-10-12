@@ -99,6 +99,13 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(soundtrack.body, /aria-current="page">Soundtracks<\/a>/);
     assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.jpg/);
     assert.match(soundtrack.body, /Identify Song uses ShazamKit/);
+    assert.match(soundtrack.body, /rel="preload" as="image"/);
+    assert.match(soundtrack.body, /grand-touring-home-800\.webp\?v=1/);
+    assert.match(soundtrack.body, /imagesrcset="/);
+    assert.match(soundtrack.body, /imagesizes="/);
+    assert.match(soundtrack.body, /fetchpriority="high"/);
+    assert.match(soundtrack.body, /srcset="/);
+    assert.doesNotMatch(soundtrack.body, /class="hero-photo"[^>]*loading="lazy"/);
     const journal = await runtime.app.inject({ method: "GET", url: "/private-driving-journal" });
     assert.equal(journal.statusCode, 200, journal.body);
     assert.match(String(journal.headers["content-type"]), /text\/html/);
@@ -110,6 +117,13 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(journal.body, /href="\/apple-music-soundtrack"/);
     assert.match(journal.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(journal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/private-driving-journal"/);
+    assert.match(journal.body, /rel="preload" as="image"/);
+    assert.match(journal.body, /grand-touring-home-800\.webp\?v=1/);
+    assert.match(journal.body, /imagesrcset="/);
+    assert.match(journal.body, /imagesizes="/);
+    assert.match(journal.body, /fetchpriority="high"/);
+    assert.match(journal.body, /srcset="/);
+    assert.doesNotMatch(journal.body, /class="hero-photo"[^>]*loading="lazy"/);
     const roadTripJournal = await runtime.app.inject({ method: "GET", url: "/road-trip-journal-app" });
     assert.equal(roadTripJournal.statusCode, 200, roadTripJournal.body);
     assert.match(String(roadTripJournal.headers["content-type"]), /text\/html/);
@@ -235,6 +249,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     for (const [url, mime] of [
       ["/beta.css?v=grand-tour-4", /text\/css/],
       ["/public-page.css?v=grand-tour-3", /text\/css/],
+      ["/public-page.css?v=hero-lcp-1", /text\/css/],
       ["/site-mobile-nav.css?v=1", /text\/css/],
       ["/v2-features.css?v=1", /text\/css/],
       ["/soundtrack-v2.css?v=1", /text\/css/],
@@ -252,6 +267,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/assets/medallions/soundtrack-100-dark.webp", /image\/webp/],
       ["/assets/medallions/story-collector-light-thumb.webp", /image\/webp/],
       ["/assets/beta/grand-touring-home.webp", /image\/webp/],
+      ["/assets/beta/grand-touring-home-800.webp?v=1", /image\/webp/],
+      ["/assets/beta/grand-touring-home-1600.webp?v=1", /image\/webp/],
       ["/assets/beta/share-card.png", /image\/png/],
       ["/assets/beta/journeydeck-pulse.svg", /image\/svg/],
       ...["01-today", "03-memories", "05-soundtrack", "06-atlas", "07-ask"].map(name => [`/assets/v4/${name}.webp`, /image\/webp/] as const)
@@ -378,6 +395,13 @@ test("hosted cache headers distinguish versioned assets, unversioned images, and
     const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-4" });
     assert.equal(versionedCss.statusCode, 200, versionedCss.body);
     assert.equal(versionedCss.headers["cache-control"], "public, max-age=31536000, immutable");
+
+    for (const url of ["/assets/beta/grand-touring-home-800.webp?v=1", "/assets/beta/grand-touring-home-1600.webp?v=1"]) {
+      const versionedHero = await runtime.app.inject({ method: "GET", url });
+      assert.equal(versionedHero.statusCode, 200, url);
+      assert.match(String(versionedHero.headers["content-type"]), /image\/webp/, url);
+      assert.equal(versionedHero.headers["cache-control"], "public, max-age=31536000, immutable", url);
+    }
 
     const missingVersionedCss = await runtime.app.inject({ method: "GET", url: "/missing.css?v=new" });
     assert.equal(missingVersionedCss.statusCode, 404);
