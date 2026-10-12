@@ -4,6 +4,8 @@ import {
 } from 'react-native';
 import * as Updates from 'expo-updates';
 
+import { journeyDeckTypography } from './journeydeck-design-tokens';
+
 /** Remount the tree after a render crash, or reload the JS runtime when Expo Updates can. */
 export async function reloadAppRoot(remount: () => void, reload = () => Updates.reloadAsync()) {
   try {
@@ -65,11 +67,11 @@ const styles = StyleSheet.create({
   markLight: { backgroundColor: '#f5e8d7', borderColor: '#7d4d91' },
   markText: { color: '#fff8e5', fontSize: 22, fontWeight: '900', letterSpacing: 2 },
   markTextLight: { color: '#2e1c32' },
-  title: { color: '#fff8e5', fontSize: 27, lineHeight: 33, fontWeight: '800', textAlign: 'center' },
+  title: { color: '#fff8e5', fontFamily: journeyDeckTypography.title.fontFamily, fontSize: 27, lineHeight: 33, fontWeight: '800', textAlign: 'center' },
   titleLight: { color: '#2e1c32' },
   detail: { maxWidth: 480, color: '#b9c7d9', fontSize: 15, lineHeight: 22, textAlign: 'center' },
   detailLight: { color: '#68596c' },
   button: { minWidth: 180, minHeight: 54, marginTop: 8, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#e6c562' },
   buttonPressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
-  buttonText: { color: '#07162a', fontSize: 16, fontWeight: '800' },
+  buttonText: { color: '#07162a', fontFamily: journeyDeckTypography.title.fontFamily, fontSize: 16, fontWeight: '600' },
 });
