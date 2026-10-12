@@ -213,8 +213,8 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
     const chrome = v4Chrome(appTheme.id);
     const colors = redesignColors(appTheme.id, appTheme.palette);
     return <Modal visible={Boolean(payload)} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <SafeAreaView style={chrome.modalRoot}>
-        <Pressable accessibilityLabel="Close share card" onPress={onClose} style={StyleSheet.absoluteFill} />
+      <SafeAreaView style={chrome.modalRoot} accessibilityViewIsModal>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close share card" onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={chrome.sheet}>
           <View style={chrome.grabber} />
           <View style={chrome.header}>
@@ -229,7 +229,7 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
               <Text style={chrome.privacyNoteText}>{privacyCopy}</Text>
             </View>
           </ScrollView>
-          <Pressable accessibilityRole="button" onPress={() => { void haptics.selection(); void share(); }} disabled={busy} style={({ pressed }) => [chrome.shareButton, (busy || pressed) && styles.pressed]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Share image" accessibilityState={{ disabled: busy }} onPress={() => { void haptics.selection(); void share(); }} disabled={busy} style={({ pressed }) => [chrome.shareButton, (busy || pressed) && styles.pressed]}>
             {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={chrome.shareText}>Share image</Text>}
           </Pressable>
         </View>
@@ -238,8 +238,8 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
   }
 
   return <Modal visible={Boolean(payload)} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-    <SafeAreaView style={uiStyles.modalRoot}>
-      <Pressable accessibilityLabel="Close share card" onPress={onClose} style={StyleSheet.absoluteFill} />
+    <SafeAreaView style={uiStyles.modalRoot} accessibilityViewIsModal>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close share card" onPress={onClose} style={StyleSheet.absoluteFill} />
       <View style={uiStyles.sheet}>
         <View style={uiStyles.sheetHeader}>
           <View><Text style={uiStyles.sheetKicker}>PRIVACY-SAFE PREVIEW</Text><Text style={uiStyles.sheetTitle}>Share card</Text></View>
@@ -250,7 +250,7 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
           {controls}
           <View style={uiStyles.privacyNote}><Text style={uiStyles.privacyNoteTitle}>Privacy preview · protected route</Text><Text style={uiStyles.privacyNoteText}>{privacyCopy}</Text></View>
         </ScrollView>
-        <Pressable accessibilityRole="button" onPress={() => void share()} disabled={busy} style={[uiStyles.shareButton, busy && uiStyles.disabled]}>{busy ? <ActivityIndicator color="#1a0907" /> : <Text style={uiStyles.shareText}>Share image</Text>}</Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Share image" accessibilityState={{ disabled: busy }} onPress={() => void share()} disabled={busy} style={[uiStyles.shareButton, busy && uiStyles.disabled]}>{busy ? <ActivityIndicator color="#1a0907" /> : <Text style={uiStyles.shareText}>Share image</Text>}</Pressable>
       </View>
     </SafeAreaView>
   </Modal>;
