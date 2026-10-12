@@ -135,6 +135,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(roadTripJournal.body, /href="\/apple-music-soundtrack"/);
     assert.match(roadTripJournal.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(roadTripJournal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-journal-app"/);
+    assert.match(roadTripJournal.body, /href="\/route-66-road-trip-journal"/);
+    assert.match(roadTripJournal.body, /href="\/pacific-coast-highway-road-trip-journal"/);
+    assert.match(roadTripJournal.body, /href="\/national-parks-road-trip-journal"/);
+    assert.match(roadTripJournal.body, /href="\/texas-hill-country-road-trip-journal"/);
     assert.doesNotMatch(roadTripJournal.body, /[\u2013\u2014]/);
     const roadTripTracker = await runtime.app.inject({ method: "GET", url: "/road-trip-tracker-app" });
     assert.equal(roadTripTracker.statusCode, 200, roadTripTracker.body);
@@ -176,13 +180,84 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(drivingHistory.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(drivingHistory.body, /rel="canonical" href="https:\/\/journeydeck\.me\/driving-history-app"/);
     assert.doesNotMatch(drivingHistory.body, /[\u2013\u2014]/);
+    const route66 = await runtime.app.inject({ method: "GET", url: "/route-66-road-trip-journal" });
+    assert.equal(route66.statusCode, 200, route66.body);
+    assert.match(String(route66.headers["content-type"]), /text\/html/);
+    assert.match(route66.body, /<h1>A Route 66 road trip journal that stays on your phone<\/h1>/);
+    assert.match(route66.body, /<p class="lede">Keep your Route 66 drive in a private iPhone journal\. Your route, miles, music and photos, saved on your phone\. No account needed\.<\/p>/);
+    assert.match(route66.body, /Route 66 turned 100 in 2026/);
+    assert.doesNotMatch(route66.body, /Route 66 turns 100 this year/);
+    assert.match(route66.body, /Before you pull out of Chicago \(or Santa Monica, I'm not judging\), tap Start Journey/);
+    assert.match(route66.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(route66.body, /Does it track my Route 66 trip automatically\?/);
+    assert.match(route66.body, /No\. Core recording works offline, which matters out in the Mojave\./);
+    assert.match(route66.body, /No\. It won't tell you where the next neon sign is\. Use your guide for that\./);
+    assert.match(route66.body, /href="\/privacy"/);
+    assert.match(route66.body, /href="\/apple-music-soundtrack"/);
+    assert.match(route66.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(route66.body, /rel="canonical" href="https:\/\/journeydeck\.me\/route-66-road-trip-journal"/);
+    assert.doesNotMatch(route66.body, /[\u2013\u2014]/);
+    const pacificCoast = await runtime.app.inject({ method: "GET", url: "/pacific-coast-highway-road-trip-journal" });
+    assert.equal(pacificCoast.statusCode, 200, pacificCoast.body);
+    assert.match(String(pacificCoast.headers["content-type"]), /text\/html/);
+    assert.match(pacificCoast.body, /<h1>Keep your Pacific Coast Highway drive<\/h1>/);
+    assert.match(pacificCoast.body, /<p class="lede">A private iPhone journal for Highway 1\. Route, miles and photos, saved on your phone\. Works offline, even where the signal doesn't\.<\/p>/);
+    assert.match(pacificCoast.body, /Tap Start Journey before Big Sur, put the phone down and drive/);
+    assert.match(pacificCoast.body, /Connect Apple Music if you want the playlist kept with the drive\./);
+    assert.doesNotMatch(pacificCoast.body, /I always want to know what was playing/);
+    assert.match(pacificCoast.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(pacificCoast.body, /Does it track my Pacific Coast Highway trip automatically\?/);
+    assert.match(pacificCoast.body, /No\. You tap Start Journey when you set off and end it when you park\./);
+    assert.match(pacificCoast.body, /No\. Signal disappears for long stretches along the coast, and core recording still works offline\./);
+    assert.match(pacificCoast.body, /No\. It won't plan your stops\. It just keeps the trip\./);
+    assert.match(pacificCoast.body, /href="\/privacy"/);
+    assert.match(pacificCoast.body, /href="\/apple-music-soundtrack"/);
+    assert.match(pacificCoast.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(pacificCoast.body, /rel="canonical" href="https:\/\/journeydeck\.me\/pacific-coast-highway-road-trip-journal"/);
+    assert.doesNotMatch(pacificCoast.body, /[\u2013\u2014]/);
+    const nationalParks = await runtime.app.inject({ method: "GET", url: "/national-parks-road-trip-journal" });
+    assert.equal(nationalParks.statusCode, 200, nationalParks.body);
+    assert.match(String(nationalParks.headers["content-type"]), /text\/html/);
+    assert.match(nationalParks.body, /<h1>A road trip journal for your national parks trip<\/h1>/);
+    assert.match(nationalParks.body, /National park trips are long days of driving between short moments you really want to keep/);
+    assert.match(nationalParks.body, /You start it\. You stop it\./);
+    assert.doesNotMatch(nationalParks.body, /Three kids\. Count again/);
+    assert.match(nationalParks.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(nationalParks.body, /Does it track my national parks trip automatically\?/);
+    assert.match(nationalParks.body, /No\. Nothing runs in the background\. You start it\. You stop it\./);
+    assert.match(nationalParks.body, /No\. Lots of parks have little or no signal, and core recording works offline on your iPhone\./);
+    assert.match(nationalParks.body, /href="\/privacy"/);
+    assert.match(nationalParks.body, /href="\/apple-music-soundtrack"/);
+    assert.match(nationalParks.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(nationalParks.body, /rel="canonical" href="https:\/\/journeydeck\.me\/national-parks-road-trip-journal"/);
+    assert.doesNotMatch(nationalParks.body, /[\u2013\u2014]/);
+    const hillCountry = await runtime.app.inject({ method: "GET", url: "/texas-hill-country-road-trip-journal" });
+    assert.equal(hillCountry.statusCode, 200, hillCountry.body);
+    assert.match(String(hillCountry.headers["content-type"]), /text\/html/);
+    assert.match(hillCountry.body, /<h1>A Texas Hill Country road trip, kept<\/h1>/);
+    assert.match(hillCountry.body, /I live in DFW, so the Hill Country is our "close" road trip/);
+    assert.match(hillCountry.body, /Close in Texas means about four hours\./);
+    assert.match(hillCountry.body, /Tap Start Journey when you leave the house/);
+    assert.match(hillCountry.body, /Start a journey when you back out of the driveway and forget about it until you're eating brisket/);
+    assert.match(hillCountry.body, /Keep the Apple Music soundtrack too\./);
+    assert.match(hillCountry.body, /<a href="\/support">Would you use something like this for your next trip\? I'd love to know\.<\/a>/);
+    assert.doesNotMatch(hillCountry.body, /kolaches/);
+    assert.doesNotMatch(hillCountry.body, /George Strait/);
+    assert.match(hillCountry.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(hillCountry.body, /Does it track my Hill Country trip automatically\?/);
+    assert.match(hillCountry.body, /No\. It won't plan your stops or find the best peach stand\. It just keeps the drive\./);
+    assert.match(hillCountry.body, /href="\/privacy"/);
+    assert.match(hillCountry.body, /href="\/apple-music-soundtrack"/);
+    assert.match(hillCountry.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(hillCountry.body, /rel="canonical" href="https:\/\/journeydeck\.me\/texas-hill-country-road-trip-journal"/);
+    assert.doesNotMatch(hillCountry.body, /[\u2013\u2014]/);
     const journalAlias = await runtime.app.inject({ method: "GET", url: "/driving-journal" });
     assert.equal(journalAlias.statusCode, 301);
     assert.equal(journalAlias.headers.location, "/private-driving-journal");
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
-    for (const page of [privacy, support, soundtrack, journal, roadTripJournal, roadTripTracker, travelPhotos, drivingHistory, terms]) {
+    for (const page of [privacy, support, soundtrack, journal, roadTripJournal, roadTripTracker, travelPhotos, drivingHistory, route66, pacificCoast, nationalParks, hillCountry, terms]) {
       assert.match(page.body, /class="site-header"/);
       assert.match(page.body, /class="desktop-nav" aria-label="Main navigation"/);
       assert.match(page.body, /href="\/apple-music-soundtrack"/);
@@ -205,6 +280,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(googleRobotsAllowed(robots.body, "/road-trip-tracker-app"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/travel-journal-app-with-photos"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/driving-history-app"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/route-66-road-trip-journal"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/pacific-coast-highway-road-trip-journal"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/national-parks-road-trip-journal"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/texas-hill-country-road-trip-journal"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/google8e611381b21882a8.html"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/login"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/app"), false);
@@ -231,6 +310,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-tracker-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-with-photos<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/driving-history-app<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/route-66-road-trip-journal<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/pacific-coast-highway-road-trip-journal<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/national-parks-road-trip-journal<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/texas-hill-country-road-trip-journal<\/loc>/i);
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
     assert.doesNotMatch(sitemap.body, /google8e611381b21882a8/i);
     const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
@@ -395,11 +478,15 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/road-trip-tracker-app", canonical: "https://journeydeck.me/road-trip-tracker-app" },
     { url: "/travel-journal-app-with-photos", canonical: "https://journeydeck.me/travel-journal-app-with-photos" },
     { url: "/driving-history-app", canonical: "https://journeydeck.me/driving-history-app" },
+    { url: "/route-66-road-trip-journal", canonical: "https://journeydeck.me/route-66-road-trip-journal" },
+    { url: "/pacific-coast-highway-road-trip-journal", canonical: "https://journeydeck.me/pacific-coast-highway-road-trip-journal" },
+    { url: "/national-parks-road-trip-journal", canonical: "https://journeydeck.me/national-parks-road-trip-journal" },
+    { url: "/texas-hill-country-road-trip-journal", canonical: "https://journeydeck.me/texas-hill-country-road-trip-journal" },
     { url: "/support", canonical: "https://journeydeck.me/support" },
     { url: "/privacy", canonical: "https://journeydeck.me/privacy" },
     { url: "/terms", canonical: "https://journeydeck.me/terms" }
   ] as const;
-  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app"]);
+  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal"]);
   try {
     for (const page of pages) {
       const response = await runtime.app.inject({ method: "GET", url: page.url });

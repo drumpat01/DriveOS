@@ -60,6 +60,10 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/road-trip-tracker-app",
     "/travel-journal-app-with-photos",
     "/driving-history-app",
+    "/route-66-road-trip-journal",
+    "/pacific-coast-highway-road-trip-journal",
+    "/national-parks-road-trip-journal",
+    "/texas-hill-country-road-trip-journal",
     "/support",
     "/privacy",
     "/terms"
