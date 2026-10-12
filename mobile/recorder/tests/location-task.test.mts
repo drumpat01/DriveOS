@@ -113,7 +113,7 @@ test('a persistent recorder write failure is logged, buffered, and flushed on th
   assert.equal(h.events.at(-1)?.attributes.point_count, 2);
   await h.run({ data: { locations: second } });
   assert.equal(h.recorded.length, 1);
-  assert.deepEqual(h.recorded[0].map(point => point.timestamp), [1_000, 2_000, 3_000]);
+  assert.deepEqual(Array.from(h.recorded[0], point => point.timestamp), [1_000, 2_000, 3_000]);
 });
 
 test('a failed database startup is retried before the GPS batch is abandoned', async () => {
@@ -135,7 +135,7 @@ test('startup that stays down buffers the tick and flushes it after the database
   assert.equal(h.events.at(-1)?.attributes.buffered, 1);
   h.setPrepareFails(0);
   await h.run({ data: { locations: second } });
-  assert.deepEqual(h.recorded[0].map(point => point.timestamp), [5_000, 6_000]);
+  assert.deepEqual(Array.from(h.recorded[0], point => point.timestamp), [5_000, 6_000]);
 });
 
 test('native automatic sessions do not persist Expo GPS and discard a stale write buffer', async () => {
@@ -147,7 +147,7 @@ test('native automatic sessions do not persist Expo GPS and discard a stale writ
   assert.equal(h.recorded.length, 0);
   h.setSessionId('recording_manual');
   await h.run({ data: { locations: [location(9_000)] } });
-  assert.deepEqual(h.recorded[0]?.map(point => point.timestamp), [9_000]);
+  assert.deepEqual(Array.from(h.recorded[0] ?? [], point => point.timestamp), [9_000]);
 });
 
 test('a music failure after a successful write does not re-buffer the persisted points', async () => {
@@ -156,7 +156,7 @@ test('a music failure after a successful write does not re-buffer the persisted 
   await assert.doesNotReject(() => h.run({ data: { locations: batch } }));
   assert.deepEqual(h.recorded, [batch]);
   await h.run({ data: { locations: [location(11_000)] } });
-  assert.deepEqual(h.recorded[1]?.map(point => point.timestamp), [11_000]);
+  assert.deepEqual(Array.from(h.recorded[1] ?? [], point => point.timestamp), [11_000]);
 });
 
 test('an empty or error tick leaves the write path untouched', async () => {
