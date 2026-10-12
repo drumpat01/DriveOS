@@ -1,30 +1,26 @@
-# JourneyDeck current handoff, October 11, 2026
+# JourneyDeck current handoff, October 12, 2026
 
 ## Current objective
 
-Finish review of the live-site verifier on PR 262. Do not merge, deploy, or change visible pages.
+Open a review-only PR for iOS backlog item 2 (PR #264): stop force-unwrapping CloudKit asset URLs in `JourneyDeckCloudKitModule.swift`. Do not merge. Do not change Render or website deploy config.
 
 ## Checkout
 
-- Branch `cursor/verify-live-cli-0e37` off `main`.
-- PR: https://github.com/drumpat01/DriveOS/pull/262
+- Branch `cursor/cloudkit-asset-url-unwrap-fa28` off `main`.
+- Source backlog: ranked item 3 / ★2 in `docs/ios-backlog-2026-10-12.md` on PR #264.
 
 ## Material changes
 
-- `tools/verify-live/`: CLI (`npm run verify:live`), expectations, feature map, and check logic.
-- `server/tests/verify-live.test.ts`: offline logic tests (fixtures and the in-process app). CI does not reach journeydeck.me.
-- `.gitleaks.toml`: narrow allowlist for the public App Store campaign ct `x-launch_oct13` because `gitleaks git` still flags the first commit's `expectedCampaignToken` field name.
+- `validatedAssetURL` binds `URL(string:)` once and throws error 7 for empty, non-file, or missing paths instead of `URL(string: path)!`.
+- Downloaded `CKAsset.fileURL` remains optional-bound (error 10). Pull still throws so the change token is not advanced.
+- Source-inspection coverage in `native-runtime-prep.test.mts` and `private-content.test.mts`.
 
 ## Verification
 
-- `node --test --import tsx server/tests/verify-live.test.ts`
-- `npm run verify:live -- --base http://127.0.0.1:8795` with `DRIVEOS_MODE=web`
+- `npm run test:private-content` in `mobile/recorder`
+- `node --experimental-strip-types --test tests/native-runtime-prep.test.mts` in `mobile/recorder`
 
-## Unresolved / owner decisions
+## Unresolved
 
-- `/readyz` `generatedAtUtc` is service restart / snapshot time, not deploy time. A commit SHA on `/readyz` is a follow-up, not this PR.
-- Terms still contains the generic legal phrase `trial terms`. That is outside this verifier PR.
-
-## Next steps
-
-1. Keep PR 262 open for review. Do not merge or deploy from this session.
+- Leave this PR open for review. Do not merge.
+- PR #264 (backlog doc) and PR #262 (live-site verifier) remain separate review-only drafts.

@@ -295,8 +295,16 @@ private final class PrivateCloudKitTransport {
   }
 
   private func validatedAssetURL(_ path: String, recordType: String) throws -> URL {
-    let url = URL(string: path)?.isFileURL == true ? URL(string: path)! : URL(fileURLWithPath: path)
-    guard FileManager.default.fileExists(atPath: url.path) else {
+    // Bind once. Force-unwrapping a second URL(string:) parse crashed native sync.
+    let url: URL
+    if let parsed = URL(string: path), parsed.isFileURL {
+      url = parsed
+    } else if !path.isEmpty {
+      url = URL(fileURLWithPath: path)
+    } else {
+      throw JourneyDeckCloudKitError.make(7, "A private photo file is missing from this device.")
+    }
+    guard url.isFileURL, !url.path.isEmpty, FileManager.default.fileExists(atPath: url.path) else {
       throw JourneyDeckCloudKitError.make(7, "A private photo file is missing from this device.")
     }
     let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init) ?? 0
