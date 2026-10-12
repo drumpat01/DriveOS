@@ -28,6 +28,9 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
     assert.equal(journal.statusCode, 200, journal.body);
     assert.match(journal.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526">Download on the App Store/);
     assert.doesNotMatch(journal.body, /Start free on iPhone/);
+    assert.match(journal.body, /sit with the road\. It is not a navigation app or an automatic cloud trip log\./);
+    assert.match(journal.body, /everyday drives and longer trips, without/);
+    assert.doesNotMatch(journal.body, /[\u2013\u2014]/);
 
     for (const url of publicPages) {
       const page = await runtime.app.inject({ method: "GET", url });
