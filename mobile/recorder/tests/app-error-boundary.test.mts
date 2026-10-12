@@ -32,9 +32,6 @@ function loadBoundary(updates: { reloadAsync: () => Promise<void> }) {
           useColorScheme: () => 'dark',
         };
       }
-      if (id === './journeydeck-design-tokens') {
-        return { journeyDeckTypography: { title: { fontFamily: 'Georgia' } } };
-      }
       return require(id);
     },
   });
@@ -72,10 +69,11 @@ test('App.tsx wraps the root tree in AppErrorBoundary', () => {
   assert.match(app, /<\/GestureHandlerRootView><\/AppErrorBoundary>/);
 });
 
-test('Try again uses the title serif at semibold and the fallback has no status-bar mark', () => {
+test('title and Try again use the system sans heading at semibold and the fallback has no status-bar mark', () => {
   const source = readFileSync(new URL('../src/app-error-boundary.tsx', import.meta.url), 'utf8');
-  assert.match(source, /title: \{[^}]*fontFamily: journeyDeckTypography\.title\.fontFamily/);
-  assert.match(source, /buttonText: \{[^}]*fontFamily: journeyDeckTypography\.title\.fontFamily[^}]*fontWeight: '600'/);
+  assert.doesNotMatch(source, /journeyDeckTypography|fontFamily/);
+  assert.match(source, /title: \{[^}]*fontWeight: '600'/);
+  assert.match(source, /buttonText: \{[^}]*fontWeight: '600'/);
   assert.doesNotMatch(source, /9:41/);
   assert.equal((source.match(/>JD</g) || []).length, 1, 'JD is only the centered monogram');
 });
