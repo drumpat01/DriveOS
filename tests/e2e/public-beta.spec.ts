@@ -42,6 +42,25 @@ test('phone layout offers medallions in place and preserves download, social and
   await expect(page.getByRole('link', { name: 'Follow @JourneyDeck on X', exact: true })).toHaveAttribute('href', 'https://x.com/JourneyDeck');
   await expect(page.getByRole('link', { name: 'Apple Terms of Use', exact: true })).toHaveAttribute('href', 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/');
   for (const href of ['/privacy', '/terms', '/support']) await expect(page.locator(`footer a[href="${href}"]`)).toHaveCount(1);
+  await expect(page.locator('footer img[alt="Featured on Launch"]')).toHaveAttribute('src', 'https://tools.launchllama.co/featured-badge-white.jpg?v=5');
+  await expect(page.locator('footer img[alt="Featured on Launch"]')).toHaveAttribute('width', '200');
+  await expect(page.locator('footer img[alt="Featured on Launch"]')).toHaveAttribute('height', '52');
+  await expect(page.locator('footer a[href="https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral"]')).toHaveCount(1);
+  await expect(page.getByRole('link', { name: 'Launch MCP', exact: true })).toHaveAttribute('href', 'https://launchmcp.co/?utm_source=badge&utm_medium=referral');
+});
+
+test('homepage footer centers the Launch Llama badge at 390 and 1280', async ({ page }) => {
+  for (const { width, height } of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/beta.html');
+    const badge = page.locator('footer .footer-badge > span');
+    await badge.scrollIntoViewIfNeeded();
+    await expect(badge).toBeVisible();
+    const box = await badge.boundingBox();
+    expect(box, `badge box at ${width}`).toBeTruthy();
+    const center = (box?.x ?? 0) + ((box?.width ?? 0) / 2);
+    expect(Math.abs(center - (width / 2))).toBeLessThan(12);
+  }
 });
 
 test('reduced motion keeps all content visible and the feature tour manually usable', async ({ page }) => {

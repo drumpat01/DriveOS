@@ -11,6 +11,7 @@ import {
   canonicalUrlForPath,
   classifyConsoleError,
   compareGeneratedAtSince,
+  evaluateLaunchBadge,
   evaluateLoginUmami,
   evaluatePublicPageHtml,
   evaluateUmamiScripts,
@@ -80,7 +81,15 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.headlines.default.accent, "Keep the story.");
   assert.equal(expectations.headlines.x.lead, "Keep the drive.");
   assert.equal(expectations.headlines.x.accent, "Keep the song.");
+  assert.equal(expectations.launchBadge.productHref, "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral");
+  assert.equal(expectations.launchBadge.imageSrc, "https://tools.launchllama.co/featured-badge-white.jpg?v=5");
+  assert.equal(expectations.launchBadge.imageAlt, "Featured on Launch");
+  assert.equal(expectations.launchBadge.imageWidth, "200");
+  assert.equal(expectations.launchBadge.imageHeight, "52");
+  assert.equal(expectations.launchBadge.mcpHref, "https://launchmcp.co/?utm_source=badge&utm_medium=referral");
+  assert.equal(expectations.launchBadge.mcpText, "Launch MCP");
   assert.throws(() => validateExpectations({}), /publicPages/);
+  assert.throws(() => validateExpectations({ ...expectations, launchBadge: {} }), /launchBadge is incomplete/);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-verify-live-"));
   const filePath = path.join(directory, "expectations.json");
   fs.writeFileSync(filePath, JSON.stringify({ ...expectations, umami: { scriptSrc: expectations.umami.scriptSrc } }), "utf8");
@@ -104,6 +113,14 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526">Get the app</a>
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?see-all=reviews">Reviews</a>
     <p>Available products, price, billing period, trial terms, and included features are shown before purchase.</p>
+    <footer><span style="display:inline-block;text-align:center;font-family:system-ui,sans-serif;line-height:1;">
+  <a href="https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral" target="_blank" rel="noopener noreferrer" style="display:block;line-height:0;">
+  <img src="https://tools.launchllama.co/featured-badge-white.jpg?v=5"
+    alt="Featured on Launch"
+    width="200" height="52" style="display:block;border:0;" />
+</a>
+  <a href="https://launchmcp.co/?utm_source=badge&utm_medium=referral" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:-2px;padding-top:0;font-size:7px;font-weight:600;color:#888;text-decoration:none;line-height:1;letter-spacing:0.02em;">Launch MCP</a>
+</span></footer>
   </body></html>`;
   const title = extractDocumentTitle(html);
   assert.equal(title.count, 1);
@@ -127,6 +144,12 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   assert.equal(headlineMatches("Take the road.\nKeep the story.", expectations.headlines.default), true);
   assert.equal(headlineMatches("Keep the drive. Keep the song.", expectations.headlines.x), true);
   assert.equal(headlineMatches("Take the road. Keep the story.", expectations.headlines.x), false);
+  const badgeCheck = checks.find((check) => check.name === "page:/ launch-badge");
+  assert.equal(badgeCheck?.pass, true);
+  assert.equal(evaluateLaunchBadge("<footer></footer>", expectations).pass, false);
+  assert.equal(evaluateLaunchBadge(html, expectations).pass, true);
+  const supportChecks = evaluatePublicPageHtml(html, "/support", expectations, 200);
+  assert.equal(supportChecks.some((check) => check.name === "page:/support launch-badge"), false);
 });
 
 test("App Store href assertions keep campaign tokens, reviews, and the served default hrefs", () => {
