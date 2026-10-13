@@ -335,7 +335,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     for (const rel of ["api-catalog", "service-desc", "service-doc", "describedby"]) assert.match(links, new RegExp(`rel="${rel}"`));
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 4\.0/);
-    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-4"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-5"/);
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
     assert.match(landing.body, /aria-label="1 of 5: Today"/);
@@ -348,6 +348,14 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /APPLE WATCH \/ PAIRED IPHONE/);
     assert.match(landing.body, /<meta name="google-site-verification" content="C9F75mNcVf450GCL_J5RBoD5NRkqRig1EwwXUrr0P-w" \/>/);
     assert.match(String(landing.headers["content-security-policy"]), /default-src 'self'/);
+    assert.match(String(landing.headers["content-security-policy"]), /img-src[^;]*https:\/\/tools\.launchllama\.co/);
+    assert.doesNotMatch(String(landing.headers["content-security-policy"]), /(?:script-src|connect-src)[^;]*https:\/\/tools\.launchllama\.co/);
+    assert.match(landing.body, /href="https:\/\/tools\.launchllama\.co\/products\/journeydeck\?utm_source=badge&utm_medium=referral"/);
+    assert.match(landing.body, /src="https:\/\/tools\.launchllama\.co\/featured-badge-white\.jpg\?v=5"/);
+    assert.match(landing.body, /alt="Featured on Launch"/);
+    assert.match(landing.body, /width="200" height="52"/);
+    assert.match(landing.body, /href="https:\/\/launchmcp\.co\/\?utm_source=badge&utm_medium=referral"/);
+    assert.match(landing.body, />Launch MCP<\/a>/);
     assert.match(landing.body, /rel="canonical" href="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /property="og:url" content="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /href="\/login"/i);
@@ -379,7 +387,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.doesNotMatch(String(googleVerification.headers["content-security-policy"]), /google-site-verification/);
 
     for (const [url, mime] of [
-      ["/beta.css?v=grand-tour-4", /text\/css/],
+      ["/beta.css?v=grand-tour-5", /text\/css/],
       ["/public-page.css?v=grand-tour-3", /text\/css/],
       ["/public-page.css?v=hero-lcp-1", /text\/css/],
       ["/site-mobile-nav.css?v=1", /text\/css/],
@@ -531,7 +539,7 @@ test("hosted home and Support HTML do not advertise a 3-day Plus trial", async (
 test("hosted cache headers distinguish versioned assets, unversioned images, and short-lived documents", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
-    const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-4" });
+    const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-5" });
     assert.equal(versionedCss.statusCode, 200, versionedCss.body);
     assert.equal(versionedCss.headers["cache-control"], "public, max-age=31536000, immutable");
 

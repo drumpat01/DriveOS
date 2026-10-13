@@ -316,11 +316,19 @@ test("served public pages keep the plain App Store URL and load the first-party 
       assert.match(String(page.headers["content-security-policy"]), /script-src[^;]*https:\/\/cloud\.umami\.is/, url);
       assert.match(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/gateway\.umami\.is/, url);
       assert.doesNotMatch(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/cloud\.umami\.is/, url);
+      assert.match(String(page.headers["content-security-policy"]), /img-src[^;]*https:\/\/tools\.launchllama\.co/, url);
+      assert.doesNotMatch(String(page.headers["content-security-policy"]), /(?:script-src|connect-src)[^;]*https:\/\/tools\.launchllama\.co/, url);
     }
 
     const home = await runtime.app.inject({ method: "GET", url: "/" });
     assert.match(home.body, /<h1 id="hero-title">Take the road\.<br><span class="gold">Keep the story\.<\/span><\/h1>/);
     assert.doesNotMatch(home.body, /Keep the drive/);
+    assert.match(home.body, /href="https:\/\/tools\.launchllama\.co\/products\/journeydeck\?utm_source=badge&utm_medium=referral"/);
+    assert.match(home.body, /src="https:\/\/tools\.launchllama\.co\/featured-badge-white\.jpg\?v=5"/);
+    assert.match(home.body, /alt="Featured on Launch"/);
+    assert.match(home.body, /width="200" height="52"/);
+    assert.match(home.body, /href="https:\/\/launchmcp\.co\/\?utm_source=badge&utm_medium=referral"/);
+    assert.match(home.body, />Launch MCP<\/a>/);
 
     for (const url of ["/login", "/index.html"]) {
       const privatePage = await runtime.app.inject({ method: "GET", url });

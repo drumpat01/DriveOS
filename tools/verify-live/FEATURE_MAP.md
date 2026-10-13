@@ -20,7 +20,7 @@ Public HTML is served by `server/src/app.ts` in web mode. The public route allow
 
 | Page | Source | CLI checks |
 | --- | --- | --- |
-| `/` | `web/beta.html` via `server/src/app.ts` `GET /` | `page:/ status`, `page:/ title`, `page:/ meta-description`, `page:/ canonical`, `page:/ og:title`, `page:/ og:description`, `page:/ og:url`, `page:/ og:image`, `page:/ json-ld`, `page:/ umami`, `page:/ trial-wording` |
+| `/` | `web/beta.html` via `server/src/app.ts` `GET /` | `page:/ status`, `page:/ title`, `page:/ meta-description`, `page:/ canonical`, `page:/ og:title`, `page:/ og:description`, `page:/ og:url`, `page:/ og:image`, `page:/ json-ld`, `page:/ umami`, `page:/ trial-wording`, `page:/ launch-badge` |
 | `/apple-music-soundtrack` | `web/apple-music-soundtrack.html` | `page:/apple-music-soundtrack status`, `page:/apple-music-soundtrack title`, `page:/apple-music-soundtrack meta-description`, `page:/apple-music-soundtrack canonical`, `page:/apple-music-soundtrack og:title`, `page:/apple-music-soundtrack og:description`, `page:/apple-music-soundtrack og:url`, `page:/apple-music-soundtrack og:image`, `page:/apple-music-soundtrack json-ld`, `page:/apple-music-soundtrack umami`, `page:/apple-music-soundtrack trial-wording` |
 | `/private-driving-journal` | `web/private-driving-journal.html` | `page:/private-driving-journal status`, `page:/private-driving-journal title`, `page:/private-driving-journal meta-description`, `page:/private-driving-journal canonical`, `page:/private-driving-journal og:title`, `page:/private-driving-journal og:description`, `page:/private-driving-journal og:url`, `page:/private-driving-journal og:image`, `page:/private-driving-journal json-ld`, `page:/private-driving-journal umami`, `page:/private-driving-journal trial-wording` |
 | `/road-trip-journal-app` | `web/road-trip-journal-app.html` | `page:/road-trip-journal-app status`, `page:/road-trip-journal-app title`, `page:/road-trip-journal-app meta-description`, `page:/road-trip-journal-app canonical`, `page:/road-trip-journal-app og:title`, `page:/road-trip-journal-app og:description`, `page:/road-trip-journal-app og:url`, `page:/road-trip-journal-app og:image`, `page:/road-trip-journal-app json-ld`, `page:/road-trip-journal-app umami`, `page:/road-trip-journal-app trial-wording` |
@@ -63,9 +63,14 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - X visit: headline `Keep the drive.` / `Keep the song.`.
 - Checks, at `390x844` and `1280x800`: `browser <viewport> campaign headline`, `browser <viewport> campaign app-store-hrefs`, `browser <viewport> default headline`, `browser <viewport> default app-store-hrefs`.
 
+## Launch Llama badge
+
+- Owner: the homepage footer in `web/beta.html`. The product href, image `src`, `alt`, `width`, `height`, and Launch MCP link must match `expectations.launchBadge` exactly.
+- Checks: `page:/ launch-badge` only. Other public pages are not required to include the badge.
+
 ## Content Security Policy
 
-- Owner: `securityHeaders` in `server/src/app.ts`. `script-src` allows `https://cloud.umami.is`. `connect-src` allows `https://gateway.umami.is` and does not allow `https://cloud.umami.is`.
+- Owner: `securityHeaders` in `server/src/app.ts`. `script-src` allows `https://cloud.umami.is`. `connect-src` allows `https://gateway.umami.is` and does not allow `https://cloud.umami.is`. `img-src` allows `https://tools.launchllama.co` for the homepage Launch Llama badge and does not add that host to other directives.
 - The verifier lets `cloud.umami.is/script.js` load so the policy is actually exercised. It aborts `gateway.umami.is` so a run never sends analytics. It also aborts navigations to `apps.apple.com`.
 - The aborted gateway request is expected to appear as `net::ERR_FAILED`. That must not fail the run. It is listed as `blocked by verifier`.
 - Checks: `csp console` (no console errors that mention Content Security Policy, and no `securitypolicyviolation` events).

@@ -65,5 +65,14 @@
       "apps.apple.com",
       "www.apps.apple.com"
     ]
+  },
+  "launchBadge": {
+    "productHref": "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral",
+    "imageSrc": "https://tools.launchllama.co/featured-badge-white.jpg?v=5",
+    "imageAlt": "Featured on Launch",
+    "imageWidth": "200",
+    "imageHeight": "52",
+    "mcpHref": "https://launchmcp.co/?utm_source=badge&utm_medium=referral",
+    "mcpText": "Launch MCP"
   }
 }

@@ -84,6 +84,17 @@ export function validateExpectations(raw) {
   if (!raw.headlines?.x?.lead || !raw.headlines?.x?.accent) throw new Error("expectations.headlines.x is incomplete");
   if (!Array.isArray(raw.viewports) || raw.viewports.length === 0) throw new Error("expectations.viewports must be a non-empty array");
   if (!raw.blocked?.analyticsHost || !Array.isArray(raw.blocked?.appStoreHosts)) throw new Error("expectations.blocked is incomplete");
+  if (
+    !raw.launchBadge?.productHref
+    || !raw.launchBadge?.imageSrc
+    || !raw.launchBadge?.imageAlt
+    || raw.launchBadge.imageWidth == null
+    || raw.launchBadge.imageHeight == null
+    || !raw.launchBadge?.mcpHref
+    || !raw.launchBadge?.mcpText
+  ) {
+    throw new Error("expectations.launchBadge is incomplete");
+  }
   return raw;
 }
 
@@ -342,6 +353,24 @@ export function classifyConsoleError(text, blockedUrls = []) {
   return { fail: false, label: "ignored" };
 }
 
+export function evaluateLaunchBadge(html, expectations) {
+  const badge = expectations.launchBadge;
+  const footer = html.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/i)?.[0] ?? "";
+  const observed = {
+    productHref: footer.includes(`href="${badge.productHref}"`),
+    imageSrc: footer.includes(`src="${badge.imageSrc}"`),
+    imageAlt: footer.includes(`alt="${badge.imageAlt}"`),
+    imageWidth: footer.includes(`width="${badge.imageWidth}"`),
+    imageHeight: footer.includes(`height="${badge.imageHeight}"`),
+    mcpHref: footer.includes(`href="${badge.mcpHref}"`),
+    mcpText: footer.includes(`>${badge.mcpText}</a>`)
+  };
+  return {
+    pass: Object.values(observed).every(Boolean),
+    observed
+  };
+}
+
 export function evaluatePublicPageHtml(html, pathname, expectations, statusCode) {
   const expectedCanonical = canonicalUrlForPath(pathname, expectations);
   const title = extractDocumentTitle(html);
@@ -354,7 +383,7 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   const jsonLd = parseJsonLdBlocks(extractJsonLdBlocks(html));
   const umami = evaluateUmamiScripts(findUmamiScripts(html, expectations), expectations, { requireOne: true });
   const trialHits = findForbiddenTrialPhrases(html, expectations.forbiddenTrialPhrases);
-  return [
+  const checks = [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
     makeCheck(`page:${pathname} title`, title.count === 1 && Boolean(title.value), title),
     makeCheck(`page:${pathname} meta-description`, description.count === 1 && Boolean(description.value), description),
@@ -367,6 +396,11 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} umami`, umami.pass, umami.observed),
     makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits })
   ];
+  if (pathname === "/") {
+    const badge = evaluateLaunchBadge(html, expectations);
+    checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
+  }
+  return checks;
 }
 
 export function evaluateLoginUmami(html, expectations, statusCode) {

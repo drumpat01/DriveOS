@@ -209,6 +209,8 @@ figure, h1, h2, h3, p { margin: 0; }
 .footer-bottom { margin-top: 29px; font-size: 10px; color: var(--muted); }
 .footer-bottom nav { display: flex; gap: 23px; flex-wrap: wrap; }
 .footer-bottom a:hover { color: var(--ivory); }
+.footer-badge { display: flex; justify-content: center; width: 100%; margin-top: 28px; text-align: center; }
+.footer-badge img { max-width: none; }
 
 @media (prefers-reduced-motion: no-preference) {
   html.motion-ready [data-reveal] { opacity: 0; transform: perspective(1400px) translateY(38px) rotateX(5deg); transition: opacity .85s var(--ease), transform 1.05s var(--ease); transition-delay: var(--reveal-delay,0ms); }
@@ -305,6 +307,7 @@ figure, h1, h2, h3, p { margin: 0; }
   .closing { padding-top: 0; padding-bottom: 60px; } .closing-rule { margin-bottom: 58px; } .closing h2 { font-size: clamp(40px,11vw,58px); margin-top: 22px; }
   .closing-actions { flex-direction: column; gap: 27px; margin-top: 31px; } .closing .button { font-size: 13px; gap: 21px; } .closing .text-link { font-size: 11px; }
   .closing > .small { font-size: 9px; max-width: 275px; margin: 26px auto 0; } .footer-top, .footer-bottom { flex-direction: column; align-items: start; gap: 18px; }
+  .footer-badge { margin-top: 22px; }
   .footer-bottom { gap: 23px; } .footer-bottom nav { justify-content: start; gap: 17px 20px; font-size: 11px; line-height: 1.7; } .footer-bottom a { padding-block: 5px; } .site-footer { padding-top: 27px; } .footer-top > p { font-size: 10px; }
 }
 @media (max-width: 360px) {
