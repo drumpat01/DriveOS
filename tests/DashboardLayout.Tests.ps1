@@ -49,7 +49,7 @@ foreach ($Setter in @('setStatus','setVehicle','setSpotify','setDrives')) {
     Assert-True ($ReferenceDashboard -match "function $Setter\(") "Reference dashboard is missing the direct $Setter live-data binding."
     Assert-True ($App -match "DriveOSReferenceDashboard\?\.$Setter\(") "Application API loaders do not publish $Setter data to the reference dashboard."
 }
-Assert-True ($Styles -match 'Cinematic five-button mobile navigation shared by local, Tailnet, and production') 'The production mobile navigation contract is missing.'
+Assert-True ($Styles -match '(?s)@media \(max-width:767px\)\s*\{\s*:root \.app-shell\s*\{\s*padding-bottom:calc\(102px \+ env\(safe-area-inset-bottom\)\) !important;') 'The production mobile navigation contract is missing.'
 Assert-True (-not ($Styles -match ':root\.local-host \.main-nav\.mobile-nav-portal')) 'The cinematic mobile navigation is still limited to localhost.'
 Assert-True ($Styles -match 'grid-template-columns:repeat\(5,minmax\(0,1fr\)\)') 'The mobile navigation must retain five equal actions.'
 Assert-True ($App -match 'journeydeck:viewchange[\s\S]{0,180}view\s*===\s*["'']timeline["''][\s\S]{0,100}loadDriveTimeline') 'The mobile More menu cannot start Journey Timeline loading.'
