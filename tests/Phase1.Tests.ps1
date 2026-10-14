@@ -3,7 +3,6 @@ $Root = Split-Path -Parent $PSScriptRoot
 
 Import-Module (Join-Path $Root "src\Storage\DriveOS.Storage.psm1") -Force
 Import-Module (Join-Path $Root "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
-Import-Module (Join-Path $Root "src\Integrations\LastFm\DriveOS.LastFm.psm1") -Force
 Import-Module (Join-Path $Root "src\Integrations\Foursquare\DriveOS.Foursquare.psm1") -Force
 Import-Module (Join-Path $Root "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $Root "src\Application\DriveOS.PlaceEnrichment.psm1") -Force

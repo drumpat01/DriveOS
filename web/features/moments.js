@@ -164,7 +164,6 @@
       if (record.suggested) return `<article class="moments-memory-card is-suggested" data-memory-index="${index}" aria-label="Suggested memory: ${escape(record.title)}">${content}<span class="moments-memory-suggestion-actions"><button type="button" data-confirm-memory-suggestion="${index}">Confirm</button><button type="button" data-dismiss-memory-suggestion="${index}">Dismiss</button></span></article>`;
       return `<button class="moments-memory-card" type="button" data-memory-index="${index}" aria-label="Select ${escape(record.title)}">${content}</button>`;
     }).join("");
-    bindMemoryCards();
     createDots();
     selectMemory(state.selectedMemory, false);
     applyMemorySearch();
@@ -618,10 +617,6 @@
   function setJourneys(drives) { if (Array.isArray(drives) && drives.length) renderJourneys(drives); }
   function setCollections(collections) { if (Array.isArray(collections)) { state.collections = collections; void loadData(state.records[state.selectedMemory]?.id); } }
 
-  function bindMemoryCards() {
-    // Cards are replaced whenever durable data changes. Their click behavior is
-    // delegated from the document so an in-flight refresh cannot orphan it.
-  }
   function bindActions() {
     document.querySelector(".moments-carousel-previous")?.addEventListener("click", () => selectMemory(state.selectedMemory - 1));
     document.querySelector(".moments-carousel-next")?.addEventListener("click", () => selectMemory(state.selectedMemory + 1));

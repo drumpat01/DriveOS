@@ -31,7 +31,6 @@
     let started = false;
     let initialRefresh = null;
     let refreshPromise = null;
-    let backgroundSyncPending = false;
     let pullStartY = null;
     let pullDistance = 0;
     let pullTracking = false;
@@ -105,27 +104,6 @@
         pullStartY = null;
         resetPullIndicator();
       }, { passive: true });
-    }
-
-    function scheduleListeningSync() {
-      if (!tasks.syncListeningHistory || backgroundSyncPending) return;
-      backgroundSyncPending = true;
-
-      const run = async () => {
-        try {
-          if (!document.hidden) {
-            await tasks.syncListeningHistory();
-          }
-        } finally {
-          backgroundSyncPending = false;
-        }
-      };
-
-      if (typeof window.requestIdleCallback === "function") {
-        window.requestIdleCallback(() => void run(), { timeout: 1800 });
-      } else {
-        window.setTimeout(() => void run(), 700);
-      }
     }
 
     async function performRefresh({ initial = false } = {}) {
@@ -213,10 +191,6 @@
           await tasks.loadDrives();
           mark("driveos-library-ready");
         }
-
-        // Last.fm can be comparatively expensive. Run it only after every
-        // visible/secondary panel has finished and the browser is idle.
-        scheduleListeningSync();
       } finally {
         if (button) {
           button.disabled = false;
