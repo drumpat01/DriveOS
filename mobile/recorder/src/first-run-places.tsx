@@ -14,10 +14,6 @@ const SLOTS: readonly { id: Extract<SavedPlaceSlot, 'home' | 'work'>; label: str
   { id: 'work', label: 'Work', symbol: 'briefcase.fill', hint: 'Optional' },
 ];
 
-/**
- * Onboarding: save Home and Work. They name journeys ("Home → Work") and turn on
- * the privacy trim that keeps those places off shared routes. Both are optional.
- */
 export function FirstRunPlacesStep({ header, onDone }: { header: ReactNode; onDone: () => void }) {
   const c = useRedesignColors();
   const insets = useSafeAreaInsets();

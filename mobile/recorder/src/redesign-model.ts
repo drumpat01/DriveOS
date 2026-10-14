@@ -2,12 +2,6 @@ import type { JourneyDetail, JourneyMemory, JourneySummary, SoundtrackTrack } fr
 import type { SearchRecord } from './primary-sections-data.ts';
 import { favoriteRoutes } from './library-model.ts';
 
-/**
- * Pure derivations for the V4 redesign (Today, Memories, Memory detail,
- * Soundtrack, Search). Everything is computed from the local library; nothing
- * here reads storage, the network or React.
- */
-
 const DAY_MS = 86_400_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -20,7 +14,6 @@ const time = (iso: string | null | undefined) => {
 const startOfDay = (ms: number) => { const date = new Date(ms); date.setHours(0, 0, 0, 0); return date.getTime(); };
 const trackKey = (track: Pick<SoundtrackTrack, 'track' | 'artist'>) => `${words(track.track)}::${words(track.artist)}`;
 
-/** First comma-separated part of a place label ("Pacifica, CA" → "Pacifica"). */
 export function placeName(value: string | null | undefined) {
   const name = value?.split(',')[0]?.trim();
   return name ? name : null;
@@ -34,7 +27,6 @@ export function routeLabel(journey: Pick<JourneySummary, 'startingLocation' | 'e
   return 'A recorded drive';
 }
 
-/** "Friday evening drive", from the local start time. */
 export function driveTitle(startedAt: string) {
   const ms = time(startedAt);
   if (ms === null) return 'A drive worth remembering';
@@ -78,13 +70,10 @@ export function newestJourney<T extends Pick<JourneySummary, 'startedAt'>>(journ
   return newest;
 }
 
-/** A journey's full soundtrack when its detail is loaded, otherwise the preview. */
 export function journeyTracks(journey: JourneySummary, detailById: ReadonlyMap<string, JourneyDetail>): SoundtrackTrack[] {
   const detail = detailById.get(journey.id);
   return detail?.soundtrack?.length ? detail.soundtrack : journey.soundtrackPreview;
 }
-
-// ---------------------------------------------------------------- Today
 
 export type WeekDay = { label: string; date: string; miles: number; isToday: boolean };
 export type WeekSummary = {
@@ -92,7 +81,6 @@ export type WeekSummary = {
   maxMiles: number; changePercent: number | null;
 };
 
-/** The seven local days ending today, with a comparison to the seven before. */
 export function weekSummary(journeys: readonly JourneySummary[], now: number): WeekSummary {
   const today = startOfDay(now);
   const first = today - 6 * DAY_MS;
@@ -122,7 +110,6 @@ export function weekSummary(journeys: readonly JourneySummary[], now: number): W
 
 export type OnThisDay = { memory: JourneyMemory; yearsAgo: number };
 
-/** A Memory from this calendar week in an earlier year, nearest year first. */
 export function onThisDay(memories: readonly JourneyMemory[], journeys: readonly JourneySummary[], now: number, windowDays = 3): OnThisDay | null {
   const byId = new Map(journeys.map(journey => [journey.id, journey]));
   const today = new Date(now);
@@ -142,8 +129,6 @@ export function onThisDay(memories: readonly JourneyMemory[], journeys: readonly
   }
   return best ? { memory: best.memory, yearsAgo: best.yearsAgo } : null;
 }
-
-// ---------------------------------------------------------------- Memories
 
 export function dateRangeLabel(startIso: string | null, endIso: string | null) {
   const startMs = time(startIso), endMs = time(endIso) ?? startMs;
@@ -219,7 +204,6 @@ export type MemoryYearGroup = {
   items: { memory: JourneyMemory; drives: number; miles: number; startedAt: string }[];
 };
 
-/** Memories grouped by the year of their first drive (or creation), newest first. */
 export function memoryYearGroups(memories: readonly JourneyMemory[], journeys: readonly JourneySummary[]): MemoryYearGroup[] {
   const byId = new Map(journeys.map(journey => [journey.id, journey]));
   const groups = new Map<number, MemoryYearGroup>();
@@ -266,8 +250,6 @@ export function smartCollections(journeys: readonly JourneySummary[]): SmartColl
   return collections;
 }
 
-// ---------------------------------------------------------------- Soundtrack
-
 export type SoundtrackRange = 'week' | 'month' | 'year' | 'all';
 export const SOUNDTRACK_RANGES: { id: SoundtrackRange; label: string; period: string }[] = [
   { id: 'week', label: 'Week', period: 'this week' },
@@ -291,7 +273,6 @@ export function daypartOf(hour: number): Daypart['id'] {
 export type SoundtrackSummary = {
   plays: number; distinctSongs: number; drives: number;
   listeningMinutes: number | null;
-  /** Share of this period's miles driven on journeys that have music, 0–100. */
   musicMilesPercent: number | null;
   anthem: (RankedTrack & { miles: number }) | null;
   topArtists: { artist: string; plays: number; artworkUrl: string | null }[];
@@ -377,7 +358,6 @@ function haversineMiles([lon1, lat1]: [number, number], [lon2, lat2]: [number, n
 
 export type DriveSong = SoundtrackTrack & { mile: number | null };
 
-/** A drive's songs in play order, each with the mile it started at when the route has timed samples. */
 export function driveSongs(journey: JourneySummary, detail: JourneyDetail | null | undefined): DriveSong[] {
   const tracks = [...(detail?.soundtrack?.length ? detail.soundtrack : journey.soundtrackPreview)]
     .sort((a, b) => (time(a.playedAt) ?? 0) - (time(b.playedAt) ?? 0));
@@ -398,8 +378,6 @@ export function driveSongs(journey: JourneySummary, detail: JourneyDetail | null
   });
 }
 
-// ---------------------------------------------------------------- Search
-
 const SEARCH_SECTIONS: { kind: SearchRecord['kind']; title: string }[] = [
   { kind: 'memory', title: 'Memories' },
   { kind: 'journey', title: 'Drives' },
@@ -414,7 +392,6 @@ export function searchSections(records: readonly SearchRecord[]) {
     .filter(section => section.records.length > 0);
 }
 
-/** `memory:<id>` search records point at a Memory, not a journey. */
 export function memoryIdFromSearch(record: Pick<SearchRecord, 'id' | 'kind'>) {
   return record.kind === 'memory' && record.id.startsWith('memory:') ? record.id.slice('memory:'.length) : null;
 }

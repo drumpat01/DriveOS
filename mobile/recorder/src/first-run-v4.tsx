@@ -1,6 +1,3 @@
-// V4 iPhone onboarding: four steps (Welcome, Location, Soundtrack, See where you've been), each built like the
-// approved Soundtrack motion study: elements arrive in sequence, routes draw, items land with a small spring.
-// Reduce Motion: Reanimated's entering animations follow the system setting, and the drawn lines appear whole.
 import { DEVICE_NAME, isIpad } from './device-layout';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -32,14 +29,11 @@ import { v4Steps, type V4Stage } from './first-run-v4-flow';
 export { nextV4Stage, previousV4Stage, v4Stage, type V4Stage } from './first-run-v4-flow';
 
 const SPRING = { damping: 14, stiffness: 150 };
-/** Rises into place: the shared entrance for text, cards and buttons. */
 const rise = (delay: number) => FadeInDown.delay(delay).duration(620).easing(Easing.bezier(0.2, 0.8, 0.2, 1)).withInitialValues({ transform: [{ translateY: 18 }] });
-/** Lands with a small bounce: songs on the timeline, a chosen option's icon. */
 const land = (delay: number) => FadeInDown.delay(delay).springify().damping(12).stiffness(170).withInitialValues({ transform: [{ translateY: -14 }] });
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-/** A route line that draws itself from start to end. */
 function DrawnRoute({ d, length, width, height, color, delay, duration = 1600 }: { d: string; length: number; width: number; height: number; color: string; delay: number; duration?: number }) {
   const { reduceMotion } = useMotionPreferences();
   const offset = useSharedValue(reduceMotion ? 0 : length);
@@ -65,7 +59,6 @@ function Progress({ stage, onBack }: { stage: Exclude<V4Stage, 'welcome'>; onBac
   </View>;
 }
 
-/** The current step's segment fills like a stretch of road being driven. */
 function ProgressBar({ lit, current }: { lit: boolean; current: boolean }) {
   const c = useRedesignColors();
   const { reduceMotion } = useMotionPreferences();
@@ -114,9 +107,6 @@ function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boo
   </View>;
 }
 
-// --- 1 · Welcome -----------------------------------------------------------------------------------------------
-
-// Sample memories dealt onto the welcome photo: the last card lands on top in the middle, then lifts.
 const DECK = [
   { place: 'Big Sur', song: 'Dreams', route: 'M8 70 C 36 16, 64 84, 118 16', x: -76, y: 22, rotate: -13, tint: 0.55 },
   { place: 'Lake Tahoe', song: 'Holocene', route: 'M10 18 C 56 26, 46 74, 116 70', x: 76, y: 22, rotate: 12, tint: 0.35 },
@@ -125,7 +115,6 @@ const DECK = [
 const CARD_W = 146;
 const CARD_H = 188;
 
-/** A centered pill above the headline that cycles through the deck's songs and places. */
 function NowPlaying() {
   const c = useRedesignColors();
   const { reduceMotion } = useMotionPreferences();
@@ -182,7 +171,6 @@ function WelcomeStep({ onContinue, onHaveAccount }: { onContinue: () => void; on
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { reduceMotion } = useMotionPreferences();
-  // The dealt cards are sized for a phone; on iPad they grow with the window.
   const { width: windowWidth } = useWindowDimensions();
   const deckScale = isIpad() ? Math.min(2.4, Math.max(1.6, windowWidth / 520)) : 1;
   const push = useSharedValue(reduceMotion ? 1 : 1.14);
@@ -207,8 +195,6 @@ function WelcomeStep({ onContinue, onHaveAccount }: { onContinue: () => void; on
   </View>;
 }
 
-// --- 2 · Location ----------------------------------------------------------------------------------------------
-
 function ModeOption({ symbol, title, detail, selected, onPress, delay }: { symbol: SFSymbol; title: string; detail: string; selected: boolean; onPress: () => void; delay: number }) {
   const c = useRedesignColors();
   const pop = useSharedValue(1);
@@ -229,8 +215,6 @@ function ModeOption({ symbol, title, detail, selected, onPress, delay }: { symbo
 
 function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void; onContinue: (mode: RecordingMode, drivesTesla: boolean | null) => Promise<void>; initialMode: RecordingMode | null }) {
   const c = useRedesignColors();
-  // Automatic recording works through Tessie, so it is offered once the driver says they have a Tesla (or already chose it).
-  // A replay keeps the mode already chosen; everyone else starts on Start-by-tap.
   const [mode, setMode] = useState<RecordingMode>(initialMode ?? 'manual');
   const [tesla, setTesla] = useState<boolean | null>(null);
   const offerAutomatic = tesla === true || initialMode === 'automatic';
@@ -276,9 +260,6 @@ function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void;
   </Screen>;
 }
 
-// --- iPad · Sign in and sync ---------------------------------------------------------------------------------
-
-/** iPad shows what an iPhone records, so it signs in and pulls from iCloud instead of setting up recording. */
 function SyncStep({ onBack, onContinue, signedIn, signingIn, onSignIn, onSync }: {
   onBack: () => void; onContinue: () => void; signedIn: boolean; signingIn: boolean; onSignIn: () => void; onSync: () => Promise<void>;
 }) {
@@ -307,7 +288,6 @@ function SyncStep({ onBack, onContinue, signedIn, signingIn, onSignIn, onSync }:
   </Screen>;
 }
 
-/** The car rolls in from the left as the note opens. */
 function TeslaCar() {
   const c = useRedesignColors();
   const { reduceMotion } = useMotionPreferences();
@@ -318,8 +298,6 @@ function TeslaCar() {
     <Animated.View style={style}><SymbolView name="car.side.fill" tintColor={c.onAccent} size={20} /></Animated.View>
   </View>;
 }
-
-// --- 3 · Your soundtrack ---------------------------------------------------------------------------------------
 
 const SAMPLE_SONGS = [{ title: 'Open Road', mile: 2 }, { title: 'Golden Hour', mile: 9 }, { title: 'Home Stretch', mile: 17 }];
 
@@ -438,11 +416,8 @@ function ConnectedMark() {
   </View>;
 }
 
-// --- 4 · See where you've been ---------------------------------------------------------------------------------
-
 const PREVIEW_STATES: readonly USStateCode[] = ['CA', 'AZ', 'CO', 'TX', 'TN', 'NC'];
 
-/** One state that fills with gold after `delay`, the way a found trip lights up the map. */
 function MapState({ d, lit, delay, fill, idle, stroke }: { d: string; lit: boolean; delay: number; fill: string; idle: string; stroke: string }) {
   const { reduceMotion } = useMotionPreferences();
   const glow = useSharedValue(lit && reduceMotion ? 1 : 0);
@@ -468,7 +443,6 @@ function AnimatedStatesMap({ lit, startDelay = 400, step = 160 }: { lit: readonl
   </Animated.View>;
 }
 
-/** Counts up to `value`, like a trip odometer. */
 function CountUp({ value, delay = 0, style }: { value: number; delay?: number; style: object }) {
   const { reduceMotion } = useMotionPreferences();
   const [shown, setShown] = useState(reduceMotion ? value : 0);
@@ -485,7 +459,6 @@ function CountUp({ value, delay = 0, style }: { value: number; delay?: number; s
   return <Text style={style}>{shown.toLocaleString()}</Text>;
 }
 
-/** While photos are read, the map breathes, so the wait feels like work being done. */
 function ScanningMap() {
   const { reduceMotion } = useMotionPreferences();
   const pulse = useSharedValue(1);
@@ -607,13 +580,9 @@ function PhotosStep({ onBack, onFinish }: { onBack: () => void; onFinish: () => 
   </Screen>;
 }
 
-// --- The flow --------------------------------------------------------------------------------------------------
-
 export function FirstRunV4({ recordingMode = null, appleSignedIn = false, appleSigningIn = false, onAppleSignIn = () => undefined, onSync = async () => undefined, stage, onAdvance, onBack, onHaveAccount, onLocationContinue, onConnectAppleMusic, onConnectLastFm, lastFmUsername, onSkipMusic, onFinish }: {
   stage: V4Stage;
-  /** The recording mode already saved, if any. */
   recordingMode?: RecordingMode | null;
-  /** iPad's Sign in and sync step. */
   appleSignedIn?: boolean; appleSigningIn?: boolean; onAppleSignIn?: () => void; onSync?: () => Promise<void>;
   onAdvance: () => void;
   onBack: () => void;
@@ -626,7 +595,6 @@ export function FirstRunV4({ recordingMode = null, appleSignedIn = false, appleS
   onFinish: () => void;
 }) {
   const c = useRedesignColors();
-  // Each step remounts, so its elements arrive in sequence; the page color underneath never moves.
   return <View key={stage} style={[styles.flow, { backgroundColor: c.page }]}>
     {stage === 'welcome' && <WelcomeStep onContinue={onAdvance} onHaveAccount={onHaveAccount} />}
     {stage === 'sync' && <SyncStep onBack={onBack} onContinue={onAdvance} signedIn={appleSignedIn} signingIn={appleSigningIn} onSignIn={onAppleSignIn} onSync={onSync} />}
@@ -637,7 +605,6 @@ export function FirstRunV4({ recordingMode = null, appleSignedIn = false, appleS
 }
 
 const styles = StyleSheet.create({
-  /** iPad keeps the steps in a phone-width column, centered over the full-bleed photo and glow. */
   column: { width: '100%', maxWidth: 560, alignSelf: 'center' },
   flow: { flex: 1 },
   flex: { flex: 1 },
