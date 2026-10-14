@@ -15,7 +15,6 @@
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
 }
 
-/* Personal Mobility Graph */
 .mobility-graph-heading { align-items:flex-end; }
 .mobility-private-pill { display:inline-flex; align-items:center; min-height:36px; padding:0 13px; border:1px solid rgba(24,201,151,.28); border-radius:999px; background:rgba(24,201,151,.08); color:#159b76; font-size:.7rem; font-weight:800; white-space:nowrap; }
 .mobility-graph-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
@@ -605,7 +604,6 @@ h1 span { color: var(--accent); font-weight: 400; }
 
 .muted { color: var(--muted); font-size: 0.78rem; }
 
-/* Modal */
 .modal {
   position: fixed;
   inset: 0;
@@ -650,7 +648,6 @@ h1 span { color: var(--accent); font-weight: 400; }
   cursor: pointer;
 }
 
-/* Optical centering authority for X glyphs inside circular controls. */
 .modal-close,
 #pwaInstallDismiss,
 .mobile-more-sheet header button,
@@ -799,9 +796,6 @@ footer {
 }
 
 
-/* ------------------------------------------------------------
-   DriveOS v0.4 - OpenFreeMap / MapLibre
-   ------------------------------------------------------------ */
 
 .drive-map-section {
   margin: 8px 0 30px;
@@ -1036,9 +1030,6 @@ footer {
 }
 
 
-/* ------------------------------------------------------------
-   DriveOS v0.6 - Drive Replay + Spotify Artwork
-   ------------------------------------------------------------ */
 
 .replay-panel {
   margin: 0 0 30px;
@@ -1283,7 +1274,6 @@ footer {
 }
 
 
-/* DriveOS 1.1 - Spotify replay actions */
 
 .replay-spotify-actions {
   display: flex;
@@ -1337,7 +1327,6 @@ footer {
 }
 
 
-/* DriveOS 1.2 - album artwork everywhere */
 
 .song-artwork-shell,
 .song-artwork-placeholder {
@@ -1490,7 +1479,6 @@ footer {
 }
 
 
-/* DriveOS 1.2.5 - Replay uses the common song artwork component */
 
 .replay-artwork-link {
   display: block;
@@ -1528,9 +1516,6 @@ footer {
 }
 
 
-/* ------------------------------------------------------------
-   DriveOS 1.3.0 - Drive Library Search
-   ------------------------------------------------------------ */
 
 .drive-search-panel {
   margin-bottom: 18px;
@@ -1604,7 +1589,6 @@ footer {
   white-space: nowrap;
 }
 
-/* DriveOS 4.3 - privacy-safe share cards */
 .share-card-modal { z-index: 1200; }
 .share-card-modal-card { width: min(1240px, calc(100% - 30px)); }
 .share-card-loading { margin-top: 24px; padding: 28px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); }
@@ -1832,9 +1816,6 @@ footer {
 }
 
 
-/* ======================================================================
-   DriveOS 2.0 - Favorite Routes + Music by Location
-   ====================================================================== */
 
 .panel-description {
   margin: 5px 0 0;
@@ -2306,7 +2287,6 @@ footer {
 }
 
 
-/* DriveOS 2.0.1 - fix internal spacing on 2.0 feature panels */
 .favorite-routes-panel,
 .music-location-panel {
   padding: 24px;
@@ -2329,9 +2309,6 @@ footer {
 }
 
 
-/* =====================================================================
-   DriveOS 2.0.2 - Dark / Light appearance
-   ===================================================================== */
 
 .theme-switcher {
   display: inline-flex;
@@ -2377,13 +2354,11 @@ footer {
   line-height: 1;
 }
 
-/* The current DriveOS design remains the canonical dark theme. */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
 }
 
-/* ------------------------------- LIGHT ------------------------------- */
 
 :root[data-theme="light"] {
   color-scheme: light;
@@ -2396,7 +2371,6 @@ footer {
   --muted: #68798a;
   --soft: #40576b;
 
-  /* Keep the DriveOS cyan/green identity, but deepen it for light surfaces. */
   --accent: #0089ad;
   --accent-2: #16895f;
   --danger: #c94747;
@@ -2493,7 +2467,6 @@ footer {
   color: #8492a0;
 }
 
-/* Modal / detail surfaces */
 :root[data-theme="light"] .modal-backdrop {
   background: rgba(48,64,78,0.42);
 }
@@ -2511,7 +2484,6 @@ footer {
   background: #ffffff;
 }
 
-/* Search, filters and 2.0 intelligence panels */
 :root[data-theme="light"] .drive-search-box,
 :root[data-theme="light"] .drive-filter-field input,
 :root[data-theme="light"] .drive-filter-field select,
@@ -2558,7 +2530,6 @@ footer {
   background: rgba(22,137,95,0.07);
 }
 
-/* Map and MapLibre chrome */
 :root[data-theme="light"] .drive-map {
   background:
     radial-gradient(circle at 50% 50%, rgba(0,137,173,0.06), transparent 42%),
@@ -2591,7 +2562,6 @@ footer {
   border-color: rgba(255,255,255,0.96);
 }
 
-/* Replay */
 :root[data-theme="light"] .replay-panel {
   background: #ffffff;
 }
@@ -2618,7 +2588,6 @@ footer {
   box-shadow: 0 5px 15px rgba(37,56,71,0.20);
 }
 
-/* Artwork placeholders / supplemental location UI */
 :root[data-theme="light"] .song-artwork-placeholder,
 :root[data-theme="light"] .replay-artwork-fallback {
   color: var(--accent-2);
@@ -2629,7 +2598,6 @@ footer {
   background-color: transparent;
 }
 
-/* Scrollbars - supported by the embedded Chromium renderer. */
 :root[data-theme="light"] * {
   scrollbar-color: rgba(83,104,121,0.38) rgba(225,233,239,0.55);
 }
@@ -2648,9 +2616,6 @@ footer {
 }
 
 
-/* =====================================================================
-   DriveOS 2.0.3 - full dashboard origin / destination addresses
-   ===================================================================== */
 
 .dashboard-drive-card {
   grid-template-columns: repeat(5, minmax(92px, 1fr)) auto;
@@ -2716,7 +2681,6 @@ footer {
   background: rgba(239,245,248,0.72);
 }
 
-/* The dashboard gets the full route; the Drive Library keeps its compact line. */
 .dashboard-drive-card .drive-route {
   overflow: visible;
   text-overflow: clip;
@@ -2773,9 +2737,6 @@ footer {
 
 
 
-/* =====================================================================
-   DriveOS 3.0 - Ignition logo assembly sequence
-   ===================================================================== */
 
 body.ignition-active {
   overflow: hidden;
@@ -3354,9 +3315,6 @@ body:not(.ignition-active) .app-shell {
 
 
 
-/* =====================================================================
-   DRIVEOS 3.0 - ELECTRIC GLASS / VEHICLE INTELLIGENCE UI
-   ===================================================================== */
 
 :root {
   --v3-navy: #10283a;
@@ -3533,7 +3491,6 @@ h1 span {
   box-shadow: 0 0 0 5px rgba(25,201,135,.10);
 }
 
-/* Panels */
 .panel,
 .stat-card,
 .big-stat,
@@ -3584,7 +3541,6 @@ h1 span {
   color: #377084;
 }
 
-/* Tesla vehicle presentation */
 .vehicle-panel {
   overflow: hidden;
 }
@@ -3735,7 +3691,6 @@ h1 span {
   color: #66808c;
 }
 
-/* Spotify v3 */
 .spotify-panel {
   overflow: visible;
 }
@@ -3964,7 +3919,6 @@ h1 span {
   color: #71858f;
 }
 
-/* Recent Drives / Flight Recorder */
 .v3-flight-recorder {
   margin-top: 16px;
   padding: 24px 28px 26px;
@@ -4070,7 +4024,6 @@ h1 span {
   box-shadow: 0 5px 15px rgba(35,82,99,.08);
 }
 
-/* Intelligence status chips become white system cards */
 .v3-intelligence-grid {
   grid-template-columns: repeat(5, 1fr);
   gap: 12px;
@@ -4108,7 +4061,6 @@ h1 span {
   font-size: .95rem;
 }
 
-/* All secondary app pages inherit the new visual system */
 .page-heading h2,
 .analytics-panel h2,
 .timeline-panel h2,
@@ -4175,7 +4127,6 @@ h1 span {
   background: #eaf3f5;
 }
 
-/* Dark option: same v3 geometry, darker electric glass palette */
 :root[data-theme="dark"] {
   --bg: #071219;
   --panel: rgba(14,28,36,.91);
@@ -4395,7 +4346,6 @@ h1 span {
 }
 
 
-/* DriveOS 3.0.2 - new-computer Spotify recovery */
 .spotify-footer {
   display: flex;
   align-items: center;
@@ -4447,9 +4397,6 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DRIVEOS 3.0.3 - DASHBOARD COMPOSITION + INTERACTION POLISH
-   ===================================================================== */
 
 .drive-card[data-drive-card-id] {
   cursor: pointer;
@@ -4789,7 +4736,6 @@ h1 span {
 }
 
 
-/* DriveOS 3.0.4 HD dashboard hero */
 .vehicle-hero-visual {
   height: 255px !important;
   background:
@@ -4832,9 +4778,6 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.1 - Private Mobile PWA
-   ===================================================================== */
 
 .pwa-install-banner {
   position: sticky;
@@ -5286,12 +5229,7 @@ h1 span {
   }
 }
 
-/* =====================================================================
-   DriveOS 3.1.1 - iPhone layout correction
-   ===================================================================== */
 @media (max-width: 760px) {
-  /* The drive-detail sheet must be opaque. Semi-transparent desktop glass
-     allowed metrics above the replay panel to ghost through while scrolling. */
   .modal-card {
     background: #f5fafb !important;
   }
@@ -5308,8 +5246,6 @@ h1 span {
     z-index: 1;
   }
 
-  /* Replay header: artwork + track information on top, telemetry on its own
-     full-width row beneath. */
   .replay-now-playing {
     grid-template-columns: 82px minmax(0, 1fr) !important;
     grid-template-areas:
@@ -5507,8 +5443,6 @@ h1 span {
     line-height: 1.15 !important;
   }
 
-  /* Dashboard Spotify and recent-drive text should wrap naturally rather than
-     inheriting desktop ellipsis behavior at iPhone widths. */
   .v3-featured-copy,
   .v3-recent-copy,
   .dashboard-route-value,
@@ -5577,9 +5511,6 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.1.2 - mobile header + compact drive library
-   ===================================================================== */
 
 @media (max-width: 760px) {
   /* Safari can clip position:fixed descendants of backdrop-filtered
@@ -5606,8 +5537,6 @@ h1 span {
     margin-top: 0 !important;
   }
 
-  /* With the nav removed from the header, the top bar becomes a compact
-     DriveOS identity/status row instead of wasting vertical space. */
   .topbar {
     min-height: 58px !important;
   }
@@ -5617,9 +5546,6 @@ h1 span {
     height: 40px !important;
   }
 
-  /* Compact Drive Library cards.
-     Desktop uses one grid item per metric. On mobile that creates a giant
-     vertical stack. Arrange the metrics in two columns instead. */
   .drive-stack {
     gap: 12px !important;
   }
@@ -5688,14 +5614,10 @@ h1 span {
     line-height: 1.2 !important;
   }
 
-  /* Energy is the fifth metric; let it share the final row cleanly instead
-     of stretching the entire card. */
   .drive-card:not(.dashboard-drive-card) > .drive-stat:nth-child(6) {
     grid-column: 1 / 2 !important;
   }
 
-  /* The entire card is already clickable, so the desktop View drive button
-     is redundant on a phone and consumes a full extra row. */
   .drive-card:not(.dashboard-drive-card) > .view-drive-button {
     display: none !important;
   }
@@ -5716,8 +5638,6 @@ h1 span {
     color: #45cad5;
   }
 
-  /* Filter panel: retain comfortable controls but remove oversized vertical
-     gaps between fields. */
   .drive-search-panel {
     padding: 15px !important;
   }
@@ -5765,9 +5685,6 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.1.3 - city routes + Spotify mobile list fix
-   ===================================================================== */
 
 .dashboard-route-cities {
   min-width: 0;
@@ -5798,8 +5715,6 @@ h1 span {
 }
 
 @media (max-width: 760px) {
-  /* Dashboard routes are intentionally city-only on mobile. This keeps
-     the route recognizable without forcing street addresses to wrap. */
   .dashboard-route-cities {
     margin-top: 8px !important;
     gap: 7px !important;
@@ -5840,7 +5755,6 @@ h1 span {
     min-height: 55px !important;
   }
 
-  /* Make sure nothing in the featured block visually overlaps the list. */
   .v3-featured-art,
   .v3-featured-copy {
     align-self: start !important;
@@ -5862,11 +5776,7 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.1.4 - explicit light/dark surface separation
-   ===================================================================== */
 
-/* ---------- LIGHT THEME SURFACES ---------- */
 :root[data-theme="light"] .panel,
 :root[data-theme="light"] .stat-card,
 :root[data-theme="light"] .big-stat,
@@ -5914,7 +5824,6 @@ h1 span {
   border-color: rgba(33,83,101,.09) !important;
 }
 
-/* ---------- DARK THEME SURFACES ---------- */
 :root[data-theme="dark"] {
   --dark-surface-0: #071219;
   --dark-surface-1: #0b1c24;
@@ -5946,7 +5855,6 @@ h1 span {
   box-shadow: 0 18px 46px rgba(0,0,0,.22) !important;
 }
 
-/* Cards nested inside a dark parent should still have visible separation. */
 :root[data-theme="dark"] .drive-card,
 :root[data-theme="dark"] .favorite-route-card,
 :root[data-theme="dark"] .stat-card,
@@ -5955,7 +5863,6 @@ h1 span {
     linear-gradient(145deg, rgba(21,50,61,.96), rgba(12,32,41,.98)) !important;
 }
 
-/* Inputs and filter controls are true dark controls in dark mode. */
 :root[data-theme="dark"] .drive-search-box,
 :root[data-theme="dark"] .drive-filter-field input,
 :root[data-theme="dark"] .drive-filter-field select,
@@ -5981,14 +5888,12 @@ h1 span {
   opacity: 1 !important;
 }
 
-/* Native selects/options need their own dark palette. */
 :root[data-theme="dark"] select,
 :root[data-theme="dark"] option {
   background-color: #0d222b !important;
   color: var(--dark-text) !important;
 }
 
-/* Secondary action surfaces */
 :root[data-theme="dark"] .secondary-button,
 :root[data-theme="dark"] .view-drive-button,
 :root[data-theme="dark"] .favorite-route-button,
@@ -6009,7 +5914,6 @@ h1 span {
   border-color: rgba(80,220,213,.32) !important;
 }
 
-/* Vehicle metrics and other inset tiles */
 :root[data-theme="dark"] .metric-grid,
 :root[data-theme="dark"] .detail-metric,
 :root[data-theme="dark"] .replay-vehicle-state > div,
@@ -6023,7 +5927,6 @@ h1 span {
   border-color: rgba(105,205,215,.10) !important;
 }
 
-/* Typography: prevent pale-on-pale inherited colors. */
 :root[data-theme="dark"] h1,
 :root[data-theme="dark"] h2,
 :root[data-theme="dark"] h3,
@@ -6064,7 +5967,6 @@ h1 span {
   color: var(--dark-muted) !important;
 }
 
-/* Ranking/list separators */
 :root[data-theme="dark"] .rank-row,
 :root[data-theme="dark"] .track-rank-row,
 :root[data-theme="dark"] .v3-recent-track,
@@ -6079,7 +5981,6 @@ h1 span {
   background: rgba(28,62,73,.54) !important;
 }
 
-/* Timeline needs dark chart canvas rather than a light slab. */
 :root[data-theme="dark"] .timeline {
   background: transparent !important;
 }
@@ -6092,20 +5993,17 @@ h1 span {
   background: linear-gradient(180deg, #20d29f, #14b7cc) !important;
 }
 
-/* Favorite-route highlighted card should stay dark, not become a light card. */
 :root[data-theme="dark"] .favorite-route-card {
   background:
     linear-gradient(135deg, rgba(20,58,70,.98), rgba(12,38,48,.98)) !important;
   border-color: rgba(54,202,201,.18) !important;
 }
 
-/* Maps retain their own map tiles; only surrounding controls are themed. */
 :root[data-theme="dark"] .map-music-nearby,
 :root[data-theme="dark"] .map-popup-track {
   color: var(--dark-text) !important;
 }
 
-/* Mobile/PWA bottom navigation should follow the selected theme. */
 @media (max-width: 760px) {
   :root[data-theme="light"] .main-nav.mobile-nav-portal {
     background: rgba(249,252,253,.94) !important;
@@ -6128,11 +6026,7 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.1.5 - final dark-theme surface fixes
-   ===================================================================== */
 
-/* Theme-specific Model 3 artwork. Never tint the white car with CSS. */
 .vehicle-car-dark {
   display: none !important;
 }
@@ -6169,7 +6063,6 @@ h1 span {
   border-radius: inherit !important;
 }
 
-/* CONNECTED / disconnected state pill gets independent light/dark surfaces. */
 :root[data-theme="light"] .status-pill {
   background: rgba(255,255,255,.88) !important;
   border-color: rgba(25,201,135,.18) !important;
@@ -6213,13 +6106,8 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.1.6 - mobile replay telemetry correction
-   ===================================================================== */
 
 @media (max-width: 760px) {
-  /* Each telemetry cell owns its own horizontal space. Time gets a little
-     extra room because a full 12-hour clock string is the widest value. */
   .replay-vehicle-state {
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr) !important;
     gap: 10px !important;
@@ -6234,8 +6122,6 @@ h1 span {
     justify-content: flex-start !important;
   }
 
-  /* Only the direct child span is the field label. The old broad selector
-     also styled #replaySpeed and #replayBattery inside <strong>. */
   .replay-vehicle-state > div > span {
     display: block !important;
     width: 100% !important;
@@ -6257,8 +6143,6 @@ h1 span {
     overflow: visible !important;
   }
 
-  /* These are value spans, not labels. Keep the numeric value and unit
-     together as normal inline text. */
   .replay-vehicle-state > div > strong > span {
     display: inline !important;
     width: auto !important;
@@ -6294,9 +6178,6 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.1.7 - verified mobile replay telemetry layout
-   ===================================================================== */
 
 .replay-telemetry-cell {
   min-width: 0;
@@ -6395,9 +6276,6 @@ h1 span {
 }
 
 
-/* =====================================================================
-   DriveOS 3.2 - Friendly Places, Charging History, Monthly Recap
-   ===================================================================== */
 
 .place-names-panel,
 .charging-panel,
@@ -6650,7 +6528,6 @@ h1 span {
   .recap-month-control select { min-width: 0; width: 100%; font-size: 16px; }
 }
 
-/* DriveOS command palette */
 .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 .command-palette-trigger { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 9px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.035); color: var(--muted); cursor: pointer; }
 .command-palette-trigger:hover { border-color: rgba(11,169,190,.34); background: rgba(11,169,190,.08); color: var(--text); }
@@ -6731,7 +6608,6 @@ h1 span {
   :root[data-theme="dark"] .vehicle-charge-summary .battery-number small { color: #83a8b4 !important; }
 }
 
-/* Local dashboard customization */
 .dashboard-customize-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 0 2px; }
 .dashboard-customize-bar > div { display: grid; gap: 4px; }
 .dashboard-customize-bar > div > span { color: var(--muted); font-size: .67rem; }
@@ -6814,7 +6690,6 @@ h1 span {
 .dashboard-size-wide.spotify-panel .v3-recent-column { display: grid; }
 .dashboard-size-wide.spotify-panel .v3-recent-column + .v3-recent-column { padding-left: 16px; border-left: 1px solid rgba(33,83,101,.10); }
 
-/* Dashboard insight and action widgets */
 .today-driving-widget, .drive-soundtrack-widget, .quick-actions-widget { padding: 22px; min-height: 300px; }
 .dashboard-widget-symbol { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(25,201,135,.22); border-radius: 13px; background: rgba(25,201,135,.08); color: var(--accent-2); font-size: 1.2rem; font-weight: 900; }
 .soundtrack-symbol { color: #20c985; }
@@ -6972,7 +6847,6 @@ h1 span {
   :root[data-theme="dark"] .vehicle-location-heading, :root[data-theme="dark"] .vehicle-location-marker { filter: none; }
 }
 
-/* DriveOS perceived-performance containment */
 #allDrives .drive-card,
 #chargingHistory .charge-session-card,
 #placeNamesList .place-name-row,
@@ -6982,7 +6856,6 @@ h1 span {
   content-visibility: auto;
   contain-intrinsic-size: 120px;
 }
-/* DriveOS honest loading states */
 .driveos-loading-region {
   position: relative !important;
   isolation: isolate;
@@ -7058,7 +6931,6 @@ h1 span {
     50% { opacity: 1; }
   }
 }
-/* DriveOS Drive Timeline */
 .drive-timeline-heading{align-items:flex-end}
 .timeline-range-control{display:flex;gap:8px;flex-wrap:wrap}
 .timeline-range-button.active{border-color:currentColor;font-weight:800}
@@ -7099,7 +6971,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   .drive-timeline-action{display:none}
 }
 
-/* Compact header for smaller desktop / tablet windows */
 @media (min-width: 761px) and (max-width: 1150px) {
   .topbar {
     grid-template-columns: auto 1fr !important;
@@ -7146,7 +7017,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* DriveOS mobile header + five-item bottom navigation */
 @media (max-width: 760px) {
   .main-nav,
   .main-nav.mobile-nav-portal {
@@ -7237,7 +7107,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* Touch / narrow-window dashboard widget reordering */
 .dashboard-editing .dashboard-widget-drag-handle {
   touch-action: none;
   user-select: none;
@@ -7271,7 +7140,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* Compact mobile dashboard customizer */
 @media (max-width: 760px) {
   .dashboard-customizer {
     padding: 10px !important;
@@ -7376,7 +7244,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* Mobile customizer: drag handle is enough; hide move arrows */
 @media (max-width: 760px) {
   .dashboard-customizer-row .dashboard-order-buttons {
     display: none !important;
@@ -7408,7 +7275,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* Mobile customizer overlap fix: compact two-line rows */
 @media (max-width: 760px) {
   .dashboard-customizer-row {
     grid-template-columns: 24px minmax(0, 1fr) 104px !important;
@@ -7492,7 +7358,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* Desktop-only dashboard customizer redesign */
 @media (min-width: 761px) {
   .dashboard-customizer {
     padding: 16px !important;
@@ -7567,7 +7432,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* At narrower desktop/tablet widths, use a single compact column. */
 @media (min-width: 761px) and (max-width: 980px) {
   .dashboard-customizer-list {
     grid-template-columns: 1fr !important;
@@ -7575,9 +7439,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
 }
 
 
-/* ============================================================
-   Background API activity monitor
-   ============================================================ */
 
 .background-activity-monitor {
   position: fixed;
@@ -7675,7 +7536,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* JourneyDeck launch sequence ------------------------------------------------ */
 .journeydeck-launch {
   isolation: isolate;
   color: #eefbf8;
@@ -7759,7 +7619,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
 @media (max-width: 640px) { .jd-launch-lockup { display: grid; gap: 14px; }.jd-route-mark { width: 78px; height: 78px; }.jd-launch-title { font-size: clamp(3.15rem, 15vw, 4.7rem); }.jd-launch-corner { bottom: max(19px, env(safe-area-inset-bottom)); }.jd-launch-corner-left { left: 20px; }.jd-launch-corner-right { right: 20px; }.jd-launch-kicker { font-size: .56rem; }.jd-loading-panel { margin-top: 31px; } }
 @media (prefers-reduced-motion: reduce) { .journeydeck-launch *, .journeydeck-launch::before, .journeydeck-launch::after { animation-duration: 1ms !important; animation-delay: 0ms !important; } }
 
-/* JourneyDeck header: make the full identity fit beside navigation at every desktop width. */
 .topbar .brand { min-width: max-content; gap: 11px; }
 .topbar .brand-logo { width: 46px; height: 46px; border-radius: 14px; background: #0b2b40; }
 .topbar .brand h1 { font-size: clamp(1.24rem, 1.5vw, 1.7rem); letter-spacing: .075em; font-weight: 720; white-space: nowrap; }
@@ -7775,7 +7634,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
 
 @media (max-width: 760px) { .topbar .brand { min-width: 0; }.topbar .brand-logo { width: 40px; height: 40px; }.topbar .brand h1 { font-size: clamp(1.08rem, 5vw, 1.35rem) !important; letter-spacing: .055em !important; } }
 
-/* Keep the five-view switcher above every mobile surface, including maps and PWA standalone mode. */
 @media (max-width: 760px) {
   .main-nav.mobile-nav-portal,
   body > .main-nav {
@@ -7835,7 +7693,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* JourneyDeck 5.2.2 mobile density and theme polish */
 @media (max-width: 760px) {
   .app-shell { padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important; }
 
@@ -7926,7 +7783,7 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
 :root[data-theme="light"] .live-drive-telemetry > div { border-color: rgba(33,83,101,.09); }
 :root[data-theme="light"] .live-drive-gps { color: #315e69; text-shadow: 0 1px 8px rgba(255,255,255,.8); }
 :root[data-theme="light"] .live-drive-safety { background: #eef6f7; color: var(--muted); }
-+/* JourneyDeck 5.1 - Live Drive */
++
 .nav-button-live { display: inline-flex; align-items: center; gap: 7px; }
 .nav-mobile-icon,.nav-mobile-label,.mobile-more-button,.mobile-more-menu { display: none; }
 .nav-live-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; box-shadow: none; }
@@ -8025,7 +7882,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   .nav-button-live.active .nav-live-dot,.live-drive-shell.is-driving .live-drive-connection { animation: none; }
 }
 
-/* Final mobile navigation authority: four readable destinations plus More. */
 @media (max-width: 760px) {
   .main-nav.mobile-nav-portal,
   body > .main-nav { grid-template-columns: repeat(4,minmax(0,1fr)) !important; }
@@ -8083,12 +7939,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
 :root[data-theme="dark"] .desktop-wife-preview { border-color:rgba(255,139,190,.46); background:rgba(225,103,156,.17); color:#ff9bc6; }
 :root[data-theme="dark"] .desktop-wife-preview:hover,:root[data-theme="dark"] .desktop-wife-preview:focus-visible { background:rgba(225,103,156,.27); color:#ffd3e6; }
 
-/* =====================================================================
-   JourneyDeck 5.2.6 - owner mobile bottom navigation
-   Keep Full Mode as calm and legible as Wife Mode on phones and tablets. The nav is
-   intentionally a single, lightly translucent bottom bar rather than a
-   floating pill, while More preserves access to the secondary views.
-   ===================================================================== */
 @media (max-width: 1120px) {
   .desktop-mobile-preview,.desktop-wife-preview { display:none !important; }
   .app-shell {
@@ -8233,8 +8083,6 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
-/* Dark desktop header contrast. Keep secondary controls quieter than the
-   active destination, but bright enough to remain immediately readable. */
 @media (min-width: 1121px) {
   :root[data-theme="dark"] .main-nav .nav-button {
     color: #a9c5cf !important;
@@ -8285,7 +8133,6 @@ body > .main-nav .nav-button-live .nav-live-dot {
   animation: none !important;
 }
 
-/* JourneyDeck owner-only Data Health Center */
 .header-sign-out { border:1px solid rgba(239,68,68,.28); border-radius:999px; background:transparent; color:#ef7777; padding:8px 12px; font-weight:800; cursor:pointer; }
 .data-health-heading { align-items:end; }
 .data-health-overall { display:flex; align-items:center; gap:14px; margin-bottom:18px; padding:18px 20px; border:1px solid var(--line); border-radius:20px; background:var(--panel); box-shadow:var(--shadow); }
@@ -8314,7 +8161,6 @@ body > .main-nav .nav-button-live .nav-live-dot {
 @media (max-width:1120px) { .header-sign-out { display:none; }.data-health-grid,.data-health-detail-grid { grid-template-columns:1fr; }.data-health-alerts { grid-template-columns:1fr; }.data-health-actions { align-items:stretch; flex-direction:column; }.data-health-actions > div:last-child { display:grid; grid-template-columns:1fr 1fr; }.data-health-actions a { justify-content:center; }.mobile-more-grid .mobile-sign-out { border-color:rgba(239,68,68,.2); color:#ef7777; }.mobile-more-grid .mobile-sign-out > span { background:rgba(239,68,68,.1); color:#ef7777; } }
 @media (max-width:560px) { .data-health-heading { align-items:stretch; }.data-health-heading .secondary-button { width:100%; }.data-health-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.data-health-card dl div { display:block; }.data-health-card dd { margin-top:3px; text-align:left; }.data-health-actions > div:last-child { grid-template-columns:1fr; } }
 
-/* Journey collections */
 .journey-collections-panel { margin-top:18px; padding:24px; }
 .journey-collections-panel .panel-heading,
 .journey-collections-panel .panel-heading > div,
@@ -8401,9 +8247,6 @@ textarea {
   line-height: 1;
 }
 
-/* The desktop header intentionally uses two calm rows. The complete set of
-   owner navigation and utility controls cannot fit inside the 1580px shell
-   without wrapping individual labels or clipping the session controls. */
 @media (min-width: 1121px) {
   .topbar {
     grid-template-columns: max-content minmax(0, 1fr) !important;
@@ -8703,7 +8546,6 @@ textarea {
   }
 }
 
-/* JourneyDeck 5.9.3: final mobile navigation and collection action authority. */
 @media (max-width:760px) {
   .app-shell { padding-bottom:calc(52px + env(safe-area-inset-bottom)) !important; }
   .main-nav.mobile-nav-portal,
@@ -8763,7 +8605,6 @@ textarea {
   .pull-refresh-indicator, .pull-refresh-icon { transition:none; }
 }
 
-/* Cinematic five-button mobile navigation shared by local, Tailnet, and production. */
 @media (max-width:767px) {
   :root .app-shell {
     padding-bottom:calc(102px + env(safe-area-inset-bottom)) !important;
@@ -8915,7 +8756,6 @@ textarea {
   :root body > .main-nav .nav-button { transition:none !important; }
 }
 
-/* Music is my life — cinematic Spotify dashboard */
 .music-life-view {
   --music-card:rgba(11,8,25,.9);
   --music-border:rgba(156,105,194,.24);
@@ -9200,7 +9040,6 @@ textarea {
 
 @media (prefers-reduced-motion:reduce) { .music-waveform i { animation:none; } }
 
-/* Pull-to-refresh replaces the utility strip on phone-sized layouts. */
 @media (max-width:767px) {
   .topbar-right {
     display:none !important;
