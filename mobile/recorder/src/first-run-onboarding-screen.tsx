@@ -29,7 +29,6 @@ import { FirstRunWelcomeScreen, FIRST_RUN_ARTWORK } from './first-run-welcome-sc
 const APPLE_MUSIC_ICON = require('../assets/apple-music-icon.png');
 const SPOTIFY_ICON = require('../assets/spotify-icon-white.png');
 
-/** V4 asks for Home and Work right after location access. */
 export const PLACES_STEP_ENABLED = V4_REDESIGN_ENABLED;
 const STEP_ORDER: FirstRunStage[] = ['welcome', 'recording', 'location', ...(PLACES_STEP_ENABLED ? ['places' as const] : []), 'music', 'membership',
   ...(TESSIE_INTEGRATION_ENABLED ? ['tessie' as const] : []), ...(ROADS_STEP_ENABLED ? ['photos' as const] : []), 'instructions'];
@@ -246,7 +245,6 @@ function MembershipStageBackdrop() {
   return <View style={[recordingStyles.screen, { backgroundColor: theme.palette.page }]} />;
 }
 
-/** Optional Tesla step: ask first, and show Tessie setup only to people who drive a Tesla. */
 function TessieIntroScreen({ profileId, membershipTier, onUpgrade, onChanged, onContinue, onBack }: {
   profileId: string; membershipTier: 'free' | 'paid'; onUpgrade: () => void; onChanged: () => void; onContinue: () => void; onBack?: () => void;
 }) {
@@ -368,7 +366,6 @@ export function FirstRunOnboardingScreen(props: Props) {
   return <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.page, overflow: 'hidden' }]}>
     <ExpoImage source={FIRST_RUN_ARTWORK[theme.id]} contentFit="cover" accessible={false} style={StyleSheet.absoluteFill} />
     <LinearGradient pointerEvents="none" colors={V4_PHONE ? [alpha(palette.page, 0.35), alpha(palette.page, 0.62), alpha(palette.page, 0.9), palette.page] : theme.id === 'redline' ? [`${palette.page}00`, `${palette.page}08`, `${palette.page}99`, palette.page] : [`${palette.page}33`, `${palette.page}55`, `${palette.page}f5`, palette.page]}
-      // V4: a steady scrim so body text stays readable over bright skies in every theme.
       locations={V4_PHONE ? [0, 0.3, 0.62, 1] : theme.id === 'redline' ? [0, 0.48, 0.80, 1] : [0, 0.25, 0.65, 1]} style={StyleSheet.absoluteFill} />
     <Animated.View style={[recordingStyles.screen, contentStyle]} pointerEvents={transitioning || visibleStage !== props.stage ? 'none' : 'auto'}
       accessibilityElementsHidden={transitioning} importantForAccessibility={transitioning ? 'no-hide-descendants' : 'auto'}>
