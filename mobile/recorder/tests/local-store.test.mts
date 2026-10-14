@@ -1,11 +1,3 @@
-/**
- * local-store.test.mts
- *
- * Structural and logic tests for the on-device master SQLite store.
- * Follows the same pattern as other test files in this project:
- * file-text assertions + logic verification via Node test runner.
- */
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -18,10 +10,6 @@ const placeMatchingSrc = readFileSync(resolve(__dir, '../src/place-matching.ts')
 const hardeningSrc = readFileSync(resolve(__dir, '../src/database-hardening.ts'), 'utf8');
 const playbackDedupeSrc = readFileSync(resolve(__dir, '../src/music-playback-dedupe.ts'), 'utf8');
 
-// ============================================================
-// 1. Type exports
-// ============================================================
-
 assert.match(src, /export type LocalUserId/, 'exports LocalUserId type');
 assert.match(src, /export type LocalUser\s*=/, 'exports LocalUser type');
 assert.match(src, /export type LocalJourney\s*=/, 'exports LocalJourney type');
@@ -32,20 +20,12 @@ assert.match(src, /export type LocalCollection\s*=/, 'exports LocalCollection ty
 assert.match(src, /export type LocalMemory\s*=/, 'exports LocalMemory type');
 assert.match(src, /export type LocalAtlasSnapshot\s*=/, 'exports LocalAtlasSnapshot type');
 
-// ============================================================
-// 2. Database initialisation
-// ============================================================
-
 assert.match(src, /prepareSQLiteConnectionForStartup\(db\)/, 'installs a busy timeout before requesting WAL mode');
 assert.match(hardeningSrc, /PRAGMA journal_mode = WAL/, 'enables WAL mode when the database still needs it');
 assert.match(hardeningSrc, /PRAGMA foreign_keys = ON/, 'enables foreign keys on every writable connection');
 assert.match(src, /PRAGMA user_version/, 'uses additive migration via user_version');
 assert.match(src, /MIGRATIONS/, 'migration array exists');
 assert.match(src, /withTransactionSync/, 'migrations run inside transactions');
-
-// ============================================================
-// 3. Schema — table definitions
-// ============================================================
 
 assert.match(src, /CREATE TABLE IF NOT EXISTS local_users/, 'creates local_users table');
 assert.match(src, /CREATE TABLE IF NOT EXISTS local_journeys/, 'creates local_journeys table');
@@ -56,34 +36,17 @@ assert.match(src, /CREATE TABLE IF NOT EXISTS local_collections/, 'creates local
 assert.match(src, /CREATE TABLE IF NOT EXISTS local_memories/, 'creates local_memories table');
 assert.match(src, /CREATE TABLE IF NOT EXISTS local_atlas_snapshots/, 'creates local_atlas_snapshots table');
 
-// ============================================================
-// 4. Schema — privacy-critical columns
-// ============================================================
-
 assert.match(src, /apple_subject TEXT UNIQUE/, 'local_users has apple_subject (Sign in with Apple)');
 assert.match(src, /radius_meters/, 'local_places has privacy masking radius');
 assert.match(src, /synced_to_cloud INTEGER NOT NULL DEFAULT 0/, 'sync flag defaults to unsynced');
 assert.match(src, /kind TEXT NOT NULL CHECK\(kind IN \('home','work','custom','geocoded'\)\)/, 'place kind is constrained');
 
-// ============================================================
-// 5. Multi-user isolation: user_id FK on all major tables
-// ============================================================
-
 assert.match(src, /user_id TEXT NOT NULL REFERENCES local_users\(id\) ON DELETE CASCADE/, 'journeys cascade-delete on user removal');
-// Check at least 3 tables use user_id FK (one match suffices since they all use same pattern)
 const userFkCount = (src.match(/user_id TEXT NOT NULL REFERENCES local_users\(id\)/g) ?? []).length;
 assert.ok(userFkCount >= 5, `at least 5 tables have user_id FK, found ${userFkCount}`);
 
-// ============================================================
-// 6. GPS points privacy (the local master owns exact GPS; private CloudKit backup is separate)
-// ============================================================
-
 assert.match(src, /journey_id TEXT NOT NULL REFERENCES local_journeys\(id\) ON DELETE CASCADE/, 'GPS points deleted when journey deleted');
 assert.match(src, /PRIMARY KEY \(journey_id, sequence\)/, 'GPS points have composite PK');
-
-// ============================================================
-// 7. CRUD function exports
-// ============================================================
 
 assert.match(src, /export function initializeLocalStore/, 'exports initializeLocalStore');
 assert.match(src, /export function ensureLocalUser/, 'exports ensureLocalUser');
@@ -105,47 +68,23 @@ assert.match(src, /export function listMemories/, 'exports listMemories');
 assert.match(src, /export function writeAtlasSnapshot/, 'exports writeAtlasSnapshot');
 assert.match(src, /export function readAtlasSnapshot/, 'exports readAtlasSnapshot');
 
-// ============================================================
-// 8. CloudKit sync helpers
-// ============================================================
-
 assert.match(src, /export function journeysPendingSync/, 'exports journeysPendingSync');
 assert.match(src, /export function markJourneysSynced/, 'exports markJourneysSynced');
 assert.match(src, /export function markMusicEntriesSynced/, 'exports markMusicEntriesSynced');
-
-// ============================================================
-// 9. Diagnostics
-// ============================================================
 
 assert.match(src, /export function localStoreDiagnostics/, 'exports localStoreDiagnostics');
 assert.match(src, /schemaVersion/, 'diagnostics include schema version');
 assert.match(src, /pendingSyncCount/, 'diagnostics include pending sync count');
 
-// ============================================================
-// 10. Upsert conflict resolution (ON CONFLICT DO UPDATE)
-// ============================================================
-
 const upsertCount = (src.match(/ON CONFLICT\(id\) DO UPDATE SET/g) ?? []).length;
 assert.ok(upsertCount >= 4, `at least 4 tables use upsert, found ${upsertCount}`);
-
-// ============================================================
-// 11. Input bounds / guard function
-// ============================================================
 
 assert.match(src, /function guard/, 'guard helper for numeric bounds');
 assert.match(src, /guard\(.*-90, 90\)/, 'latitude clamped to -90..90');
 assert.match(src, /guard\(.*-180, 180\)/, 'longitude clamped to -180..180');
 
-// ============================================================
-// 12. Pagination pattern
-// ============================================================
-
 assert.match(src, /limit \+ 1/, 'pagination uses limit+1 probe for hasMore');
 assert.match(src, /nextCursor/, 'pagination returns nextCursor');
-
-// ============================================================
-// 13. Deduplication of music entries
-// ============================================================
 
 assert.match(src, /findDuplicatePlayback/, 'music writes use playback-aware deduplication');
 assert.match(playbackDedupeSrc, /knownDuration \+ PLAYBACK_TIMESTAMP_GRACE_MS/, 'music dedup spans the song duration and timestamp uncertainty');
@@ -156,24 +95,12 @@ assert.match(src, /export function enrichMusicEntriesWithArtwork/, 'recent Apple
 assert.match(src, /LOWER\(TRIM\(track\)\)=LOWER\(\?\).*LOWER\(TRIM\(artist\)\)=LOWER\(\?\)/s, 'artwork repair matches the stored title and artist locally');
 assert.match(src, /artwork_url IS NULL OR \?=1/, 'an OTA can deliberately replace every matching stored cover');
 
-// ============================================================
-// 14. GeoJSON route output
-// ============================================================
-
 assert.match(src, /'LineString'/, 'getJourneyRoute returns GeoJSON LineString');
 assert.match(src, /\[p\.longitude, p\.latitude\]/, 'GeoJSON uses [lng, lat] order');
-
-// ============================================================
-// 15. Haversine distance check in findCachedPlace
-// ============================================================
 
 assert.match(placeMatchingSrc, /6_371_000/, 'haversine uses Earth radius in meters');
 assert.match(placeMatchingSrc, /Math\.asin/, 'haversine uses asin');
 assert.match(src, /export function findNamedPlace/, 'named places support nearby journey endpoint propagation');
-
-// ============================================================
-// 16. Multi-user writes and sync acknowledgements enforce ownership
-// ============================================================
 
 assert.match(src, /function assertRowOwnership/, 'central ownership guard exists for ID-based upserts');
 for (const table of ['local_journeys', 'local_music_entries', 'local_places', 'local_collections', 'local_memories']) {
@@ -181,10 +108,6 @@ for (const table of ['local_journeys', 'local_music_entries', 'local_places', 'l
 }
 assert.match(src, /UPDATE local_journeys SET synced_to_cloud=1 WHERE user_id=\? AND id IN/, 'journey acknowledgements are scoped to the active user');
 assert.match(src, /UPDATE local_music_entries SET synced_to_cloud=1 WHERE user_id=\? AND id IN/, 'music acknowledgements are scoped to the active user');
-
-// ============================================================
-// 17. Completed recorder sessions feed the master local store
-// ============================================================
 
 assert.match(recorderStorageSrc, /function mirrorCompletedSessionToLocalStore/, 'completed recordings have a local-master ingest path');
 assert.match(recorderStorageSrc, /upsertJourney\(/, 'completed recordings persist a local journey summary');

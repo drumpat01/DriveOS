@@ -1,10 +1,3 @@
-﻿/**
- * cloudkit-sync.test.mts
- * 
- * Unit tests for the CloudKit sync engine, serialization mappers,
- * and Last-Write-Wins (LWW) conflict resolution.
- */
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -21,9 +14,6 @@ const app = readFileSync(resolve(__dir, '../App.tsx'), 'utf8');
 const completionJobs = readFileSync(resolve(__dir, '../src/completion-jobs.ts'), 'utf8');
 const memoryModel = readFileSync(resolve(__dir, '../src/memory-model.ts'), 'utf8');
 
-// ============================================================
-// 1. Exports
-// ============================================================
 assert.match(src, /export type CloudKitRecordType/, 'exports CloudKitRecordType');
 assert.match(src, /export interface CloudKitRecord/, 'exports CloudKitRecord');
 assert.match(src, /export function journeyToCKRecord/, 'exports journeyToCKRecord');
@@ -45,9 +35,6 @@ assert.match(src, /markerToCKRecord/, 'syncs Journey Marker metadata');
 assert.match(src, /markerPhotoToCKRecord/, 'syncs Marker photos as private assets');
 assert.match(src, /upsertMarkerPhotoFromPrivateCloud/, 'restores Marker photo assets into app-owned storage');
 
-// ============================================================
-// 2. Pure logic tests: LWW Conflict Resolution
-// ============================================================
 function resolveConflict<T extends { updatedAt: string }>(local: T, remote: T): T {
   const localTime = Date.parse(local.updatedAt) || 0;
   const remoteTime = Date.parse(remote.updatedAt) || 0;
@@ -58,22 +45,16 @@ const localItem = { id: '1', name: 'Local Version', updatedAt: '2026-08-26T10:00
 const olderRemoteItem = { id: '1', name: 'Old Remote Version', updatedAt: '2026-08-26T09:00:00Z' };
 const newerRemoteItem = { id: '1', name: 'Newer Remote Version', updatedAt: '2026-08-26T11:00:00Z' };
 
-// Test 1: Local is newer -> Keep local
 const winLocal = resolveConflict(localItem, olderRemoteItem);
 assert.equal(winLocal.name, 'Local Version', 'Keeps newer local version');
 
-// Test 2: Remote is newer -> Pick remote
 const winRemote = resolveConflict(localItem, newerRemoteItem);
 assert.equal(winRemote.name, 'Newer Remote Version', 'Picks newer remote version');
 
-// Test 3: Same timestamp -> Remote wins (deterministic tie-break)
 const sameTimeRemote = { id: '1', name: 'Tie Remote Version', updatedAt: '2026-08-26T10:00:00Z' };
 const winTie = resolveConflict(localItem, sameTimeRemote);
 assert.equal(winTie.name, 'Tie Remote Version', 'Resolves timestamp tie deterministically');
 
-// ============================================================
-// 3. Structural checks on Privacy and Data boundaries
-// ============================================================
 assert.match(src, /recordName: `journey_\${j\.id}`/, 'recordName follows consistent naming scheme');
 assert.match(src, /syncedToCloud: 1/, 'remote records mark local syncedToCloud flag');
 assert.doesNotMatch(src, /startLat: j\.startLat|startLng: j\.startLng|endLat: j\.endLat|endLng: j\.endLng/, 'CloudKit payload never contains exact journey endpoints');
@@ -84,9 +65,6 @@ assert.match(src, /getJourney\(this\.userId, remoteJourney\.id\)/, 'conflicts ar
 assert.match(src, /syncedToCloud: 1/, 'downloaded winners remain acknowledged instead of being immediately re-queued');
 assert.match(src, /priority: Record<CloudKitRecordType, number>[\s\S]*Journey: 0, RouteArchive: 1, JourneyEdit: 2, MusicEntry: 3/, 'ingests journey summaries and complete edit operations before music records that reference them');
 
-// ============================================================
-// 4. Real private CloudKit transport
-// ============================================================
 assert.match(transport, /Crypto\.digestStringAsync\(Crypto\.CryptoDigestAlgorithm\.SHA256/, 'hashes the local profile scope before native transport');
 assert.match(readFileSync(resolve(__dir, '../src/private-cloud-profile.ts'), 'utf8'), /user\.appleSubject \? `apple:\$\{user\.appleSubject\}` : `local:\$\{user\.id\}`/, 'uses stable Apple identity for cross-device zone convergence');
 assert.match(transport, /pullCloudKitChanges[\s\S]*pushCloudKitRecords/, 'pulls before pushing for deterministic conflict handling');

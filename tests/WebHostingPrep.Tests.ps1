@@ -39,10 +39,6 @@ try {
 
     Import-Module $ConfigModule -Force
 
-    # --------------------------------------------------------
-    # Desktop defaults must remain unchanged.
-    # --------------------------------------------------------
-
     $Desktop = Get-DriveOSRuntimeConfiguration -AppRoot $Root
 
     Assert-Equal `
@@ -81,10 +77,6 @@ try {
         $Desktop.SessionHours `
         24 `
         "Default session duration changed unexpectedly."
-
-    # --------------------------------------------------------
-    # Web mode overrides.
-    # --------------------------------------------------------
 
     $env:DRIVEOS_MODE = "web"
     $env:PORT = "10000"
@@ -131,10 +123,6 @@ try {
         $Web.SessionHours `
         12 `
         "Web session duration override was not applied."
-
-    # --------------------------------------------------------
-    # Invalid configuration should fail closed.
-    # --------------------------------------------------------
 
     $env:DRIVEOS_MODE = "internet"
 
@@ -199,10 +187,6 @@ try {
         $InvalidSessionRejected `
         "Invalid session duration values must be rejected."
 
-    # --------------------------------------------------------
-    # Hosted health endpoint contract.
-    # --------------------------------------------------------
-
     $ServerPath = Join-Path $Root "DriveOS-Server.ps1"
     $ServerSource = Get-Content $ServerPath -Raw
 
@@ -229,10 +213,6 @@ try {
     Assert-True `
         (-not ($HealthRouteSource -match 'Get-OverallStatus|Get-VehicleSummary|Get-SpotifySummary')) `
         "/healthz must not call provider status checks."
-
-    # --------------------------------------------------------
-    # Desktop and web startup security boundaries.
-    # --------------------------------------------------------
 
     Assert-True `
         ($ServerSource -match '\$RuntimeConfig\.IsDesktop') `
@@ -263,10 +243,6 @@ try {
         "Desktop local-session protection must remain in place."	
 
 
-    # --------------------------------------------------------
-    # HTTP response headers for hosted authentication.
-    # --------------------------------------------------------
-
     Assert-True `
         ($ServerSource -match '\[hashtable\]\$AdditionalHeaders') `
         "HTTP responses must support additional response headers."
@@ -283,10 +259,6 @@ try {
         ($ServerSource -match '\$ExtraHeaderText') `
         "Additional response headers must be emitted by Send-HttpResponse."
 
-
-    # --------------------------------------------------------
-    # Hosted login/session routing contract.
-    # --------------------------------------------------------
 
     Assert-True `
         ($ServerSource -match '"/api/auth/login"') `

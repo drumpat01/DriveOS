@@ -38,10 +38,6 @@ $OriginalEncryptionKey = $env:DRIVEOS_ENCRYPTION_KEY
 try {
     Import-Module $AuthModule -Force
 
-    # --------------------------------------------------------
-    # Password hashing and verification.
-    # --------------------------------------------------------
-
     $CorrectPassword = ConvertTo-SecureString `
         "DriveOS-Test-Password-2026!" `
         -AsPlainText `
@@ -70,10 +66,6 @@ try {
         (-not (Test-DriveOSPassword -Password $CorrectPassword -StoredHash "not-a-valid-hash")) `
         "Malformed password hashes must be rejected."
 
-    # --------------------------------------------------------
-    # Weak passwords.
-    # --------------------------------------------------------
-
     $WeakPassword = ConvertTo-SecureString `
         "short" `
         -AsPlainText `
@@ -91,10 +83,6 @@ try {
     Assert-True `
         $WeakPasswordRejected `
         "Passwords shorter than 12 characters must be rejected."
-
-    # --------------------------------------------------------
-    # Valid web authentication configuration.
-    # --------------------------------------------------------
 
     $env:DRIVEOS_OWNER_EMAIL = "owner@example.com"
     $env:DRIVEOS_PASSWORD_HASH = $Hash
@@ -119,10 +107,6 @@ try {
     Assert-True `
         ($Config.EncryptionKey.Length -eq 32) `
         "Encryption key was not decoded correctly."
-
-    # --------------------------------------------------------
-    # Missing required configuration must fail closed.
-    # --------------------------------------------------------
 
     Remove-Item Env:DRIVEOS_OWNER_EMAIL -ErrorAction SilentlyContinue
 
