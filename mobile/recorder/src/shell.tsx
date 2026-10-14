@@ -27,7 +27,6 @@ import { supportsTabAccessory } from './recorder-accessory-model';
 import { MemoryDetailV4 } from './memory-detail-v4';
 import { JourneyDetailV4, JourneyDetailV4Placeholder } from './journey-detail-v4';
 
-/** The V4 redesign, on iPhone and iPad alike; iPad adapts it to the wider canvas. */
 const REDESIGN_PHONE = V4_REDESIGN_ENABLED;
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
@@ -407,7 +406,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     return () => { alive = false; };
   }, []);
 
-  // iPad doesn't record, so it never asks for a music source or recording mode; mark both set up.
   useEffect(() => {
     if (!isIpad()) return;
     if (preferences && !preferences.onboardingCompleted) {
@@ -556,8 +554,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.9.' });
       return;
     }
-    // Automatic triggers wait out a failure backoff silently; the Sync button
-    // (announce) always retries now.
     if (!announce && getPrivateICloudSyncBackoff()) return;
     setPrivateCloud({ status: 'syncing', detail: 'Checking iCloud zone…' });
     try {
@@ -582,8 +578,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         });
       }
       if (announce) Alert.alert(result.failedUploads ? 'Private iCloud needs attention' : pending || awaitingNative ? 'Private iCloud sync is incomplete' : 'Private iCloud sync finished', detail);
-      // Refresh the shared library snapshot only when this sync restored or
-      // removed records. A full reload walks the whole archive.
       if (!result.reused && (result.downloaded > 0 || result.deletedRecordNames.length > 0)) await refreshPrimarySections(false);
     } catch (error) {
       if (error instanceof PrivateICloudSyncDeferredError) {
@@ -637,8 +631,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     const leaving = isDemoProfile();
     void (async () => {
       sampleBusy.current = true;
-      // The sample is prepared in the background after launch, so it normally just appears. If it is still being
-      // built (a first launch, or a daily refresh), say so.
       if (!leaving && !isDemoProfileReady()) Alert.alert('Preparing your sample', 'It is still being built and may take a minute. It opens as soon as it is ready.');
       try {
         await prepareForProfileSwitch();
@@ -663,7 +655,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     } finally { sampleBusy.current = false; finishProfileSwitch(); }
   }, [onProfileChanged]);
 
-  // Build the sample (drives, songs, Memories and photos) quietly after the app settles, so turning it on is instant.
   useEffect(() => {
     if (isDemoProfile()) return;
     const timer = setTimeout(() => { void prepareDemoProfile().catch(() => undefined); }, 6000);
@@ -831,7 +822,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   }, [refreshDashboard]);
 
   const chooseRecordingMode = useCallback(async (mode: RecordingMode) => {
-    // V4 onboarding asks how drives are recorded; earlier builds always record manually.
     const next = saveRecordingModePreferences({ mode: REDESIGN_PHONE ? mode : 'manual', onboardingCompleted: true });
     setRecordingPreferences(next);
     setEditingRecordingMode(false);
@@ -948,7 +938,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const openFiftyStates = () => { router.push('/fifty-states'); void haptics.selection(); };
   const openTab = (next: Tab) => {
     if (!navigationReady) return;
-    // The V4 iPhone bar has no Settings tab; Settings is pushed from Today instead.
     if (REDESIGN_PHONE && next === 'settings') { router.push('/preferences'); return; }
     router.navigate(tabPaths[next]);
   };
@@ -979,8 +968,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const fallbackFirstRunStage = preferences && recordingPreferences && !(preferences.onboardingCompleted && recordingPreferences.onboardingCompleted)
     ? (hasCompletedWelcomeIntro() ? 'recording' : 'welcome')
     : null;
-  // V4 never shows the pre-V4 pickers: an iPhone whose location or music setup is unfinished
-  // (for example after "I have an account" in an earlier build) returns to the V4 location step.
   const v4SetupUnfinished = REDESIGN_PHONE && !isIpad() && fallbackFirstRunStage !== null;
   const firstRunStage = !editingRecordingMode && !editingProvider
     ? firstRunProgress?.stage === 'complete' ? (v4SetupUnfinished ? 'location' : null) : firstRunProgress?.stage ?? fallbackFirstRunStage
@@ -988,7 +975,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const firstRunRecordingMode: RecordingMode = 'manual';
   const appVisible = appReady && !firstRunStage;
   useUpdateRestart({ ready: appVisible && dashboard.status === 'ready', recorderState: dashboard.data.recorder.state, recorderBusy: homeRecorderActive });
-  // Keep the navigator and single recorder mounted while editing a provider.
   const enteredApp = useRef(false);
   if (appVisible) enteredApp.current = true;
   const navigationReady = appVisible || enteredApp.current;
@@ -1036,7 +1022,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     ownerSpotifyEligible={ownerSpotifyEligible}
     spotifyOwnerState={spotifyOwnerState}
     onDataHealth={() => openMore('health')}
-    // Only an App Store subscription can be managed by Apple; free members and the in-app trial see the plans.
     onMembership={() => membershipStore.state.status.tier === 'paid' ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
     onRestoreMembership={membershipStore.restore}
     sampleActive={isDemoProfile(currentUser)} onSampleToggle={REDESIGN_PHONE ? toggleSampleData : undefined}
@@ -1057,8 +1042,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     onEditorActiveChange={setSettingsEditorActive}
   />;
 
-  // V4 iPhone: one recorder instance, in the tab bar accessory on iOS 26+ and on Today before that.
-  // iPad never records; it shows what the iPhone syncs through iCloud.
   const accessoryRecorder = REDESIGN_PHONE && canRecordDrives() && supportsTabAccessory(Platform.OS, Platform.Version);
   const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} onLeaveSample={leaveSampleToRecord} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
   const loadTodayProfile = useCallback(() => {
@@ -1766,7 +1749,6 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
           {recorder}
         </Reanimated.View>
 
-        {/* Hero Card */}
         <Reanimated.View entering={FadeInDown.delay(70).duration(480)}>
           <View style={styles.cinematicHeroAura}>
             <Pressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.cinematicHero, pressed && styles.cinematicPressed]}>
@@ -1774,7 +1756,6 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
               <CinematicPhotoGrade />
               <LinearGradient colors={theme.gradient(['rgba(8,3,14,0.34)', 'rgba(8,3,14,0.12)', 'rgba(5,2,10,0.85)', 'rgba(4,1,8,0.97)'])} locations={[0, 0.28, 0.72, 1]} style={StyleSheet.absoluteFill} />
               <LiquidGlassEdges radius={29} />
-              {/* Top Bar of Hero */}
               <View style={styles.cinematicHeroHeader}>
                 <View style={styles.cinematicHeroHeaderCopy}>
                   <Text style={styles.cinematicHeroEyebrow}>LATEST ROAD MEMORY</Text>
@@ -1799,7 +1780,6 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
           </View>
         </Reanimated.View>
 
-        {/* Newest Memories */}
         <Reanimated.View entering={FadeInDown.delay(120).duration(480)} style={styles.cinematicSection}>
           <View style={styles.cinematicSectionHeader}>
             <Text style={styles.cinematicSectionTitle}>Memories</Text>
@@ -1833,10 +1813,8 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
           </ScrollView>
         </Reanimated.View>
 
-        {/* Soundtrack Card (the newest song JourneyDeck actually heard) */}
         <Reanimated.View entering={FadeInDown.delay(180).duration(480)}>
           <CinematicGlass style={styles.cinematicSoundtrackGlassCard}>
-            {/* Card Header Row */}
             <View style={styles.cinematicSoundtrackHeaderRow}>
               <View style={styles.cinematicSoundtrackKickerWrap}>
                 <SymbolView name="waveform" tintColor={theme.color("#ff6078", 'text')} type="hierarchical" style={styles.cinematicWaveformKickerIcon} />
@@ -1851,7 +1829,6 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
               </View>
             </View>
 
-            {/* Card Content Row */}
             <View style={styles.cinematicSoundtrackContentRow}>
               <View style={styles.cinematicAlbumCoverWrap}>
                 {latestHeardTrack ? (
@@ -1882,7 +1859,6 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
       </View>
     </ScrollView>
 
-    {/* Profile Edit Modal */}
     <Modal visible={profileEditorOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setProfileEditorOpen(false)}>
       <View style={styles.profileEditorRoot}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setProfileEditorOpen(false)}>
@@ -3306,12 +3282,10 @@ function ConnectionsScreen({
   privateCloud: PrivateCloudUiState;
   membershipTier: 'free' | 'paid';
   membershipExpirationDate: string | null;
-  /** App Store Restore Purchases, reachable from Settings as well as the paywall. */
   onRestoreMembership?: () => Promise<void>;
   /** Opens or leaves the fictional sample library (App Review, first look). */
   sampleActive?: boolean;
   onSampleToggle?: () => void;
-  /** Shows the V4 welcome tour again from the start; data and permissions stay as they are. */
   onReplayOnboarding?: () => void;
   journeys: JourneySummary[];
   memories: JourneyMemory[];
@@ -3602,7 +3576,6 @@ function ConnectionsScreen({
   </SettingsScrollView>;
 }
 
-/** Soft accent glow at the top of V4 pages, in place of the V3 atmospheric backdrop. */
 function RedesignGlow() {
   const colors = useRedesignColors();
   // This glow scrolls with the content, so pulling down reveals the space above it. Extend the glow's top color
@@ -3611,7 +3584,6 @@ function RedesignGlow() {
 }
 
 const settingsV4Cache = new WeakMap<RedesignColors, Record<string, object>>();
-/** V4 iPhone Settings: theme-role surfaces, hairline borders, and V4 type in place of the V3 glow cards. */
 function settingsV4Overrides(c: RedesignColors): Record<string, object> {
   const cached = settingsV4Cache.get(c);
   if (cached) return cached;
@@ -3697,7 +3669,6 @@ function settingsV4Overrides(c: RedesignColors): Record<string, object> {
 }
 
 const settingsStyleCache = new WeakMap<object, WeakMap<RedesignColors, typeof darkStyles>>();
-/** Settings styles: V3 themed styles, restyled with V4 roles on the redesigned iPhone. */
 function useSettingsStyles(): typeof darkStyles {
   const base = useThemedStyles(darkStyles);
   const colors = useRedesignColors();
@@ -3757,7 +3728,6 @@ function AtmosphericBackdrop({ variant }: { variant: 'home' | 'memories' | 'sett
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
-  // Glass themes place their calm, pre-blurred scene behind Memories and Settings.
   const glassScene = variant === 'home' ? null : glassSoftSceneSource(theme.id);
   if (glassScene) return <ExpoImage pointerEvents="none" accessible={false} source={glassScene} contentFit="cover" style={styles.atmosphere} />;
   const accent = variant === 'home' ? '#ff603f' : variant === 'memories' ? '#a04cff' : '#315f91';
@@ -3821,7 +3791,6 @@ function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'sett
       <Rect width="360" height="170" fill="url(#memorySkyGlow)" />
       <Rect width="360" height="170" fill="url(#moonAura)" />
 
-      {/* Luminous Moon & Stars */}
       <Circle cx="280" cy="34" r="6" fill={theme.color("#eaf2ff", 'accent')} />
       <Circle cx="280" cy="34" r="12" fill="none" stroke={theme.color("#90b2f0", 'accent')} strokeWidth="1" opacity="0.3" />
       <Circle cx="230" cy="22" r="1" fill={theme.color("#ffffff", 'accent')} opacity="0.8" />
@@ -3830,45 +3799,33 @@ function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'sett
       <Circle cx="340" cy="50" r="1.2" fill={theme.color("#ffd9ea", 'accent')} opacity="0.65" />
       <Circle cx="215" cy="40" r="0.8" fill={theme.color("#ffffff", 'accent')} opacity="0.5" />
 
-      {/* Topographic Mountain Elevation Contours */}
       <Path d="M 140 38 Q 210 60 355 35" fill="none" stroke="url(#topoLines)" strokeWidth="1" strokeDasharray="3 3" />
       <Path d="M 130 68 Q 205 92 355 65" fill="none" stroke="url(#topoLines)" strokeWidth="1" strokeDasharray="4 4" />
       <Path d="M 120 102 Q 195 125 355 98" fill="none" stroke="url(#topoLines)" strokeWidth="1.2" opacity="0.4" />
       <Path d="M 110 135 Q 185 152 355 130" fill="none" stroke="url(#topoLines)" strokeWidth="1" opacity="0.25" />
 
-      {/* Distant Horizon City Shimmer */}
       <Path d="M 230 70 Q 285 75 340 68" fill="none" stroke={theme.color("#ff8bb9", 'accent')} strokeWidth="1.5" opacity="0.3" strokeDasharray="1 3" />
 
-      {/* Multi-Lane Glowing Highway Ribbon */}
-      {/* Highway Underglow Bloom */}
       <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke={theme.color("#ff3f82", 'accent')} strokeWidth="16" opacity="0.18" strokeLinecap="round" />
 
-      {/* Lane 1: Cyan/Mint Light Trail */}
       <Path d="M 355 69 C 295 69, 280 99, 235 103 S 185 149, 130 143 S 65 159, 0 153" fill="none" stroke="url(#highwayCyan)" strokeWidth="2.5" strokeLinecap="round" />
 
-      {/* Lane 2: Magenta/Pink Light Trail */}
       <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke="url(#highwayMagenta)" strokeWidth="3" strokeLinecap="round" />
 
-      {/* Lane 3: Coral/Amber Light Trail */}
       <Path d="M 355 75 C 295 75, 280 105, 235 109 S 185 155, 130 149 S 65 165, 0 159" fill="none" stroke="url(#highwayCoral)" strokeWidth="3" strokeLinecap="round" />
 
-      {/* Waypoint Pin Beacons along the Road without Text */}
-      {/* Waypoint 1 (Distant apex) */}
       <Path d="M 295 64 C 291 64, 291 70, 295 74 C 299 70, 299 64, 295 64 Z" fill={theme.color("#d946ef", 'accent')} />
       <Circle cx="295" cy="67" r="1.5" fill={theme.color("#ffffff", 'accent')} />
       <Circle cx="295" cy="69" r="7" fill="none" stroke={theme.color("#d946ef", 'accent')} strokeWidth="0.8" opacity="0.4" />
 
-      {/* Waypoint 2 (Mid curve) */}
       <Path d="M 235 94 C 230 94, 230 101, 235 106 C 240 101, 240 94, 235 94 Z" fill={theme.color("#ff795b", 'accent')} />
       <Circle cx="235" cy="98" r="2" fill={theme.color("#ffffff", 'accent')} />
       <Circle cx="235" cy="100" r="10" fill="none" stroke={theme.color("#ff795b", 'accent')} strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
 
-      {/* Waypoint 3 (Near foreground) */}
       <Path d="M 130 134 C 125 134, 125 141, 130 146 C 135 141, 135 134, 130 134 Z" fill={theme.color("#38bdf8", 'accent')} />
       <Circle cx="130" cy="138" r="2" fill={theme.color("#ffffff", 'accent')} />
       <Circle cx="130" cy="140" r="10" fill="none" stroke={theme.color("#38bdf8", 'accent')} strokeWidth="1" opacity="0.45" />
 
-      {/* Waypoint 4 (Front bend) */}
       <Path d="M 50 146 C 46 146, 46 152, 50 156 C 54 152, 54 146, 50 146 Z" fill={theme.color("#c084fc", 'accent')} />
       <Circle cx="50" cy="149" r="1.5" fill={theme.color("#ffffff", 'accent')} />
     </Svg>
@@ -3891,16 +3848,13 @@ function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'sett
       </Defs>
       <Rect width="360" height="170" fill="url(#settingsHeaderBloom)" />
 
-      {/* Orbital Telemetry Sensor Rings */}
       <Circle cx="280" cy="72" r="48" fill="none" stroke={theme.color("#3b2b5c", 'accent')} strokeWidth="1" strokeDasharray="5 5" opacity="0.6" />
       <Circle cx="280" cy="72" r="32" fill="none" stroke={theme.color("#7658dd", 'accent')} strokeWidth="1.25" opacity="0.4" />
       <Circle cx="280" cy="72" r="18" fill="none" stroke={theme.color("#43e6ae", 'accent')} strokeWidth="1" strokeDasharray="3 3" opacity="0.75" />
 
-      {/* Cybernetic Node Interlinks */}
       <Path d="M 185 45 L 245 72 L 280 72 L 335 38 M 245 72 L 230 132 L 315 125 L 342 90" fill="none" stroke="url(#settingsHeaderLink)" strokeWidth="1.75" strokeDasharray="4 3" opacity="0.7" />
       <Path d="M 280 72 L 315 125" fill="none" stroke={theme.color("#ff795b", 'accent')} strokeWidth="1.2" opacity="0.4" />
 
-      {/* Telemetry Target Nodes */}
       <Circle cx="185" cy="45" r="4.5" fill={theme.color("#43e6ae", 'accent')} stroke={theme.color("#dffff5", 'accent')} strokeWidth="1.5" />
       <Circle cx="245" cy="72" r="4" fill={theme.color("#9b7cff", 'accent')} stroke={theme.color("#f4ebff", 'accent')} strokeWidth="1.5" />
       <Circle cx="280" cy="72" r="7" fill={theme.color("#ff795b", 'accent')} stroke={theme.color("#fff0ea", 'accent')} strokeWidth="2.5" />
@@ -4324,7 +4278,6 @@ const darkStyles = StyleSheet.create({
   savedPlaceCurrent: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#503766', backgroundColor: '#21162e', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   savedPlaceCurrentText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#713e58', borderRadius: 18, padding: 15, shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#5d466b', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15, shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 9 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#7f4151', backgroundColor: '#281318', shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 10 }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29', shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 8 }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47', shadowColor: '#ff4f65', shadowOpacity: 0.42, shadowRadius: 11 }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
-  // Keep the content readable until it reaches the dock; the dock itself remains crisp above this veil.
   bottomContentFade: { position: 'absolute', right: 0, bottom: 0, left: 0, height: 132, zIndex: 30 },
   navSafe: { position: 'absolute', right: 0, bottom: 0, left: 0, zIndex: 40, backgroundColor: 'transparent', paddingHorizontal: 10, paddingTop: 24 },
   navDockFrame: { marginBottom: 8, borderRadius: 25, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
