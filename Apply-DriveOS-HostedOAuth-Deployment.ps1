@@ -116,10 +116,6 @@ $WebRequest = Read-NormalizedText $WebRequestPath
 $AppJs = Read-NormalizedText $AppJsPath
 $WebEnv = Read-NormalizedText $WebEnvPath
 
-# ================================================================
-# 1. Render-aware public URL discovery
-# ================================================================
-
 $Config = Replace-Exact `
     -Text $Config `
     -Old @'
@@ -141,10 +137,6 @@ $Config = Replace-Exact `
     }
 '@ `
     -Description "Render public URL fallback"
-
-# ================================================================
-# 2. Cross-platform repository provider + sqlite executable
-# ================================================================
 
 $Repository = Replace-RegexOnce `
     -Text $Repository `
@@ -224,10 +216,6 @@ function New-DriveOSRepository {
 }
 '@ `
     -Description "repository constructor"
-
-# ================================================================
-# 3. Mode-aware secret protection module
-# ================================================================
 
 $SecretModule = @'
 Set-StrictMode -Version 2.0
@@ -467,10 +455,6 @@ Export-ModuleMember -Function `
     Unprotect-DriveOSSecret
 '@
 
-# ================================================================
-# 4. Server secret protection + SQLite initialization
-# ================================================================
-
 $Server = Replace-Exact `
     -Text $Server `
     -Old @'
@@ -552,10 +536,6 @@ function Protect-Token {
 }
 '@ `
     -Description "mode-aware token protection"
-
-# ================================================================
-# 5. Hosted Spotify PKCE OAuth
-# ================================================================
 
 $SpotifyFunctions = @'
 function ConvertTo-SpotifyBase64Url {
@@ -798,7 +778,6 @@ function Start-SpotifyAuthorization {
 '@ `
     -Description "mode-aware Spotify authorization"
 
-# Router accepts Target.
 $Server = Replace-Exact `
     -Text $Server `
     -Old @'
@@ -873,10 +852,6 @@ $Server = Replace-Exact `
                 -BodyText $BodyText `
 '@ `
     -Description "pass Target to router"
-
-# ================================================================
-# 6. Public callback route + environment-backed optional services
-# ================================================================
 
 $WebRequest = Replace-Exact `
     -Text $WebRequest `
@@ -972,10 +947,6 @@ function Start-FoursquareConfiguration {
 '@ `
     -Description "web Foursquare setup guard"
 
-# ================================================================
-# 7. Browser Spotify flow
-# ================================================================
-
 $AppJs = Replace-Exact `
     -Text $AppJs `
     -Old @'
@@ -999,10 +970,6 @@ $AppJs = Replace-Exact `
 '@ `
     -Description "browser Spotify redirect"
 
-# ================================================================
-# 8. Example environment contract
-# ================================================================
-
 if (-not $WebEnv.Contains("DRIVEOS_REPOSITORY_PROVIDER=")) {
     $WebEnv = $WebEnv.Replace(
         "DRIVEOS_DATA_DIR=/app/data",
@@ -1014,10 +981,6 @@ $WebEnv = $WebEnv.Replace(
     "# Public URL`n# Example after deployment:`n# DRIVEOS_PUBLIC_URL=https://driveos-example.onrender.com`nDRIVEOS_PUBLIC_URL=",
     "# Public URL`n# Optional on Render: DriveOS automatically uses RENDER_EXTERNAL_URL.`n# Set this explicitly for a custom domain.`nDRIVEOS_PUBLIC_URL="
 )
-
-# ================================================================
-# 9. Docker + Render Blueprint
-# ================================================================
 
 $Dockerfile = @'
 FROM mcr.microsoft.com/powershell:7.4-ubuntu-22.04
@@ -1093,10 +1056,6 @@ services:
       - key: FOURSQUARE_API_KEY
         sync: false
 '@
-
-# ================================================================
-# 10. Tests
-# ================================================================
 
 $SecretTests = @'
 $ErrorActionPreference = "Stop"
@@ -1272,10 +1231,6 @@ Write-Host `
     -ForegroundColor Green
 '@
 
-# ================================================================
-# 11. Validation before writes
-# ================================================================
-
 foreach ($Required in @(
     "Start-SpotifyWebAuthorization",
     "Complete-SpotifyWebAuthorization",
@@ -1287,10 +1242,6 @@ foreach ($Required in @(
         throw "Patch validation failed; missing expected feature: $Required"
     }
 }
-
-# ================================================================
-# 12. Write everything
-# ================================================================
 
 Write-Utf8NoBom -Path $ConfigPath -Content $Config
 Write-Utf8NoBom -Path $RepositoryPath -Content $Repository
