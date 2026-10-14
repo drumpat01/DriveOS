@@ -21,6 +21,7 @@ a:hover { color: var(--ivory); }
 .gold { color: var(--gold); }
 .desktop-nav { display: flex; gap: 28px; }
 .desktop-nav a { color: var(--muted); font-size: 12px; text-decoration: none; transition: color .2s; }
+.desktop-nav .nav-studio { color: var(--gold); font-weight: 500; }
 .desktop-nav a:hover, .desktop-nav a[aria-current="page"] { color: var(--ivory); }
 .desktop-nav a[aria-current="page"] { text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 7px; }
 .header-actions { display: flex; align-items: center; gap: 20px; }

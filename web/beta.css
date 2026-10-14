@@ -38,6 +38,7 @@ figure, h1, h2, h3, p { margin: 0; }
 .brand img { border-radius: 10px; }
 .desktop-nav { display: flex; gap: 28px; }
 .desktop-nav a { font-size: 12px; color: var(--muted); transition: color .2s; }
+.desktop-nav .nav-studio { color: var(--gold); font-weight: 500; }
 .desktop-nav a:hover { color: var(--ivory); }
 .header-actions { display: flex; align-items: center; gap: 20px; }
 .social-link { display: grid; place-items: center; width: 44px; height: 44px; }

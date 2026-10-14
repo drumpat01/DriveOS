@@ -5,6 +5,7 @@
 .mobile-menu[open] summary { border-color: #d4b15a; }
 .mobile-menu nav { position: absolute; z-index: 50; top: calc(100% + 12px); right: 0; width: min(280px, calc(100vw - 24px)); padding: 8px; border: 1px solid #b6bfcc55; border-radius: 10px; background: #10243e; box-shadow: 0 18px 44px #0008; }
 .mobile-menu nav a { display: block; min-height: 44px; padding: 12px 13px; border-radius: 6px; color: #f6f0e2; font-size: 13px; line-height: 1.5; text-decoration: none; }
+.mobile-menu .nav-studio { color: var(--gold); font-weight: 500; }
 .mobile-menu nav a:hover, .mobile-menu nav a[aria-current="page"] { background: #d4b15a22; color: #ead4a1; }
 .mobile-menu nav a:last-child { border-top: 1px solid #b6bfcc38; border-radius: 0; margin-top: 4px; }
 @media (max-width: 800px) { .mobile-menu { display: block; } .site-header .social-link { display: none; } }
