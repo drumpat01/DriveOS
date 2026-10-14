@@ -38,6 +38,21 @@ function metaPropertyContent(html: string, property: string) {
   return match?.[1] ?? "";
 }
 
+const studioLink = '<a class="nav-studio" href="https://studio.journeydeck.me">Studio <span aria-hidden="true">↗</span></a>';
+
+function assertStudioNav(html: string, label: string) {
+  const desktop = html.match(/<nav class="desktop-nav" aria-label="Main navigation">([\s\S]*?)<\/nav>/);
+  const mobile = html.match(/<nav aria-label="Mobile navigation">([\s\S]*?)<\/nav>/);
+  assert.ok(desktop, `${label} desktop nav`);
+  assert.ok(mobile, `${label} mobile nav`);
+  assert.equal(desktop[1].includes(studioLink), true, `${label} desktop Studio link`);
+  assert.equal(mobile[1].includes(studioLink), true, `${label} mobile Studio link`);
+  assert.equal(countMatches(desktop[1], /class="nav-studio"/g), 1, `${label} desktop Studio count`);
+  assert.equal(countMatches(mobile[1], /class="nav-studio"/g), 1, `${label} mobile Studio count`);
+  assert.equal(desktop[1].includes("style="), false, `${label} desktop inline style`);
+  assert.equal(mobile[1].includes("style="), false, `${label} mobile inline style`);
+}
+
 function documentTitle(html: string) {
   return html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
 }
@@ -80,7 +95,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(privacy.body, /Optional Tessie connection/);
     assert.match(privacy.body, /Questions and answers are not saved and are not sent to JourneyDeck servers/);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
-    assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-3/);
+    assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-4/);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
@@ -263,6 +278,7 @@ test("public information and discovery pages are accessible without an authentic
       assert.match(page.body, /href="\/apple-music-soundtrack"/);
       assert.match(page.body, /class="mobile-menu"/);
       assert.match(page.body, /Get the app/);
+      assertStudioNav(page.body, "public page");
     }
     const robots = await runtime.app.inject({ method: "GET", url: "/robots.txt" });
     assert.equal(robots.statusCode, 200, robots.body);
@@ -335,7 +351,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     for (const rel of ["api-catalog", "service-desc", "service-doc", "describedby"]) assert.match(links, new RegExp(`rel="${rel}"`));
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 4\.0/);
-    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-5"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-6"/);
+    assertStudioNav(landing.body, "/");
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
     assert.match(landing.body, /aria-label="1 of 5: Today"/);
@@ -387,10 +404,10 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.doesNotMatch(String(googleVerification.headers["content-security-policy"]), /google-site-verification/);
 
     for (const [url, mime] of [
-      ["/beta.css?v=grand-tour-5", /text\/css/],
-      ["/public-page.css?v=grand-tour-3", /text\/css/],
-      ["/public-page.css?v=hero-lcp-1", /text\/css/],
-      ["/site-mobile-nav.css?v=1", /text\/css/],
+      ["/beta.css?v=grand-tour-6", /text\/css/],
+      ["/public-page.css?v=grand-tour-4", /text\/css/],
+      ["/public-page.css?v=hero-lcp-2", /text\/css/],
+      ["/site-mobile-nav.css?v=2", /text\/css/],
       ["/v2-features.css?v=1", /text\/css/],
       ["/soundtrack-v2.css?v=1", /text\/css/],
       ["/assets/v4/02-journey.webp", /image\/webp/],
@@ -433,6 +450,16 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.equal(missing.statusCode, 404, missing.body);
     assert.match(missing.body, /Page not found/i);
     assert.equal(missing.headers["x-robots-tag"], "noindex, nofollow");
+    assertStudioNav(missing.body, "404");
+    const betaCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-6" });
+    const publicCss = await runtime.app.inject({ method: "GET", url: "/public-page.css?v=grand-tour-4" });
+    const mobileCss = await runtime.app.inject({ method: "GET", url: "/site-mobile-nav.css?v=2" });
+    assert.match(betaCss.body, /\.desktop-nav \.nav-studio \{ color: var\(--gold\); font-weight: 500; \}/);
+    assert.match(betaCss.body, /\.desktop-nav a:hover \{ color: var\(--ivory\); \}/);
+    assert.match(publicCss.body, /\.desktop-nav \.nav-studio \{ color: var\(--gold\); font-weight: 500; \}/);
+    assert.match(publicCss.body, /\.desktop-nav a:hover, \.desktop-nav a\[aria-current="page"\] \{ color: var\(--ivory\); \}/);
+    assert.match(mobileCss.body, /\.mobile-menu \.nav-studio \{ color: var\(--gold\); font-weight: 500; \}/);
+    assert.match(mobileCss.body, /\.mobile-menu nav a:hover, \.mobile-menu nav a\[aria-current="page"\] \{ background: #d4b15a22; color: #ead4a1; \}/);
     const missingApi = await runtime.app.inject({ method: "GET", url: "/api/a-page-that-does-not-exist" });
     assert.equal(missingApi.statusCode, 401);
 
@@ -539,7 +566,7 @@ test("hosted home and Support HTML do not advertise a 3-day Plus trial", async (
 test("hosted cache headers distinguish versioned assets, unversioned images, and short-lived documents", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
-    const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-5" });
+    const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-6" });
     assert.equal(versionedCss.statusCode, 200, versionedCss.body);
     assert.equal(versionedCss.headers["cache-control"], "public, max-age=31536000, immutable");
 

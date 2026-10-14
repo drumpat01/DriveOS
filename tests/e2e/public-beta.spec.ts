@@ -49,6 +49,37 @@ test('phone layout offers medallions in place and preserves download, social and
   await expect(page.getByRole('link', { name: 'Launch MCP', exact: true })).toHaveAttribute('href', 'https://launchmcp.co/?utm_source=badge&utm_medium=referral');
 });
 
+test('Studio nav link is gold until the existing hover and focus styles apply', async ({ page }) => {
+  const gold = 'rgb(212, 177, 90)';
+  const ivory = 'rgb(246, 240, 226)';
+  const mobileHover = 'rgb(234, 212, 161)';
+  for (const path of ['/beta.html', '/road-trip-journal-app.html']) {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(path);
+    const studio = page.locator('.desktop-nav a.nav-studio');
+    await expect(studio).toBeVisible();
+    await expect(studio).toHaveAttribute('href', 'https://studio.journeydeck.me');
+    await expect(studio.locator('span[aria-hidden="true"]')).toHaveText('↗');
+    await expect(studio).toHaveCSS('color', gold);
+    await expect(studio).toHaveCSS('font-weight', '500');
+    await studio.focus();
+    await expect(studio).toHaveCSS('color', gold);
+    await expect(studio).toHaveCSS('outline-style', 'solid');
+    await studio.hover();
+    await expect(studio).toHaveCSS('color', ivory);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(path);
+    await page.locator('.mobile-menu summary').click();
+    const mobileStudio = page.locator('.mobile-menu nav a.nav-studio');
+    await expect(mobileStudio).toBeVisible();
+    await expect(mobileStudio).toHaveCSS('color', gold);
+    await expect(mobileStudio).toHaveCSS('font-weight', '500');
+    await mobileStudio.hover();
+    await expect(mobileStudio).toHaveCSS('color', mobileHover);
+  }
+});
+
 test('homepage footer centers the Launch Llama badge at 390 and 1280', async ({ page }) => {
   for (const { width, height } of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize({ width, height });
