@@ -29,7 +29,7 @@ function qWeekCutoff(): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   const day = d.getDay();              // 0 = Sunday
-  d.setDate(d.getDate() - day);        // Monday of current week
+  d.setDate(d.getDate() - day);
   return d.toISOString();
 }
 
@@ -37,7 +37,7 @@ function qPrevWeekCutoff(): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   const day = d.getDay();
-  d.setDate(d.getDate() - day - 7);   // Monday of previous week
+  d.setDate(d.getDate() - day - 7);
   return d.toISOString();
 }
 

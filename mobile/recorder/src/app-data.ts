@@ -798,20 +798,6 @@ export const appDataClient = {
   },
 };
 
-// =============================================================================
-// localAtlasClient — Phase 1.4: On-Device Local-First Data Client
-//
-// Reads ALL data from the on-device SQLite master store (local-store.ts) and
-// the on-device Atlas analytics engine (local-atlas.ts). Zero network calls.
-// Works 100% offline. Used as the primary data source when:
-//   1. The user has no server connection configured (pure local-first mode).
-//   2. The app is offline and the server is unreachable.
-//   3. The client requests a fast, synchronous dashboard (no network latency).
-//
-// The server-side appDataClient above remains available for hybrid mode where
-// the local store is backed up by server sync.
-// =============================================================================
-
 import {
   initializeLocalStore,
   ensureLocalUser,
@@ -919,11 +905,6 @@ export const localAtlasClient = {
     const rows = readTessieStatisticsRows(userId, range.startInclusive, range.endExclusive);
     return buildTessieStatistics(range, rows.drives, rows.charges);
   },
-  /**
-   * Ensures a local user record exists (creates one if needed).
-   * Pass an Apple subject ID once Sign in with Apple is implemented;
-   * until then, pass undefined to use or create an anonymous device user.
-   */
   ensureUser(appleSubject?: string): import('./local-store').LocalUser {
     initializeLocalStore();
     return ensureLocalUser({ appleSubject });
@@ -936,9 +917,6 @@ export const localAtlasClient = {
   dashboard(userId: LocalUserId): AppDashboard {
     initializeLocalStore();
 
-    // Rebuild Atlas snapshot if stale or missing
-    // rebuildAtlasSnapshot always writes + returns a valid snapshot, so the
-    // result is never null -- use ?? to give TS the non-null guarantee.
     const freshSnapshot = readAtlasSnapshot(userId) ?? rebuildAtlasSnapshot(userId);
     const isStale = (Date.now() - Date.parse(freshSnapshot.generatedAt)) > ATLAS_STALE_MS;
     const snapshot = isStale ? rebuildAtlasSnapshot(userId) : freshSnapshot;
@@ -1026,14 +1004,9 @@ export const localAtlasClient = {
     };
   },
 
-  /**
-   * Returns the local MusicDashboardData built entirely from on-device SQLite.
-   * All metrics are pre-computed by the Atlas engine.
-   */
   musicDashboard(userId: LocalUserId): MusicDashboardData {
     initializeLocalStore();
 
-    // Use fresh Atlas computation for music dashboard
     const allTime  = computeAllTime(userId);
     const last7    = computeLast7Days(userId);
     const tour     = computeWeeklyTour(userId);
@@ -1067,8 +1040,8 @@ export const localAtlasClient = {
       topArtists: artists,
       tour: { miles: tour.miles, changePercent: tour.changePercent },
       mood,
-      cities: [],        // enriched from privacy-reduced coordinates on deliberate refresh
-      daily: [],         // requires historical daily aggregation — Phase 1.5
+      cities: [],
+      daily: [],
       week: { total: last7.songCount, changePercent: null },
     };
   },

@@ -2,8 +2,6 @@
  * places-lookup.ts - Cloudflare Worker Edge Handler
  * 
  * Privacy-preserving reverse geocoding proxy to OpenStreetMap/Nominatim.
- * Fuzzes coordinates to a ~110m grid (3 decimal places) to protect user location
- * and enable 24-hour edge cache reuse.
  * Zero logs, zero analytics tracking on user locations.
  */
 
