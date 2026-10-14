@@ -489,14 +489,6 @@ async function loadVehicle() {
   }
 }
 
-let listeningHistorySyncPromise = null;
-
-async function syncListeningHistory() {
-  // Compatibility hook retained for the refresh feature. Spotify is now the
-  // only active listening source; historical Last.fm rows remain archived.
-  return null;
-}
-
 async function loadSpotify() {
   const list = $("trackList");
 
@@ -1248,194 +1240,25 @@ function locationDisplay(location, rawLocation) {
   return location;
 }
 
-async function savePlaceAlias(location, label) {
-  await postJson("/api/places/alias", { location, label });
-  await Promise.allSettled([loadPlaces(), loadDrives(), loadCharging(), loadRecaps()]);
-}
-
-function renderPlaces() {
-  const container = $("placeNamesList");
-  const status = $("placeNamesStatus");
-  if (!container) return;
-
-  const places = state.placeCandidates || [];
-  if (status) status.textContent = `${places.length} repeated locations`;
-
-  if (!places.length) {
-    container.innerHTML = `<div class="empty-state"><p>No repeated Tessie locations are available yet.</p></div>`;
-    return;
-  }
-
-  container.innerHTML = places.slice(0, 18).map((place, index) => `
-    <div class="place-name-row">
-      <div class="place-name-copy">
-        <strong>${escapeHtml(place.label || compactLocation(place.location) || "Location")}</strong>
-        <span>${escapeHtml(place.location)}</span>
-        <small>${place.uses} journey endpoint${place.uses === 1 ? "" : "s"}</small>
-      </div>
-      <div class="place-name-edit">
-        <input data-place-label="${index}" type="text" maxlength="64" value="${escapeHtml(place.label || "")}" placeholder="Name this place" aria-label="Friendly name for ${escapeHtml(place.location)}">
-        <button class="secondary-button" data-place-save="${index}" type="button">${place.label ? "Update" : "Save"}</button>
-        ${place.label ? `<button class="text-button" data-place-remove="${index}" type="button">Remove</button>` : ""}
-      </div>
-    </div>`).join("");
-
-  container.querySelectorAll("[data-place-save]").forEach(button => {
-    button.addEventListener("click", async () => {
-      const index = Number(button.dataset.placeSave);
-      const place = places[index];
-      const input = container.querySelector(`[data-place-label="${index}"]`);
-      if (!place || !input) return;
-      button.disabled = true;
-      try { await savePlaceAlias(place.location, input.value.trim()); }
-      catch (error) { if (status) status.textContent = error.message; }
-      finally { button.disabled = false; }
-    });
-  });
-
-  container.querySelectorAll("[data-place-remove]").forEach(button => {
-    button.addEventListener("click", async () => {
-      const place = places[Number(button.dataset.placeRemove)];
-      if (!place) return;
-      await savePlaceAlias(place.location, "");
-    });
-  });
-}
-
-async function loadPlaces() {
-  try {
-    const data = await getJson("/api/places");
-    state.placeCandidates = data.places || [];
-    renderPlaces();
-  } catch (error) {
-    const status = $("placeNamesStatus");
-    if (status) status.textContent = error.message;
-  }
-}
-
-function renderCharging(data) {
-  const summary = data.summary30 || {};
-  setText("charge30Sessions", summary.sessions ?? 0, "0");
-  setText("charge30Energy", summary.energyAddedKWh ?? 0, "0");
-  setText("charge30Cost", summary.cost == null ? "--" : money(summary.cost), "--");
-  setText("charge30Superchargers", summary.superchargerSessions ?? 0, "0");
-
-
-  const container = $("chargingHistory");
-  if (!container) return;
-  const sessions = state.chargingSessions || [];
-
-  if (!sessions.length) {
-    container.innerHTML = `<div class="empty-state"><h3>No charging sessions yet</h3><p>Tessie charging history will appear here.</p></div>`;
-    return;
-  }
-
-  container.innerHTML = sessions.slice(0, 30).map(session => `
-    <article class="charge-session-card">
-      <div class="charge-session-main">
-        <div><strong>${escapeHtml(session.location || "Unknown location")}</strong><span>${escapeHtml(session.dateLabel)} \u00B7 ${escapeHtml(session.startTime)} \u2192 ${escapeHtml(session.endTime)}</span></div>
-        <span class="charge-kind ${session.isSupercharger ? "supercharger" : ""}">${session.isSupercharger ? "Supercharger" : "Charging"}</span>
-      </div>
-      <div class="charge-session-metrics">
-        <div><span>Energy</span><strong>${session.energyAddedKWh ?? "--"} kWh</strong></div>
-        <div><span>Battery</span><strong>${session.startingBattery ?? "--"}% \u2192 ${session.endingBattery ?? "--"}%</strong></div>
-        <div><span>Miles added</span><strong>${session.milesAdded ?? "--"} mi</strong></div>
-        <div><span>Cost</span><strong>${session.displayCost == null ? "--" : money(session.displayCost)}</strong><small>${session.costType === "estimated" ? "estimated" : session.costType === "recorded" ? "recorded" : ""}</small></div>
-      </div>
-    </article>`).join("");
-}
-
-async function loadCharging() {
-  try {
-    const data = await getJson("/api/charging");
-    state.chargingSessions = data.sessions || [];
-    renderCharging(data);
-    if (driveTimelineLoaded) renderDriveTimeline();
-    return data;
-  } catch (error) {
-    const container = $("chargingHistory");
-    if (container) container.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`;
-    return null;
-  }
-}
-
-
-function renderMonthlyRecap() {
-  const container = $("monthlyRecap");
-  const select = $("recapMonthSelect");
-  if (!container || !select) return;
-
-  const recap = state.recaps.find(item => item.monthKey === select.value) || state.recaps[0];
-  if (!recap) {
-    container.innerHTML = `<div class="empty-state"><p>No monthly recap data yet.</p></div>`;
-    return;
-  }
-
-  const route = recap.favoriteRoute ? recap.favoriteRoute.replace(" -> ", " \u2192 ") : "Not enough journeys";
-  container.innerHTML = `
-    <div class="recap-hero">
-      <div><span>${escapeHtml(recap.monthLabel)}</span><strong>${recap.miles ?? 0} miles</strong><small>${recap.driveCount} journe${recap.driveCount === 1 ? "y" : "ys"}</small></div>
-      <div class="recap-efficiency"><span>Average efficiency</span><strong>${recap.averageWhMi ?? "--"}<small> Wh/mi</small></strong></div>
-    </div>
-    <div class="recap-grid">
-      <article><span>Journey energy</span><strong>${recap.driveEnergyKWh ?? 0}<small> kWh</small></strong></article>
-      <article><span>Charging</span><strong>${recap.chargingEnergyKWh ?? 0}<small> kWh</small></strong><small>${recap.chargingSessions} sessions</small></article>
-      <article><span>Charging cost</span><strong>${recap.chargingCost == null ? "--" : money(recap.chargingCost)}</strong><small>${recap.chargingKnownCostSessions} costed sessions</small></article>
-      <article><span>Soundtrack plays</span><strong>${recap.soundtrackPlays ?? 0}</strong><small>${recap.uniqueSongs ?? 0} unique songs</small></article>
-      <article class="recap-wide"><span>Favorite route</span><strong>${escapeHtml(route)}</strong><small>${recap.favoriteRouteCount || 0} trips</small></article>
-      <article><span>Longest journey</span><strong>${recap.longestDriveMiles == null ? "--" : `${recap.longestDriveMiles} mi`}</strong><small>${escapeHtml(recap.longestDriveDate || "")}</small></article>
-      <article><span>Top track</span><strong>${escapeHtml(recap.topTrack || "--")}</strong><small>${escapeHtml(recap.topTrackArtist || "")}${recap.topTrackPlays ? ` \u00B7 ${recap.topTrackPlays} plays` : ""}</small></article>
-      <article><span>Top artist</span><strong>${escapeHtml(recap.topArtist || "--")}</strong><small>${recap.topArtistPlays || 0} journey plays</small></article>
-    </div>`;
-}
-
-async function loadRecaps() {
-  try {
-    const data = await getJson("/api/recap");
-    state.recaps = data.recaps || [];
-    const select = $("recapMonthSelect");
-    if (select) {
-      const current = select.value;
-      select.innerHTML = state.recaps.map(item => `<option value="${escapeHtml(item.monthKey)}">${escapeHtml(item.monthLabel)}</option>`).join("");
-      if (current && state.recaps.some(item => item.monthKey === current)) select.value = current;
-      select.onchange = renderMonthlyRecap;
-    }
-    renderMonthlyRecap();
-  } catch (error) {
-    const container = $("monthlyRecap");
-    if (container) container.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`;
-  }
-}
-
-// Phase 3 compatibility seam: callers keep their established function names
-// while feature implementations live in isolated modules.
 const placesFeature = window.DriveOSFeatures.places.create({
   state,
   api: window.DriveOSApi,
   compactLocation,
-  refresh: () => Promise.allSettled([loadPlaces(), loadDrives(), loadCharging(), loadRecaps()]),
-  refreshResolvedLocations: () => Promise.allSettled([loadDrives(), loadCharging(), loadRecaps()])
+  refresh: () => Promise.allSettled([placesFeature.load(), loadDrives(), chargingFeature.load(), recapsFeature.load()]),
+  refreshResolvedLocations: () => Promise.allSettled([loadDrives(), chargingFeature.load(), recapsFeature.load()])
 });
-savePlaceAlias = placesFeature.save;
-renderPlaces = placesFeature.render;
-loadPlaces = placesFeature.load;
 
 const recapsFeature = window.DriveOSFeatures.recaps.create({ state, api: window.DriveOSApi, money });
-renderMonthlyRecap = recapsFeature.render;
-loadRecaps = recapsFeature.load;
 
 const chargingFeature = window.DriveOSFeatures.charging.create({
   state,
   api: window.DriveOSApi,
   money,
-  refreshRecaps: () => loadRecaps()
+  refreshRecaps: () => recapsFeature.load()
 });
 
 const shareCardsFeature = window.DriveOSFeatures.shareCards.create({ state, api: window.DriveOSApi });
 shareCardsFeature.bind();
-renderCharging = chargingFeature.render;
-loadCharging = chargingFeature.load;
-saveChargingRate = chargingFeature.saveRate;
 
 function scheduleDriveLibraryRender() {
   const run = () => {
@@ -1977,7 +1800,7 @@ function setDriveTimelineLoading(active) {
 async function refreshDriveTimelineLiveData() {
   setDriveTimelineLoading(true);
   try {
-    await Promise.allSettled([loadVehicle(),loadSpotify(),loadCharging(),loadDashboardDrives()]);
+    await Promise.allSettled([loadVehicle(),loadSpotify(),chargingFeature.load(),loadDashboardDrives()]);
     ensureTimelineLocalDemoData();
     driveTimelineLastUpdatedAt = new Date();
     driveTimelineLoaded = true;
@@ -2002,7 +1825,7 @@ async function loadDriveTimeline() {
     try {
       const jobs = [];
       if (!driveLibraryFullyLoaded) jobs.push(loadDrives());
-      if (!state.chargingSessions?.length) jobs.push(loadCharging());
+      if (!state.chargingSessions?.length) jobs.push(chargingFeature.load());
       if (!state.spotifyRecent?.length) jobs.push(loadSpotify());
       if (!state.vehicle) jobs.push(loadVehicle());
       if (jobs.length) await Promise.allSettled(jobs);
@@ -2379,7 +2202,7 @@ function renderJourneyPlaceEditor(drive) {
       button.disabled = true;
       status.textContent = "Saving\u2026";
       try {
-        await savePlaceAlias(endpoint.location, input.value.trim());
+        await placesFeature.save(endpoint.location, input.value.trim());
         status.textContent = "Saved";
         row.querySelector("strong").textContent = input.value.trim() || endpoint.location;
       } catch (error) {
@@ -3382,9 +3205,9 @@ async function recoverSpotifyAndRematch() {
     loadDrives(),
     loadMusicStats(),
     loadStatistics(),
-    loadPlaces(),
-    loadCharging(),
-    loadRecaps()
+    placesFeature.load(),
+    chargingFeature.load(),
+    recapsFeature.load()
   ]);
 
   return true;
@@ -3468,9 +3291,9 @@ async function refreshAll() {
     loadDrives(),
     loadMusicStats(),
     loadStatistics(),
-    loadPlaces(),
-    loadCharging(),
-    loadRecaps()
+    placesFeature.load(),
+    chargingFeature.load(),
+    recapsFeature.load()
   ]);
 
   if (button) {
@@ -3493,7 +3316,7 @@ async function configureFoursquareOnThisComputer() {
       const status = await getJson("/api/foursquare/status");
       if (!status.configured) continue;
       setText("foursquarePlaceStatus", "Connected. Looking up your most-visited unnamed locationsâ€¦");
-      await loadPlaces();
+      await placesFeature.load();
       await loadStatus();
       return;
     }
@@ -3507,9 +3330,11 @@ async function configureFoursquareOnThisComputer() {
 }
 
 const refreshFeature = window.DriveOSFeatures.refresh.create({
-  loadStatus, loadVehicle, loadSpotify, syncListeningHistory,
-  loadDashboardDrives, loadDrives, loadMusicStats, loadStatistics, loadPlaces,
-  loadCharging, loadRecaps
+  loadStatus, loadVehicle, loadSpotify,
+  loadDashboardDrives, loadDrives, loadMusicStats, loadStatistics,
+  loadPlaces: placesFeature.load,
+  loadCharging: chargingFeature.load,
+  loadRecaps: recapsFeature.load
 });
 refreshAll = refreshFeature.refresh;
 refreshFeature.bind();
