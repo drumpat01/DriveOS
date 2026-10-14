@@ -66,10 +66,6 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 $Server = [IO.File]::ReadAllText($ServerPath) -replace "`r`n", "`n"
 $HostingTests = [IO.File]::ReadAllText($HostingTestsPath) -replace "`r`n", "`n"
 
-# -----------------------------------------------------------------
-# Server imports
-# -----------------------------------------------------------------
-
 $Server = Replace-Exact `
     -Text $Server `
     -Old @'
@@ -82,10 +78,6 @@ Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebRequest.psm1") -Force
 '@ `
     -Description "web security module imports"
-
-# -----------------------------------------------------------------
-# Web authentication configuration
-# -----------------------------------------------------------------
 
 $Server = Replace-Exact `
     -Text $Server `
@@ -117,10 +109,6 @@ if (-not $MaintenanceMode -and $RuntimeConfig.IsWeb) {
 '@ `
     -New "" `
     -Description "old web fail-closed placeholder"
-
-# -----------------------------------------------------------------
-# Allow JSON responses to emit Set-Cookie and Retry-After.
-# -----------------------------------------------------------------
 
 $Server = Replace-Exact `
     -Text $Server `
@@ -159,10 +147,6 @@ function Send-Json {
 }
 '@ `
     -Description "Send-Json additional headers"
-
-# -----------------------------------------------------------------
-# Add redirect + web-session helper functions before router.
-# -----------------------------------------------------------------
 
 $Server = Replace-Exact `
     -Text $Server `
@@ -227,10 +211,6 @@ function Handle-Request {
 '@ `
     -Description "hosted authentication helper insertion"
 
-# -----------------------------------------------------------------
-# Expand router parameters.
-# -----------------------------------------------------------------
-
 $Server = Replace-Exact `
     -Text $Server `
     -Old @'
@@ -254,10 +234,6 @@ function Handle-Request {
     )
 '@ `
     -Description "router parameters"
-
-# -----------------------------------------------------------------
-# Public login page + session status.
-# -----------------------------------------------------------------
 
 $Server = Replace-Exact `
     -Text $Server `
@@ -297,10 +273,6 @@ $Server = Replace-Exact `
                 "/api/status" {
 '@ `
     -Description "GET authentication routes"
-
-# -----------------------------------------------------------------
-# POST login/logout routes.
-# -----------------------------------------------------------------
 
 $Server = Replace-Exact `
     -Text $Server `
@@ -400,10 +372,6 @@ $Server = Replace-Exact `
                 "/api/spotify/connect" {
 '@ `
     -Description "POST authentication routes"
-
-# -----------------------------------------------------------------
-# Desktop authentication remains unchanged; web gets strict Host validation.
-# -----------------------------------------------------------------
 
 $OldDesktopAuth = @'
             $RequestHost = $Headers["host"].ToLowerInvariant()
@@ -507,10 +475,6 @@ $Server = Replace-Exact `
     -New $NewDesktopAuth `
     -Description "desktop/web request authentication split"
 
-# -----------------------------------------------------------------
-# Web Origin/CSRF + session gate after request path is known.
-# -----------------------------------------------------------------
-
 $Server = Replace-Exact `
     -Text $Server `
     -Old @'
@@ -585,10 +549,6 @@ $Server = Replace-Exact `
 '@ `
     -Description "web origin and session gate"
 
-# -----------------------------------------------------------------
-# Router needs request headers/client key.
-# -----------------------------------------------------------------
-
 $Server = Replace-Exact `
     -Text $Server `
     -Old @'
@@ -608,10 +568,6 @@ $Server = Replace-Exact `
                 -ClientKey $Remote.Address.ToString()
 '@ `
     -Description "router request context"
-
-# -----------------------------------------------------------------
-# Web request security module.
-# -----------------------------------------------------------------
 
 $WebRequestModule = @'
 Set-StrictMode -Version 2.0
@@ -846,10 +802,6 @@ Export-ModuleMember -Function `
     Clear-DriveOSLoginFailures
 '@
 
-# -----------------------------------------------------------------
-# Login UI.
-# -----------------------------------------------------------------
-
 $LoginHtml = @'
 <!doctype html>
 <html lang="en">
@@ -982,10 +934,6 @@ $LoginJs = @'
   });
 })();
 '@
-
-# -----------------------------------------------------------------
-# Web request unit tests.
-# -----------------------------------------------------------------
 
 $WebRequestTests = @'
 $ErrorActionPreference = "Stop"
@@ -1122,10 +1070,6 @@ Write-Host `
     -ForegroundColor Green
 '@
 
-# -----------------------------------------------------------------
-# Update existing hosting test contract.
-# -----------------------------------------------------------------
-
 $HostingTests = Replace-Exact `
     -Text $HostingTests `
     -Old @'
@@ -1198,10 +1142,6 @@ $HostingTests = Replace-Exact `
 '@) `
     -Description "hosted login routing tests"
 
-# -----------------------------------------------------------------
-# Final source validations before writing anything.
-# -----------------------------------------------------------------
-
 foreach ($Required in @(
     'Get-DriveOSWebAuthConfiguration',
     'Test-DriveOSWebSessionToken',
@@ -1215,10 +1155,6 @@ foreach ($Required in @(
         throw "Patch validation failed. Server is missing: $Required"
     }
 }
-
-# -----------------------------------------------------------------
-# Write files only after every transformation succeeded.
-# -----------------------------------------------------------------
 
 Write-Utf8NoBom -Path $ServerPath -Content $Server
 Write-Utf8NoBom -Path $HostingTestsPath -Content $HostingTests
