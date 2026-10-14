@@ -1,25 +1,5 @@
 import { MARKER_OTA_COMPAT } from './journey-marker-compatibility';
 import { migrateCompatMarkers } from './journey-marker-compat-data';
-﻿/**
- * local-store.ts
- *
- * On-device master SQLite store for the Local-First JourneyDeck architecture.
- *
- * DESIGN PRINCIPLES
- * -----------------
- * - Single source of truth lives on the user's device (expo-sqlite WAL mode).
- * - Multi-user ready: every row carries a user_id so multiple Apple IDs can
- *   coexist on the same device without data leakage between accounts.
- * - Additive-only migrations via PRAGMA user_version. Columns are NEVER dropped
- *   or renamed -- new columns are added with sensible defaults.
- * - Privacy by design: raw home/work coordinates are stored only in the iOS
- *   application sandbox. They never cross the JourneyDeck application server.
- * - Recorder GPS points leave the device only as private CloudKit route assets;
- *   they never cross the JourneyDeck application server or privacy edge.
- *   Optional Tessie historical points come from the provider through the
- *   stateless privacy edge on a bounded, user-initiated route request.
- */
-
 import * as Crypto from 'expo-crypto';
 import { canonicalMusicText } from './apple-artwork-match';
 import { distanceBetweenCoordinatesMeters, SAVED_PLACE_MATCH_RADIUS_METERS } from './place-matching';
@@ -44,15 +24,11 @@ import { TESSIE_JOURNEY_SCHEMA_SQL } from './tessie-journey-schema';
 import { tessieJourneyId, type TessieJourneyPlan } from './tessie-journey-plan';
 import type { TessieDriveRoute, TessieDriveSnapshot } from './tessie-contract';
 
-// --- Database handle (single shared connection, WAL mode) --------------------
-
 let db: ReturnType<typeof getMasterDatabase>;
 let schemaVersion = 0;
 let initialized = false;
 let initialization: Promise<void> | null = null;
 let initializationError: Error | null = null;
-
-// --- Public types ------------------------------------------------------------
 
 export type LocalUserId = string; // Apple Subject identifier or generated UUID
 
@@ -263,10 +239,7 @@ export type LocalAtlasSnapshot = {
   weeklyTourChangePercent: number | null;
 };
 
-// --- Migration system --------------------------------------------------------
-
 const MIGRATIONS: Array<() => void> = [
-  // Migration 1 -- initial schema
   () => {
     db.execSync(`
       CREATE TABLE IF NOT EXISTS local_users (
@@ -400,7 +373,6 @@ const MIGRATIONS: Array<() => void> = [
       );
     `);
   },
-  // Migration 2 -- persisted device-local profile selection
   () => {
     db.execSync(`
       CREATE TABLE IF NOT EXISTS local_preferences (
@@ -410,7 +382,6 @@ const MIGRATIONS: Array<() => void> = [
       );
     `);
   },
-  // Migration 3 -- Phase 3.5 private content, recoverable deletion, and revision-safe sync
   () => {
     db.execSync(`
       ALTER TABLE local_collections ADD COLUMN deleted_at TEXT;
@@ -464,7 +435,6 @@ const MIGRATIONS: Array<() => void> = [
       );
     `);
   },
-  // Migration 4 -- exact private route-asset backup metadata
   () => {
     db.execSync(`
       ALTER TABLE local_journeys ADD COLUMN route_synced_to_cloud INTEGER NOT NULL DEFAULT 0;
@@ -474,11 +444,9 @@ const MIGRATIONS: Array<() => void> = [
       CREATE INDEX IF NOT EXISTS ix_lj_user_route_cloud ON local_journeys(user_id,route_synced_to_cloud,route_updated_at);
     `);
   },
-  // Migration 5 -- database-enforced ownership, value invariants, and query indexes
   () => {
     db.execSync(MASTER_DATABASE_HARDENING_SQL);
   },
-  // Migration 6 -- Phase 2 unified recorder/archive plus canonical places and music
   () => {
     db.execSync(UNIFIED_DATABASE_SCHEMA_SQL);
     db.execSync(RECORDER_DATABASE_HARDENING_SQL);
@@ -486,15 +454,10 @@ const MIGRATIONS: Array<() => void> = [
     backfillCanonicalMusicRecords();
     backfillJourneyPlaceLinks();
   },
-  // Migration 7 -- immutable editing operations and current journey projections.
   () => { db.execSync(JOURNEY_EDITOR_SCHEMA_SQL); },
-  // Migration 8 -- durable journey markers and private attachment references.
   () => { db.execSync(JOURNEY_MARKER_SCHEMA_SQL); migrateCompatMarkers(db); },
-  // Migration 9 -- revision-safe private-sync queues for Markers and photos.
   () => { db.execSync(JOURNEY_MARKER_SYNC_SCHEMA_SQL); },
-  // Migration 10 -- local Supercharger stops matched to imported Tessie drives.
   () => { db.execSync(TESSIE_JOURNEY_SCHEMA_SQL); },
-  // Migration 11 -- distinguish missing provider energy from a measured zero.
   () => { db.execSync(`
     ALTER TABLE local_tessie_drive_metadata ADD COLUMN energy_observed INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE local_tessie_charge_markers ADD COLUMN energy_observed INTEGER NOT NULL DEFAULT 0;
@@ -575,8 +538,6 @@ function repairDuplicateMusicPlaybacksOnce() {
   }
 }
 
-// --- Initialisation ----------------------------------------------------------
-
 function initializeOpenedLocalStore(openedDatabase: ReturnType<typeof getMasterDatabase>): void {
   if (initialized) return;
   db = openedDatabase;
@@ -648,8 +609,6 @@ export function localStoreStartupState(): 'idle' | 'starting' | 'ready' | 'faile
   return initialization ? 'starting' : 'idle';
 }
 
-// --- Helpers -----------------------------------------------------------------
-
 function now() { return new Date().toISOString(); }
 function guard(value: number | null | undefined, min: number, max: number): number | null {
   return value != null && Number.isFinite(value) && value >= min && value <= max ? value : null;
@@ -691,7 +650,6 @@ type CanonicalMusicInput = {
   externalUrl: string | null;
 };
 
-/** Creates or enriches the one shared song/album/artwork graph for a playback. */
 function ensureCanonicalMusicRecords(input: CanonicalMusicInput): string {
   const normalizedTrack = canonicalMusicText(input.track) || input.track.trim().toLocaleLowerCase();
   const normalizedArtist = canonicalMusicText(input.artist) || input.artist.trim().toLocaleLowerCase();
@@ -797,8 +755,6 @@ function backfillJourneyPlaceLinks(userId?: LocalUserId): void {
     }
   }
 }
-
-// --- User management ---------------------------------------------------------
 
 export function ensureLocalUser(input: { appleSubject?: string; displayName?: string; email?: string }): LocalUser {
   initializeLocalStore();
@@ -920,8 +876,6 @@ export function setAskProfileBlocked(blocked: boolean): void {
     ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;`, blocked ? '1' : '0', now());
 }
 
-// --- Journey management ------------------------------------------------------
-
 export type UpsertJourneyInput = Omit<LocalJourney, 'syncedToCloud' | 'createdAt' | 'updatedAt'>;
 export type UpsertJourneyOptions = {
   syncedToCloud?: 0 | 1;
@@ -1027,7 +981,6 @@ export function getTessieDriveMetadata(userId: LocalUserId, journeyId: string): 
     FROM local_tessie_drive_metadata WHERE user_id=? AND journey_id=?;`, userId, journeyId);
 }
 
-/** Resolve provider replay IDs back to the durable journey without merging vehicles. */
 export function findTessieJourneyForDrive(userId: LocalUserId, drive: TessieDriveSnapshot): LocalJourney | null {
   initializeLocalStore();
   const exact = getJourney(userId, tessieJourneyId(userId, drive.id));
@@ -1240,8 +1193,6 @@ export function readTessieStatisticsRows(userId: LocalUserId, startInclusive: st
   return { drives, charges };
 }
 
-// --- GPS points --------------------------------------------------------------
-
 export function isEditorManagedJourney(userId: LocalUserId, journeyId: string): boolean {
   initializeLocalStore();
   return Boolean(db.getFirstSync('SELECT journey_id FROM local_journey_edit_members WHERE user_id=? AND journey_id=?;', userId, journeyId));
@@ -1406,8 +1357,6 @@ export function getJourneyRouteSamples(userId: LocalUserId, journeyId: string): 
   }));
 }
 
-// --- Music entries -----------------------------------------------------------
-
 export type UpsertMusicEntryInput = Omit<LocalMusicEntry, 'syncedToCloud' | 'createdAt'>;
 export type UpsertMusicEntryOptions = { syncedToCloud?: 0 | 1; createdAt?: string };
 
@@ -1532,7 +1481,6 @@ export function enrichMusicEntriesWithArtwork(userId: LocalUserId, catalog: Musi
   return enriched;
 }
 
-/** Records successful Expo Image disk caching against the shared artwork row. */
 export function markArtworkUrlsCached(userId: LocalUserId, urls: string[]): number {
   initializeLocalStore();
   const unique = [...new Set(urls.filter(url => safeArtworkUrl(url)))];
@@ -1570,8 +1518,6 @@ export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: strin
   ).map(row => row as unknown as LocalMusicEntry);
   return withoutDuplicateJourneyPlaybacks(rows);
 }
-
-// --- Places ------------------------------------------------------------------
 
 const PLACE_SELECT = `SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,
   foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,
@@ -1713,7 +1659,6 @@ export function findCachedPlace(userId: LocalUserId, lat: number, lng: number, r
   return null;
 }
 
-/** Returns only places explicitly named by the user, never a temporary geocoder cache row. */
 export function findNamedPlace(userId: LocalUserId, lat: number, lng: number, radiusMeters = SAVED_PLACE_MATCH_RADIUS_METERS): LocalPlace | null {
   initializeLocalStore();
   const latDelta = radiusMeters / 111_000;
@@ -1884,8 +1829,6 @@ export function softDeleteMemory(userId: LocalUserId, id: string, deletedAt = no
   });
 }
 
-// --- Private photos & preferences -------------------------------------------
-
 type LocalPhotoInput = Omit<LocalPhoto, 'syncedToCloud' | 'deletedAt' | 'syncRevision' | 'createdAt' | 'updatedAt'>;
 
 export function upsertPhoto(input: LocalPhotoInput, options: CloudUpsertOptions = {}): void {
@@ -1952,8 +1895,6 @@ export function softDeletePrivatePreference(userId: LocalUserId, key: string, de
   db.runSync("UPDATE local_private_preferences SET value_json='null',deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND key=? AND deleted_at IS NULL;", deletedAt, deletedAt, userId, key);
 }
 
-// --- Atlas snapshot ----------------------------------------------------------
-
 export function writeAtlasSnapshot(snapshot: LocalAtlasSnapshot): void {
   initializeLocalStore();
   db.runSync(`
@@ -1990,8 +1931,6 @@ export function readAtlasSnapshot(userId: LocalUserId): LocalAtlasSnapshot | nul
     weeklyTourMiles: Number(row.weekly_tour_miles), weeklyTourChangePercent: row.weekly_tour_change_percent != null ? Number(row.weekly_tour_change_percent) : null,
   };
 }
-
-// --- CloudKit sync queue helpers ----------------------------------------------
 
 export function journeysPendingSync(userId: LocalUserId, limit = 50): string[] {
   initializeLocalStore();
@@ -2144,8 +2083,6 @@ export function listQuarantinedCloudDeletions(userId: LocalUserId): QuarantinedC
   initializeLocalStore();
   return db.getAllSync<QuarantinedCloudDeletion>('SELECT user_id AS userId,record_name AS recordName,observed_at AS observedAt FROM local_cloud_deletion_quarantine WHERE user_id=? ORDER BY observed_at DESC;', userId);
 }
-
-// --- Diagnostics -------------------------------------------------------------
 
 export type LocalDatabaseIntegrityReport = {
   database: 'journeydeck-local.db';
