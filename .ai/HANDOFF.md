@@ -2,7 +2,7 @@
 
 ## Current objective
 
-Design-review fixes for PR #290 are on `cursor/tesla-drive-journal-9ccf`. Do not merge.
+Final copy and layout fixes for PR #290 on `cursor/tesla-drive-journal-9ccf`. Leave the pull request open.
 
 ## Checkout
 
@@ -10,27 +10,24 @@ Design-review fixes for PR #290 are on `cursor/tesla-drive-journal-9ccf`. Do not
 
 ## Material changes
 
-- `web/tesla-drive-journal.html`: each visible fact once. The lede is the journal sentence. The proof section is the reason to keep a long drive. Who it is for absorbed the private card. How it works is three steps, with charging and efficiency in step 3. Plus is the price only. FAQ is iOS 17. Tessie fees are a separate line. Desktop nav no longer has "Tesla journal". The page loads `public-a11y.css?v=2` so the header button stays one line. Meta and Open Graph keep one description.
+- `web/tesla-drive-journal.html`: visible facts appear once. Desktop nav and mobile menu no longer include "Tesla journal". The Tessie fees line uses `step-note`, with 16px of space under the steps. The page loads `public-a11y.css?v=2` and `public-page.css?v=grand-tour-5`.
 - Homepage hero in `web/beta.html` is "A road trip journal" / "for your iPhone." Measured at 2 lines at 1280 and 390. The idea section under the hero says the journal lives on the device and no account is required.
 - Default `verify:live` headline expectations match that hero. The X campaign headline is unchanged.
 
 ## Verification
 
-- `npm run check:server`
 - `npm run lint:server`
 - `npm run test:server` (66 pass)
-- `npm run test:atlas-performance`
-- `npm run test:e2e` (15 pass)
-- `npm run verify:live -- --base http://127.0.0.1:8795` (pass)
-- Hero line count is 2 at 1280 and 390. Tesla header button at 390 matches the private driving journal button (one line, no horizontal overflow).
+- At 390 the Tessie fees line is 16px below the steps.
+- Earlier on this branch: `npm run test:e2e` (15 pass), `npm run test:atlas-performance`, and `npm run verify:live -- --base http://127.0.0.1:8795`
 
 ## Unresolved / owner decisions
 
-- Keep the PR open. Do not merge or deploy from this session.
+- Leave the pull request open. This session does not merge or deploy.
 - Homepage Plus still says US$24.99 a year. The Tesla page says $39.99 a year, as requested.
 - PowerShell analysis runs in Windows CI. This environment does not have `powershell.exe`.
 
 ## Next steps
 
 1. Confirm JourneyDeck CI is green on the updated PR.
-2. Do not merge or deploy.
+2. Leave the pull request open.

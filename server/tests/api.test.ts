@@ -274,13 +274,14 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(teslaJournal.body, /So you can look back on a long drive and remember what was playing\./);
     assert.match(teslaJournal.body, /Tesla and EV owners\. You do not need a Tesla\./);
     assert.match(teslaJournal.body, /Tesla owners can connect Tessie with Plus\. Drives and charging are recorded automatically, instead of tapping Start\. JourneyDeck tracks charging and efficiency\./);
-    assert.match(teslaJournal.body, /Tessie is a separate service, and any Tessie fees are separate\./);
+    assert.match(teslaJournal.body, /<p class="step-note">Tessie is a separate service, and any Tessie fees are separate\.<\/p>/);
     assert.match(teslaJournal.body, /Free to record\. Plus is \$0\.99 a week or \$39\.99 a year\./);
     assert.match(teslaJournal.body, /<h2>Frequently asked questions<\/h2>/);
     assert.match(teslaJournal.body, /What iPhone does it need\?/);
     assert.match(teslaJournal.body, /iOS 17 or later\./);
     assert.match(teslaJournal.body, /<nav class="desktop-nav" aria-label="Main navigation"><a href="\/">Home<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
-    assert.match(teslaJournal.body, /aria-label="Mobile navigation"><a href="\/">Home<\/a><a href="\/tesla-drive-journal" aria-current="page">Tesla journal<\/a>/);
+    assert.match(teslaJournal.body, /aria-label="Mobile navigation"><a href="\/">Home<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
+    assert.doesNotMatch(teslaJournal.body, /Tesla journal/);
     assert.match(teslaJournal.body, /href="\/public-a11y\.css\?v=2"/);
     const teslaVisible = teslaJournal.body.replace(/<head[\s\S]*?<\/head>/i, "").replace(/<script[\s\S]*?<\/script>/gi, "");
     assert.equal((teslaVisible.match(/private journal of your drives and the music you played/gi) || []).length, 1);
@@ -490,6 +491,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(betaCss.body, /\.desktop-nav a:hover \{ color: var\(--ivory\); \}/);
     assert.match(publicCss.body, /\.desktop-nav \.nav-studio \{ color: var\(--gold\); font-weight: 500; \}/);
     assert.match(publicCss.body, /\.desktop-nav a:hover, \.desktop-nav a\[aria-current="page"\] \{ color: var\(--ivory\); \}/);
+    assert.match(publicCss.body, /\.card ol \+ \.step-note \{ margin-top: 16px; \}/);
     assert.match(mobileCss.body, /\.mobile-menu \.nav-studio \{ color: var\(--gold\); font-weight: 500; \}/);
     assert.match(mobileCss.body, /\.mobile-menu nav a:hover, \.mobile-menu nav a\[aria-current="page"\] \{ background: #d4b15a22; color: #ead4a1; \}/);
     const missingApi = await runtime.app.inject({ method: "GET", url: "/api/a-page-that-does-not-exist" });
