@@ -43,6 +43,7 @@ function recorderHarness({ native = false, permission = true, task = false, prec
     setSummary: () => {}, setDistanceMiles: () => {}, setForegroundPermission: () => {}, setBackgroundPermission: () => {}, setTaskAvailable: () => {},
     setTrackingActive: (value: boolean) => { state.tracking = value; }, setAutomaticDetectionActive: () => {}, setNotice: (value: string) => state.notices.push(value),
     NATIVE_AUTOMATIC_RECORDER_ENABLED: false, loadAutomaticDriveEvent: () => null, announcedAutomaticEvent: { current: '' },
+    noteDriveCompleted: () => {},
   });
   return { state, epoch, refresh: exports.refresh };
 }

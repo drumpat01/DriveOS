@@ -91,7 +91,7 @@ test('V4 uses its Atlas design on iPhone and iPad while V3 iPad retains Statisti
   assert.match(statisticsScreen, /accessibilityLabel="Open Atlas"/);
   assert.match(shell, /membershipTier === 'paid'[\s\S]*?assets\/icon\.png/);
   assert.match(shell, /<MembershipPaywall/);
-  assert.match(shell, /visible=\{membershipPaywallVisible \|\| firstRunStage === 'membership'\}/);
+  assert.match(shell, /visible=\{membershipPaywallVisible \|\| \(firstRunStage === 'membership' && !REDESIGN_PHONE\)\}/);
   assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\(TESSIE_INTEGRATION_ENABLED \? 'tessie' : ROADS_STEP_ENABLED \? 'photos' : 'instructions'\); return; \}/);
   assert.match(shell, /insight=\{dashboard\.data\.summary\.allTime\.journeyCount > 0 \? \{/);
   assert.match(shell, /primarySections\.data\?\.music\.recentSelections\[0\]/);
@@ -566,7 +566,7 @@ test('every native tab explicitly clears the Dynamic Island and owns its scroll 
   assert.match(shell, /function ConnectionsScreen[\s\S]*?useSafeAreaInsets\(\)/);
   assert.match(shell, /contentInsetAdjustmentBehavior="never"/);
   assert.match(shell, /automaticallyAdjustContentInsets=\{false\}/);
-  assert.match(app, /function RecorderScreen\(\{ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample \}/);
+  assert.match(app, /function RecorderScreen\(\{ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample, onCompletedDrive \}/);
   assert.match(app, /const insets = useSafeAreaInsets\(\)/);
   assert.match(app, /paddingTop: insets\.top \+ 14/);
   assert.match(app, /contentInsetAdjustmentBehavior="never"/);

@@ -94,12 +94,15 @@
     },
     "production": {
       "autoIncrement": true,
+      "distribution": "store",
       "uploadSourceMaps": true,
       "channel": "production",
       "environment": "production",
       "env": {
+        "APP_VARIANT": "v4-store",
         "EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING": "0"
-      }
+      },
+      "ios": { "simulator": false, "image": "macos-tahoe-26.6-xcode-27.0" }
     }
   },
   "submit": {

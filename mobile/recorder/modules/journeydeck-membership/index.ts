@@ -12,10 +12,11 @@ export const JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS = [
   'com.journeydeck.recorder.pro.annual',
 ] as const;
 
-// V4 offers weekly and annual. Keep monthly recognized natively for existing subscribers.
+export const JOURNEYDECK_ANNUAL_PRODUCT_ID = 'com.journeydeck.recorder.pro.annual';
+
+// V4 sells annual only. Weekly and monthly stay recognized natively so current subscribers keep access.
 export const JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS = [
-  'com.journeydeck.recorder.pro.weekly',
-  'com.journeydeck.recorder.pro.annual',
+  JOURNEYDECK_ANNUAL_PRODUCT_ID,
 ] as const;
 
 export const isJourneyDeckMembershipNativeAvailable = JourneyDeckMembershipModule !== null;
@@ -58,4 +59,10 @@ export async function restoreMembershipPurchases() {
 
 export function addMembershipChangeListener(listener: (status: import('./src/JourneyDeckMembership.types').JourneyDeckMembershipStatus) => void) {
   return JourneyDeckMembershipModule?.addListener('onMembershipChanged', listener) ?? { remove() {} };
+}
+
+/** Lets Siri honor the first three free drives. StoreKit remains the paid-subscription check. */
+export function setFreeDriveAccess(allowed: boolean) {
+  const native = JourneyDeckMembershipModule as { setFreeDriveAccess?: (allowed: boolean) => void } | null;
+  native?.setFreeDriveAccess?.(allowed);
 }

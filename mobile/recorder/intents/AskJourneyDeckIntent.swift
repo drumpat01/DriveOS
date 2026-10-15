@@ -26,6 +26,8 @@ private let journeyDeckPlusProductIDs: Set<String> = [
 /// TestFlight Plus unlock is a build-time Info.plist flag, never a user setting.
 private func hasJourneyDeckPlus() async -> Bool {
   if Bundle.main.object(forInfoDictionaryKey: "JourneyDeckPlusUnlocked") as? Bool == true { return true }
+  // The first three completed drives are fully free, including Ask with Siri.
+  if UserDefaults.standard.bool(forKey: "JourneyDeckFreeDriveAccess") { return true }
   for await result in StoreKit.Transaction.currentEntitlements {
     if case .verified(let transaction) = result, journeyDeckPlusProductIDs.contains(transaction.productID),
        transaction.revocationDate == nil { return true }

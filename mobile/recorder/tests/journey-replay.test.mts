@@ -149,6 +149,7 @@ test('mounted replay reveals moments in order, rewinds them, pauses, and settles
     './use-core-motion': { useCoreMotion: () => ({ animate: false, reduceTransparency: true }) },
     'expo-linear-gradient': { LinearGradient: host('LinearGradient') }, './journey-replay-card-v4': { JourneyReplayCardV4: host('ReplayCardV4') },
     './redesign-ui': { useRedesignColors: () => ({ photoScrim: ['#00000000'], page: '#000000' }) },
+    './trip-replay-review': { noteCompletedTripReplay: () => Promise.resolve() },
   }, { Date: Clock, fetch: () => {}, setInterval: (fn: () => void) => { timers.add(fn); return fn; }, clearInterval: (fn: () => void) => timers.delete(fn) });
   const song = (index: number, second: number) => ({ index, playedAt: iso(second), coordinate: samples[0].coordinate, track: `Song ${index}`, artist: 'Artist', durationMs: 30_000 });
   let selectedMarker: string | null = null;

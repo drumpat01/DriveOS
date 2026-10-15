@@ -75,7 +75,7 @@ test('schema-11 V3 cannot target older installed runtimes through the marker OTA
   withEnv({ APP_VARIANT: 'v3-store', EAS_BUILD_PROFILE: undefined, EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT: '1' }, () => {
     assert.throws(() => configureApp({ config: base }), /new V3 native build/);
   });
-  withEnv({ APP_VARIANT: undefined, EAS_BUILD_PROFILE: 'production', EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT: undefined }, () => {
+  withEnv({ APP_VARIANT: undefined, EAS_BUILD_PROFILE: undefined, EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT: undefined }, () => {
     const config = configureApp({ config: base });
     assert.equal(config.runtimeVersion, '2.0.0-watch.9');
     assert.equal(config.updates.url, base.updates.url);

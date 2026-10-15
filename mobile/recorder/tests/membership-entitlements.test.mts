@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  currentMembershipEntitlements, entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership,
+  applyFreeCompletedDriveAccess, currentMembershipEntitlements, entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership,
   membershipCanAccessDate, membershipHistoryCutoff,
 } from '../src/membership-entitlements.ts';
 
@@ -51,6 +51,18 @@ test('Build 36 TestFlight grants Plus and Tessie without a sandbox purchase', ()
   });
   assert.equal(entitlementsForTestFlightMembership(free, false, true).tessieAccess, false);
   assert.equal(entitlementsForTestFlightMembership(free, true, false).tessieAccess, false);
+});
+
+test('the first three completed drives unlock Plus features without marking the member paid in StoreKit terms', () => {
+  const free = entitlementsForMembershipTier('free');
+  const open = applyFreeCompletedDriveAccess(free, 0);
+  assert.equal(open.tier, 'paid');
+  assert.equal(open.atlasAccess, true);
+  assert.equal(open.timelineHistoryDays, null);
+  assert.equal(open.tessieAccess, false);
+  assert.equal(applyFreeCompletedDriveAccess(free, 2).atlasAccess, true);
+  assert.equal(applyFreeCompletedDriveAccess(free, 3), free);
+  assert.equal(applyFreeCompletedDriveAccess({ ...free, tessieAccess: true }, 1).tessieAccess, true);
 });
 
 test('free history starts at local midnight today while paid history has no cutoff', () => {

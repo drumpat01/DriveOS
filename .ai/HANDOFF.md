@@ -1,34 +1,36 @@
-# JourneyDeck current handoff, October 14, 2026
+# JourneyDeck current handoff, October 15, 2026
 
 ## Current objective
 
-Open a non-draft follow-up PR to merged PR #288. Do not merge.
+Open a draft PR for iOS 4.5.1: three free completed drives, annual-only trip-summary paywall, and one rating request after the third trip replay. Do not merge. Leave draft PRs #264–#267, #269, and #277 untouched.
 
 ## Checkout
 
-- Branch `cursor/studio-nav-review-e759` off `origin/main` (`7baa0e2`).
+- Branch `cursor/free-drives-annual-paywall-40e0` off `main`.
+- App: `mobile/recorder` (bundle `com.journeydeck.recorder`). `app.config.js` is the version source; `app.json` stays historical.
 
 ## Material changes
 
-- Studio links use `class="nav-studio"` and `Studio <span aria-hidden="true">↗</span>`.
-- Gold and weight live in `.desktop-nav .nav-studio` and `.mobile-menu .nav-studio`, under the existing hover rules.
-- The same link is in the desktop nav and mobile menu on the homepage, legal pages, soundtrack page, SEO landing pages, and the 404 page.
-- Cache keys: `beta.css?v=grand-tour-6`, `public-page.css?v=grand-tour-4` and `hero-lcp-2`, `site-mobile-nav.css?v=2`.
-- `verify:live` does not assert navigation markup, so `expectations.json` is unchanged.
+- Completed-drive count persists in private preference `membership.completed-drives.v1`. The first read seeds it from local journeys. The same session id counts once.
+- While the stored count is 0, 1, or 2, Plus features (except Tessie) are open without changing StoreKit `status.tier`. Siri reads UserDefaults `JourneyDeckFreeDriveAccess`.
+- The paywall opens on the trip summary when the count passes 3 and the member is not subscribed. V4 first run and launch do not show it. Demo drives do not count.
+- V4 offers only `com.journeydeck.recorder.pro.annual`. Trial and price copy come from StoreKit `introTrialDays` and `displayPrice`. No eligible intro offer falls back to the regular price. Weekly and monthly stay recognized for current subscribers.
+- `expo-store-review` asks once after the third replay that plays to the end. Scrubbing does not count. Demo replays do not count.
+- Version and runtime `4.5.1`. Local iOS `buildNumber` `52`. `eas.json` `production` sets `APP_VARIANT=v4-store`, channel `production`, image `macos-tahoe-26.6-xcode-27.0`. `appVersionSource` remains `remote`.
 
 ## Verification
 
-- `npm run check:server`
-- `npm run lint:server`
-- `npm run test:server` (66 pass)
-- `npx playwright test tests/e2e/public-beta.spec.ts` (6 pass)
-- Screenshots: homepage and `/road-trip-journal-app` at 1280 (rest and hover) and 390 (menu open).
+- `npm run typecheck` in `mobile/recorder` passed.
+- Targeted tests passed: completed-drive count, subscription offer, trip-replay review, membership entitlements, membership store, v4 connector config, journey replay, app theme, v3 TestFlight EAS, recorder startup, tab runtime, and `scripts/v4-release-preflight.mjs`.
+- Full `npm test`: the failures introduced here (recorder startup, tab runtime) were fixed and re-run green. Two failures are already on `main`: `atlas-insights` expects Evening and gets Night under UTC, and `private-content` still looks for the Migration 3 comment removed in #280.
 
-## Unresolved / owner decisions
+## Unresolved
 
-- Keep the PR open. Do not merge or deploy from this session.
+- Do not build, submit, or merge from this branch.
+- EAS remote version must be set to `4.5.1` with a build number above 51 before `eas build --profile production`. Local `52` is only the source floor.
+- App Store Connect still needs the annual 7-day intro offer, and weekly removed from sale.
 
 ## Next steps
 
-1. Confirm JourneyDeck CI is green.
-2. Do not merge or deploy.
+1. Review the draft PR. Do not merge.
+2. When the owner asks to ship: from `mobile/recorder`, set the remote version, then `eas build -p ios --profile production` and `eas submit -p ios --profile production --latest`.
