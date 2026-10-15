@@ -266,13 +266,30 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(hillCountry.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(hillCountry.body, /rel="canonical" href="https:\/\/journeydeck\.me\/texas-hill-country-road-trip-journal"/);
     assert.doesNotMatch(hillCountry.body, /[\u2013\u2014]/);
+    const teslaJournal = await runtime.app.inject({ method: "GET", url: "/tesla-drive-journal" });
+    assert.equal(teslaJournal.statusCode, 200, teslaJournal.body);
+    assert.match(String(teslaJournal.headers["content-type"]), /text\/html/);
+    assert.match(teslaJournal.body, /<h1>A Tesla drive journal for your iPhone<\/h1>/);
+    assert.match(teslaJournal.body, /A private journal of your drives and the music you played\. Free to record on iPhone, iOS 17 or later\./);
+    assert.match(teslaJournal.body, /Tesla owners can connect Tessie with Plus so drives and charging record automatically\./);
+    assert.match(teslaJournal.body, /tracks charging and efficiency/);
+    assert.match(teslaJournal.body, /\$0\.99 a week or \$39\.99 a year/);
+    assert.match(teslaJournal.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(teslaJournal.body, /Can Tesla owners record drives without tapping Start\?/);
+    assert.match(teslaJournal.body, /href="\/privacy"/);
+    assert.match(teslaJournal.body, /href="\/apple-music-soundtrack"/);
+    assert.match(teslaJournal.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526">Download on the App Store/);
+    assert.match(teslaJournal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/tesla-drive-journal"/);
+    assert.match(String(teslaJournal.headers["content-security-policy"]), /script-src[^;]*https:\/\/cloud\.umami\.is/);
+    assert.doesNotMatch(teslaJournal.body, /[\u2013\u2014]/);
+    assert.doesNotMatch(teslaJournal.body, /free trial|plus trial|3-day/i);
     const journalAlias = await runtime.app.inject({ method: "GET", url: "/driving-journal" });
     assert.equal(journalAlias.statusCode, 301);
     assert.equal(journalAlias.headers.location, "/private-driving-journal");
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
-    for (const page of [privacy, support, soundtrack, journal, roadTripJournal, roadTripTracker, travelPhotos, drivingHistory, route66, pacificCoast, nationalParks, hillCountry, terms]) {
+    for (const page of [privacy, support, soundtrack, journal, roadTripJournal, roadTripTracker, travelPhotos, drivingHistory, route66, pacificCoast, nationalParks, hillCountry, teslaJournal, terms]) {
       assert.match(page.body, /class="site-header"/);
       assert.match(page.body, /class="desktop-nav" aria-label="Main navigation"/);
       assert.match(page.body, /href="\/apple-music-soundtrack"/);
@@ -300,6 +317,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(googleRobotsAllowed(robots.body, "/pacific-coast-highway-road-trip-journal"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/national-parks-road-trip-journal"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/texas-hill-country-road-trip-journal"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/tesla-drive-journal"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/google8e611381b21882a8.html"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/login"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/app"), false);
@@ -330,6 +348,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/pacific-coast-highway-road-trip-journal<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/national-parks-road-trip-journal<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/texas-hill-country-road-trip-journal<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/tesla-drive-journal<\/loc>/i);
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
     assert.doesNotMatch(sitemap.body, /google8e611381b21882a8/i);
     const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
@@ -387,6 +406,9 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /class="feature-cta" href="\/travel-journal-app-with-photos">See the travel journal with photos/);
     assert.match(landing.body, /id="membership"/);
     assert.match(landing.body, /class="feature-cta" href="\/driving-history-app">See the driving history app/);
+    assert.match(landing.body, /<h1 id="hero-title">A private road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
+    assert.match(landing.body, /Your drives, and the music you played\. Tesla owners can connect Tessie with Plus so drives and charging record automatically\./);
+    assert.match(landing.body, /class="feature-cta" href="\/tesla-drive-journal">See the Tesla drive journal/);
     assert.match(landing.body, /Ask JourneyDeck/);
     assert.match(landing.body, /Journey Markers/);
     assert.match(landing.body, /Start a Journey widget/);
@@ -517,11 +539,12 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/pacific-coast-highway-road-trip-journal", canonical: "https://journeydeck.me/pacific-coast-highway-road-trip-journal" },
     { url: "/national-parks-road-trip-journal", canonical: "https://journeydeck.me/national-parks-road-trip-journal" },
     { url: "/texas-hill-country-road-trip-journal", canonical: "https://journeydeck.me/texas-hill-country-road-trip-journal" },
+    { url: "/tesla-drive-journal", canonical: "https://journeydeck.me/tesla-drive-journal" },
     { url: "/support", canonical: "https://journeydeck.me/support" },
     { url: "/privacy", canonical: "https://journeydeck.me/privacy" },
     { url: "/terms", canonical: "https://journeydeck.me/terms" }
   ] as const;
-  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal"]);
+  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal"]);
   try {
     for (const page of pages) {
       const response = await runtime.app.inject({ method: "GET", url: page.url });

@@ -1,32 +1,35 @@
-# JourneyDeck current handoff, October 14, 2026
+# JourneyDeck current handoff, October 15, 2026
 
 ## Current objective
 
-Open a non-draft follow-up PR to merged PR #288. Do not merge.
+Open a non-draft PR for the Tesla SEO landing page and the homepage hero rewrite. Do not merge.
 
 ## Checkout
 
-- Branch `cursor/studio-nav-review-e759` off `origin/main` (`7baa0e2`).
+- Branch `cursor/tesla-drive-journal-9ccf` off `main` (`43df42c`).
 
 ## Material changes
 
-- Studio links use `class="nav-studio"` and `Studio <span aria-hidden="true">↗</span>`.
-- Gold and weight live in `.desktop-nav .nav-studio` and `.mobile-menu .nav-studio`, under the existing hover rules.
-- The same link is in the desktop nav and mobile menu on the homepage, legal pages, soundtrack page, SEO landing pages, and the 404 page.
-- Cache keys: `beta.css?v=grand-tour-6`, `public-page.css?v=grand-tour-4` and `hero-lcp-2`, `site-mobile-nav.css?v=2`.
-- `verify:live` does not assert navigation markup, so `expectations.json` is unchanged.
+- New public page `web/tesla-drive-journal.html` at `/tesla-drive-journal`, for Tesla and EV owners.
+- Registered in `server/src/app.ts` (`publicPaths` and `GET`), `web/sitemap.xml`, `tools/verify-live/expectations.json` and `FEATURE_MAP.md`, server tests, and the Playwright studio nav check.
+- Homepage hero in `web/beta.html`: "A private road trip journal" / "for your iPhone." The subline names drives, the music you played, and Tesla owners via Tessie. No trial language. CSS cache keys are unchanged.
+- Default `verify:live` headline expectations match that hero. The X campaign headline is unchanged.
+- The Tessie card on the homepage links to the new page.
 
 ## Verification
 
 - `npm run check:server`
 - `npm run lint:server`
 - `npm run test:server` (66 pass)
-- `npx playwright test tests/e2e/public-beta.spec.ts` (6 pass)
-- Screenshots: homepage and `/road-trip-journal-app` at 1280 (rest and hover) and 390 (menu open).
+- `npm run test:atlas-performance`
+- `npm run test:e2e` (15 pass)
+- `npm run verify:live -- --base http://127.0.0.1:8795` (pass)
+- Screenshots of `/tesla-drive-journal` and the homepage hero at 1280 and 390.
 
 ## Unresolved / owner decisions
 
 - Keep the PR open. Do not merge or deploy from this session.
+- PowerShell, gitleaks, and Trivy run in Windows CI. They are not installed in this Linux environment.
 
 ## Next steps
 

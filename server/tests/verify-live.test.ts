@@ -65,6 +65,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/pacific-coast-highway-road-trip-journal",
     "/national-parks-road-trip-journal",
     "/texas-hill-country-road-trip-journal",
+    "/tesla-drive-journal",
     "/support",
     "/privacy",
     "/terms"
@@ -77,8 +78,8 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.appStore.mediaType, "8");
   assert.equal(expectations.campaign.query, "?utm_source=x&utm_medium=social&utm_campaign=launch_oct13");
   assert.equal(expectations.campaign.expectedCt, "x-launch_oct13");
-  assert.equal(expectations.headlines.default.lead, "Take the road.");
-  assert.equal(expectations.headlines.default.accent, "Keep the story.");
+  assert.equal(expectations.headlines.default.lead, "A private road trip journal");
+  assert.equal(expectations.headlines.default.accent, "for your iPhone.");
   assert.equal(expectations.headlines.x.lead, "Keep the drive.");
   assert.equal(expectations.headlines.x.accent, "Keep the song.");
   assert.equal(expectations.launchBadge.productHref, "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral");
@@ -141,7 +142,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   assert.ok(checks.every((check) => check.pass), checks.filter((check) => !check.pass).map((check) => check.name).join(","));
   assert.equal(canonicalUrlForPath("/", expectations), "https://journeydeck.me/");
   assert.equal(canonicalUrlForPath("/support", expectations), "https://journeydeck.me/support");
-  assert.equal(headlineMatches("Take the road.\nKeep the story.", expectations.headlines.default), true);
+  assert.equal(headlineMatches("A private road trip journal\nfor your iPhone.", expectations.headlines.default), true);
   assert.equal(headlineMatches("Keep the drive. Keep the song.", expectations.headlines.x), true);
   assert.equal(headlineMatches("Take the road. Keep the story.", expectations.headlines.x), false);
   const badgeCheck = checks.find((check) => check.name === "page:/ launch-badge");
