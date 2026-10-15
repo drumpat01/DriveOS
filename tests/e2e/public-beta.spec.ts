@@ -53,7 +53,7 @@ test('Studio nav link is gold until the existing hover and focus styles apply', 
   const gold = 'rgb(212, 177, 90)';
   const ivory = 'rgb(246, 240, 226)';
   const mobileHover = 'rgb(234, 212, 161)';
-  for (const path of ['/beta.html', '/road-trip-journal-app.html']) {
+  for (const path of ['/beta.html', '/road-trip-journal-app.html', '/tesla-drive-journal.html']) {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(path);
     const studio = page.locator('.desktop-nav a.nav-studio');

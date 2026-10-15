@@ -47,6 +47,7 @@ h3 { margin: 24px 0 8px; color: #ead4a1; font-size: 1.04rem; font-weight: 650; }
 p, li { color: var(--muted); font-size: 1rem; line-height: 1.7; }
 p { margin: 0 0 15px; }
 ul, ol { margin: 0; padding-left: 23px; }
+.card ol + .step-note { margin-top: 16px; }
 li + li { margin-top: 9px; }
 strong { color: var(--ivory); }
 .meta { display: grid; gap: 7px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: .87rem; }
