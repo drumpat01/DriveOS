@@ -11,6 +11,7 @@
     "/pacific-coast-highway-road-trip-journal",
     "/national-parks-road-trip-journal",
     "/texas-hill-country-road-trip-journal",
+    "/tesla-drive-journal",
     "/support",
     "/privacy",
     "/terms"
@@ -39,8 +40,8 @@
   },
   "headlines": {
     "default": {
-      "lead": "Take the road.",
-      "accent": "Keep the story."
+      "lead": "A road trip journal",
+      "accent": "for your iPhone."
     },
     "x": {
       "lead": "Keep the drive.",
