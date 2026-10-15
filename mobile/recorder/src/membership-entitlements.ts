@@ -56,6 +56,21 @@ export function withPreviewAtlasAccess(
     : entitlements;
 }
 
+/**
+ * The first three completed drives use Plus features without a subscription.
+ * StoreKit `status.tier` stays the payment authority; this only widens access.
+ * Tessie stays on its verified entitlement.
+ */
+export function applyFreeCompletedDriveAccess(
+  entitlements: JourneyDeckMembershipEntitlements,
+  completedCount: number,
+): JourneyDeckMembershipEntitlements {
+  if (entitlements.tier === 'paid' || !Number.isInteger(completedCount) || completedCount < 0 || completedCount >= 3) {
+    return entitlements;
+  }
+  return { ...entitlementsForMembershipTier('paid'), tessieAccess: entitlements.tessieAccess };
+}
+
 export function membershipHistoryCutoff(entitlements: JourneyDeckMembershipEntitlements, now = Date.now()): number {
   if (entitlements.timelineHistoryDays === null) return Number.NEGATIVE_INFINITY;
   const midnight = new Date(now);

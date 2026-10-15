@@ -62,6 +62,7 @@ import {
   subscribeNativeRecorderStatus,
 } from './modules/journeydeck-recorder';
 import { getCurrentUser, isDemoProfile } from './src/auth';
+import { commitCompletedDrive } from './src/completed-drive-store';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_FIFTY_STATES_ENABLED } from './src/release-features';
@@ -159,7 +160,7 @@ function completionMomentFromSnapshot(snapshot: LiveRecorderSnapshot, fallback: 
   };
 }
 
-function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample }: {
+function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample, onCompletedDrive }: {
   onClose: () => void;
   /** Leaves the sample for the member's own library (the recorder remounts there). */
   onLeaveSample?: () => Promise<void>;
@@ -168,6 +169,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
   onProgressChange?: (progress: ActiveJourneyProgress | null) => void;
+  onCompletedDrive?: (completedCount: number) => void;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
@@ -206,6 +208,11 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const [recorderSheetOpen, setRecorderSheetOpen] = useState(false);
   const [startRequestTick, setStartRequestTick] = useState(0);
   useEffect(() => subscribeStartJourneyRequests(() => setStartRequestTick(tick => tick + 1)), []);
+
+  const noteDriveCompleted = useCallback((sessionId: string | null | undefined) => {
+    if (!sessionId || isDemoProfile()) return;
+    try { onCompletedDrive?.(commitCompletedDrive(getCurrentUser().id, sessionId)); } catch { /* the next completed drive records the count */ }
+  }, [onCompletedDrive]);
 
   const runExclusive = useCallback(async (work: () => Promise<void>) => {
     const next = operation.current.then(work, work);
@@ -278,6 +285,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       && await finishManualRecordingForFailsafe(manualFailsafe.sessionId, manualFailsafe.decision, connection ?? undefined)) {
       taskRunning = false;
       setSyncStage('saved');
+      noteDriveCompleted(manualFailsafe.sessionId);
       setNotice(manualRecordingFailsafeNotice(manualFailsafe.decision.reason));
       current = activeSession();
       currentIsNative = isNativeAutomaticSession(current?.id);
@@ -340,6 +348,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       }
       else completeSessionLocally(current.id, Boolean(connection));
       enrichCompletedJourney(connection, current.id);
+      noteDriveCompleted(current.id);
       setSyncStage('saved');
       setNotice('Journey saved on this iPhone. Library preparation and optional backup continue in the background.');
     }
@@ -373,11 +382,15 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     if (refreshMayPublish && nativeRecorder?.lastEvent === 'manual_auto_finished' && nativeRecorder.lastEventAt
       && announcedAutomaticEvent.current !== nativeRecorder.lastEventAt) {
       announcedAutomaticEvent.current = nativeRecorder.lastEventAt;
+      noteDriveCompleted(nativeRecorder.sessionId);
       setNotice('Journey finished automatically and is saved on this iPhone.');
     }
     if (refreshMayPublish && automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
       && announcedAutomaticEvent.current !== automaticEvent.occurredAt) {
       announcedAutomaticEvent.current = automaticEvent.occurredAt;
+      if (automaticEvent.kind === 'finished') {
+        noteDriveCompleted('sessionId' in automaticEvent ? automaticEvent.sessionId : nativeRecorder?.sessionId);
+      }
       setNotice(automaticEvent.kind === 'started'
         ? 'JourneyDeck detected driving and started this journey automatically.'
         : automaticEvent.kind === 'finished'
@@ -392,7 +405,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     });
     refreshPending.current = tracked;
     return tracked;
-  }, [connection, runExclusive]);
+  }, [connection, noteDriveCompleted, runExclusive]);
 
   useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
 
@@ -691,6 +704,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
         setTrackingActive(false);
         enrichCompletedJourney(connection, currentSummary.id);
         setCompletionMoment(completionMomentFromSnapshot(completedSnapshot, currentSummary));
+        noteDriveCompleted(currentSummary.id);
         setSummary(null);
         setSyncStage('saved');
         setNotice('Journey saved on this iPhone. Library preparation and optional backup continue in the background.');
@@ -707,7 +721,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       void refresh().catch(() => {});
       onJourneyChange?.();
     }
-  }, [connection, onJourneyChange, refresh, runExclusive]);
+  }, [connection, noteDriveCompleted, onJourneyChange, refresh, runExclusive]);
 
   const finish = () => {
     if (!summary) return;
@@ -722,7 +736,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     setSyncStage('syncing');
     try {
       if (summary.status === 'finishing') {
-        completeSessionLocally(summary.id); enrichCompletedJourney(connection, summary.id); setSummary(null); setSyncStage('saved'); setNotice('Journey saved on this iPhone. Library preparation and optional backup continue in the background.');
+        completeSessionLocally(summary.id); enrichCompletedJourney(connection, summary.id); noteDriveCompleted(summary.id); setSummary(null); setSyncStage('saved'); setNotice('Journey saved on this iPhone. Library preparation and optional backup continue in the background.');
         return;
       }
       await flushRecording(connection, summary.id); setSyncStage('synced'); setNotice('GPS points are synced. Music details continue syncing independently.');

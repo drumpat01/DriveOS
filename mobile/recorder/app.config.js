@@ -6,7 +6,8 @@ module.exports = ({ config }) => {
     throw new Error('Use a declared V2, V3, simulator, or production build profile.');
   }
   // Profile wins: v3-testflight must never inherit .v3 identity from APP_VARIANT=v3-preview.
-  const v4Store = process.env.APP_VARIANT === 'v4-store' || process.env.EAS_BUILD_PROFILE === 'v4-testflight';
+  const productionStore = process.env.EAS_BUILD_PROFILE === 'production';
+  const v4Store = process.env.APP_VARIANT === 'v4-store' || process.env.EAS_BUILD_PROFILE === 'v4-testflight' || productionStore;
   const v3Store = !v4Store && (process.env.APP_VARIANT === 'v3-store' || process.env.EAS_BUILD_PROFILE === 'v3-testflight');
   const v3Preview = !v4Store && !v3Store && (process.env.APP_VARIANT === 'v3-preview' || ['v3-preview', 'v3-development-simulator'].includes(process.env.EAS_BUILD_PROFILE));
   const v3 = v3Preview || v3Store;
@@ -16,7 +17,7 @@ module.exports = ({ config }) => {
   const paywallLive = process.env.JOURNEYDECK_PAYWALL === 'live' || (v4Store && process.env.JOURNEYDECK_PAYWALL !== 'open');
   const preview = process.env.APP_VARIANT === 'v2-preview' || process.env.EAS_BUILD_PROFILE === 'v2-preview';
   const markerOtaCompat = process.env.EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT === '1';
-  const channel = v4Store ? 'v4-testflight' : v3Preview ? 'v3-preview' : preview ? 'v2-preview' : 'production';
+  const channel = productionStore ? 'production' : v4Store ? 'v4-testflight' : v3Preview ? 'v3-preview' : preview ? 'v2-preview' : 'production';
   if (markerOtaCompat) throw new Error('Tessie schema 11 requires a new V3 native build. Older-runtime OTA compatibility is unavailable from this tree.');
   // Keys are public Apple SDK keys; each bundle must use its own RevenueCat app.
   const revenueCatAppleKey = (preview || v3Preview ? process.env.REVENUECAT_PREVIEW_APPLE_API_KEY : process.env.REVENUECAT_PRODUCTION_APPLE_API_KEY) || '';
@@ -33,11 +34,10 @@ module.exports = ({ config }) => {
   return {
     ...config,
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
-    version: v4Store ? '4.5.0' : v3 ? '3.0.0' : '2.0.0',
+    version: v4Store ? '4.5.1' : v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // V4 and V3 Build 40 have separate native and OTA compatibility boundaries. V4 preview.3 adds weekly/annual
-    // StoreKit products and the 3-day first-launch trial in native code; its OTAs must not reach Build 44 (preview.2).
-    runtimeVersion: v4Store ? '4.0.0-preview.3' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    // V4 4.5.1 adds the StoreKit rating request. Its runtime must not receive OTAs from 4.0.0-preview.3 binaries.
+    runtimeVersion: v4Store ? '4.5.1' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       ...(modern ? {
@@ -92,7 +92,7 @@ module.exports = ({ config }) => {
         tinted: './assets/icon-tinted-clear-v1.png',
       },
       bundleIdentifier: v3Preview ? 'com.journeydeck.recorder.v3' : preview ? 'com.journeydeck.recorder.v2' : config.ios.bundleIdentifier,
-      ...(v3Preview ? { buildNumber: '1' } : preview ? { buildNumber: '6' } : {}),
+      ...(v4Store ? { buildNumber: '52' } : v3Preview ? { buildNumber: '1' } : preview ? { buildNumber: '6' } : {}),
       entitlements: {
         ...config.ios.entitlements,
         'com.apple.developer.icloud-container-identifiers': [container],

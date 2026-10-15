@@ -27,6 +27,7 @@ import { useCoreMotion } from './use-core-motion';
 import { LinearGradient } from 'expo-linear-gradient';
 import { JourneyReplayCardV4 } from './journey-replay-card-v4';
 import { useRedesignColors } from './redesign-ui';
+import { noteCompletedTripReplay } from './trip-replay-review';
 
 type InteractiveRouteMapProps = {
   markers?: JourneyMarker[];
@@ -94,6 +95,7 @@ export function InteractiveRouteMap({
   const mapRef = useRef<MapRef>(null);
   const replayClockRef = useRef<number | null>(null);
   const replayZoomRef = useRef(REPLAY_CHASE_ZOOM);
+  const replayCompletionNoted = useRef(false);
   const mapGestureRef = useRef(false);
   const [mapStyle, setMapStyle] = useState<JourneyDeckMapStyle | null>(null);
   const [mapFailed, setMapFailed] = useState(false);
@@ -160,6 +162,7 @@ export function InteractiveRouteMap({
   }, [theme.id]);
 
   useEffect(() => {
+    replayCompletionNoted.current = false;
     setReplayTimestamp(Number.isFinite(firstReplayTime) ? firstReplayTime : Date.now());
     setReplayPlaying(false);
     setReplayCameraMode('chase');
@@ -179,6 +182,10 @@ export function InteractiveRouteMap({
         const next = current + elapsed * effectiveReplayRate;
         if (next >= lastReplayTime) {
           setReplayPlaying(false);
+          if (!replayCompletionNoted.current) {
+            replayCompletionNoted.current = true;
+            void noteCompletedTripReplay();
+          }
           return lastReplayTime;
         }
         return next;
@@ -270,11 +277,15 @@ export function InteractiveRouteMap({
     if (!canReplay) return;
     setReplayEngaged(true); setQueryCoordinate(null); setTerminalSelection(null); onSelectSong?.(null);
     if (replayTimestamp >= lastReplayTime) setReplayTimestamp(firstReplayTime);
-    if (!replayPlaying) setReplayCameraMode('chase');
+    if (!replayPlaying) {
+      replayCompletionNoted.current = false;
+      setReplayCameraMode('chase');
+    }
     setReplayPlaying(current => !current);
   };
   const watchStory = () => {
     if (!canReplay) return;
+    replayCompletionNoted.current = false;
     setReplayRate('story'); setReplayTimestamp(firstReplayTime); setReplayEngaged(true); setReplayPlaying(true);
     setReplayCameraMode('chase'); setQueryCoordinate(null); setTerminalSelection(null); onSelectSong?.(null);
   };
@@ -410,7 +421,7 @@ export function InteractiveRouteMap({
       {replayEngaged && replaySnapshot && <View onLayout={event => setStageHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', bottom: 12, left: 12, right: 12 }}>
         <JourneyReplayStage playing={replayPlaying} complete={replayTimestamp >= lastReplayTime} animate={motion.animate} timestamp={replayTimestamp}
           song={replaySong} photo={currentPhoto} stop={activeStop} progress={replayProgress}
-          onSeek={selectReplayProgress} onToggle={toggleReplay} onRestart={() => { setReplayTimestamp(firstReplayTime); setReplayPlaying(true); }}
+          onSeek={selectReplayProgress} onToggle={toggleReplay} onRestart={() => { replayCompletionNoted.current = false; setReplayTimestamp(firstReplayTime); setReplayPlaying(true); }}
           onExplore={() => { setReplayPlaying(false); setReplayEngaged(false); setReplayTimestamp(firstReplayTime); fitRoute(); }}
           onPhotoError={() => { if (currentPhoto) setFailedPhotos(ids => ids.includes(currentPhoto.id) ? ids : [...ids, currentPhoto.id]); }} />
       </View>}

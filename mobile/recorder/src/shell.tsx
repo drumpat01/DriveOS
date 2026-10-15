@@ -140,7 +140,10 @@ import { subscribeLocalArchiveChanges } from './local-archive-events';
 import { forceAppleMusicArtworkRefreshAfterUpdate } from './music-capture';
 import { completeWelcomeIntro, hasCompletedWelcomeIntro } from './welcome-intro';
 import { lastPromptedShareJourneyId, markShareJourneyPrompted } from './share-prompt';
-import { membershipCanAccessDate, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import { applyFreeCompletedDriveAccess, membershipCanAccessDate, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import { shouldShowTripSummaryPaywall } from './completed-drive-count';
+import { freeDriveWindowOpen, useCompletedDriveCount } from './completed-drive-store';
+import { setFreeDriveAccess } from '../modules/journeydeck-membership';
 import { useJourneyDeckMembership } from './membership-store';
 import { MembershipPaywall } from './membership-paywall';
 import { ROADS_STEP_ENABLED } from './roads-so-far-scan';
@@ -337,6 +340,7 @@ type RecorderComponent = ComponentType<{
   onActivityChange?: (active: boolean) => void;
   onProgressChange?: (progress: ActiveJourneyProgress | null) => void;
   onLeaveSample?: () => Promise<void>;
+  onCompletedDrive?: (completedCount: number) => void;
 }>;
 
 export function JourneyDeckShell({ recorder, children }: { recorder: RecorderComponent; children: ReactNode }) {
@@ -350,7 +354,14 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const adaptiveLayout = useAdaptiveLayout();
 
   const membershipStore = useJourneyDeckMembership();
-  const membership = membershipStore.state.entitlements;
+  const completedDrives = useCompletedDriveCount();
+  const membership = useMemo(
+    () => applyFreeCompletedDriveAccess(membershipStore.state.entitlements, completedDrives),
+    [completedDrives, membershipStore.state.entitlements],
+  );
+  useEffect(() => {
+    setFreeDriveAccess(freeDriveWindowOpen(completedDrives, membershipStore.state.status.tier === 'paid'));
+  }, [completedDrives, membershipStore.state.status.tier]);
   const [tab, setTab] = useState<Tab>('home');
   const [homeRecorderActive, setHomeRecorderActive] = useState(false);
   const [homeJourneyProgress, setHomeJourneyProgress] = useState<ActiveJourneyProgress | null>(null);
@@ -949,6 +960,10 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     void haptics.selection();
   };
 
+  const handleCompletedDrive = useCallback((completedCount: number) => {
+    if (isDemoProfile()) return;
+    if (shouldShowTripSummaryPaywall(completedCount, membershipStore.state.status.tier === 'paid')) setMembershipPaywallVisible(true);
+  }, [membershipStore.state.status.tier]);
   const openAtlas = () => {
     if (!membership.atlasAccess) {
       setMembershipPaywallVisible(true);
@@ -1043,7 +1058,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   />;
 
   const accessoryRecorder = REDESIGN_PHONE && canRecordDrives() && supportsTabAccessory(Platform.OS, Platform.Version);
-  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} onLeaveSample={leaveSampleToRecord} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
+  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} onLeaveSample={leaveSampleToRecord} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} /> : null;
   const loadTodayProfile = useCallback(() => {
     const appearance = loadProfileAppearance(currentUser);
     return { initials: profileInitialsFor(appearance.displayName), avatarUri: appearance.avatarDataUri ?? null };
@@ -1060,7 +1075,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         journeyProgress={homeJourneyProgress} vehicles={primarySections.data?.vehicle.vehicles ?? []} vehicleLoading={primarySections.status === 'loading' && !primarySections.data} vehicleError={primarySections.status === 'error'}
         onMemory={openMemory} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined}
         loading={primarySections.status === 'loading' || musicDashboard.status === 'loading'} error={primarySections.status === 'error' ? 'Your saved library is temporarily unavailable.' : undefined}
-        recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+        recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} />} />,
     } : {
       music: <MusicScreen redesign={REDESIGN_PHONE} state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => REDESIGN_PHONE || membershipCanAccessDate(membership, journey.startedAt)) }} isLocked={REDESIGN_PHONE ? startedAt => !membershipCanAccessDate(membership, startedAt) : undefined} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
@@ -1072,7 +1087,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         }}
         loadProfile={loadTodayProfile} onJourney={openJourney} onMemory={openMemory} onMemories={() => openTab('journeys')} onWeek={() => openTab('statistics')}
         onProfile={() => { router.push('/preferences'); }} onSync={isIpad() ? () => void syncPrivateCloud(true) : undefined} sampleActive={isDemoProfile(currentUser)} onExitSample={toggleSampleData} onRefresh={() => refreshPrimarySections(true)} />
-        : <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+        : <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} />} />,
       statistics: REDESIGN_PHONE
         ? <AtlasTabV4 key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />
         : <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
@@ -1223,7 +1238,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         {navigationReady && <View style={[styles.primaryTabHost, !appVisible && { display: 'none' }]}>{children}</View>}
       </View>
       <MembershipPaywall
-        visible={membershipPaywallVisible || firstRunStage === 'membership'}
+        visible={membershipPaywallVisible || (firstRunStage === 'membership' && !REDESIGN_PHONE)}
         state={membershipStore.state}
         insight={dashboard.data.summary.allTime.journeyCount > 0 ? {
           journeyCount: dashboard.data.summary.allTime.journeyCount,

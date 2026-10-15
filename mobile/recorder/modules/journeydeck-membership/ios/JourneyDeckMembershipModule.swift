@@ -140,6 +140,10 @@ public final class JourneyDeckMembershipModule: Module {
       self.sendEvent("onMembershipChanged", status)
       return status
     }
+
+    Function("setFreeDriveAccess") { (allowed: Bool) in
+      UserDefaults.standard.set(allowed, forKey: "JourneyDeckFreeDriveAccess")
+    }
   }
 
   private func startTransactionListener() {

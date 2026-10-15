@@ -21,16 +21,18 @@ import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  JOURNEYDECK_ANNUAL_PRODUCT_ID,
   JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS,
   JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS,
   type JourneyDeckMembershipProduct,
 } from '../modules/journeydeck-membership';
+import { subscriptionOfferLine } from './subscription-offer';
 import type { JourneyDeckMembershipState } from './membership-store';
 import { journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography, type JourneyDeckSemanticColors } from './journeydeck-design-tokens';
 
 const MONTHLY_PRODUCT_ID = JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS[0];
-const ANNUAL_PRODUCT_ID = JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS[1];
-const WEEKLY_PRODUCT_ID = JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS[0];
+const ANNUAL_PRODUCT_ID = JOURNEYDECK_ANNUAL_PRODUCT_ID;
+const WEEKLY_PRODUCT_ID = 'com.journeydeck.recorder.pro.weekly';
 
 function planName(product: JourneyDeckMembershipProduct) {
   if (product.id === ANNUAL_PRODUCT_ID) return 'Annual';
@@ -115,10 +117,12 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
     };
   }, [visible]);
 
-  const orderedProducts = useMemo(
-    () => [...state.products].sort((left, right) => productOrder(left) - productOrder(right)),
-    [state.products],
-  );
+  const orderedProducts = useMemo(() => {
+    const offered = V4_REDESIGN_ENABLED
+      ? state.products.filter(product => (JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS as readonly string[]).includes(product.id))
+      : state.products;
+    return [...offered].sort((left, right) => productOrder(left) - productOrder(right));
+  }, [state.products]);
 
   useEffect(() => {
     if (!orderedProducts.length) return;
@@ -141,7 +145,7 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
   if (V4_PHONE) return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
     <MembershipPaywallV4
       hero={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)}
-      plans={orderedProducts.map(product => ({ product, name: planName(product), period: periodSuffix(product) || 'App Store price', trialDays: product.introTrialDays, badge: product.id === ANNUAL_PRODUCT_ID ? 'BEST VALUE' : undefined }))}
+      plans={orderedProducts.map(product => ({ product, name: planName(product), period: periodSuffix(product) || 'App Store price', offerLine: subscriptionOfferLine(product), badge: orderedProducts.length > 1 && product.id === ANNUAL_PRODUCT_ID ? 'BEST VALUE' : undefined }))}
       selectedId={selectedProductId}
       onSelect={setSelectedProductId}
       loading={state.productsLoading}

@@ -38,7 +38,7 @@ async function harness(overrides: Record<string, any> = {}) {
     './auth': { isDemoProfile: () => false },
     '../modules/journeydeck-membership': {
       isJourneyDeckMembershipNativeAvailable: true,
-      JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS: ['com.journeydeck.recorder.pro.weekly', 'com.journeydeck.recorder.pro.annual'],
+      JOURNEYDECK_V4_MEMBERSHIP_PRODUCT_IDS: ['com.journeydeck.recorder.pro.annual'],
       getMembershipStatus: async () => free,
       getMembershipProducts: async (productIds?: readonly string[]) => { requestedProducts = productIds; return []; },
       purchaseMembership: async () => ({ outcome: 'purchased', status: paid }),
@@ -69,12 +69,12 @@ async function harness(overrides: Record<string, any> = {}) {
   };
 }
 
-test('V4 offers weekly and annual, and a new free device has no Plus until it subscribes', async () => {
+test('V4 offers annual only, and a new free device has no Plus until it subscribes or finishes fewer than three drives', async () => {
   const h = await harness({ v4: true });
   try {
-    assert.equal(h.control.state.entitlements.tier, 'free', 'there is no free trial of Plus');
+    assert.equal(h.control.state.entitlements.tier, 'free', 'StoreKit stays free until a subscription is verified');
     await act(async () => { await h.control.loadProducts(); });
-    assert.deepEqual(h.requestedProducts, ['com.journeydeck.recorder.pro.weekly', 'com.journeydeck.recorder.pro.annual']);
+    assert.deepEqual(h.requestedProducts, ['com.journeydeck.recorder.pro.annual']);
   } finally { await h.dispose(); }
 });
 

@@ -2,32 +2,35 @@
 
 ## Current objective
 
-Final copy and layout fixes for PR #290 on `cursor/tesla-drive-journal-9ccf`. Leave the pull request open.
+Keep draft PR #291 open after merging `main`. Do not merge it. The 4.5.1 free-drive, annual paywall, and rating behavior stays.
 
 ## Checkout
 
-- Branch `cursor/tesla-drive-journal-9ccf` off `main` (`43df42c`).
+- Branch `cursor/free-drives-annual-paywall-40e0`.
+- `origin/main` (`cc92fbc`, PR #290 Tesla journal page) is merged in. The only conflict was `.ai/HANDOFF.md`.
 
 ## Material changes
 
-- `web/tesla-drive-journal.html`: visible facts appear once. Desktop nav and mobile menu no longer include "Tesla journal". The Tessie fees line uses `step-note`, with 16px of space under the steps. The page loads `public-a11y.css?v=2` and `public-page.css?v=grand-tour-5`.
-- Homepage hero in `web/beta.html` is "A road trip journal" / "for your iPhone." Measured at 2 lines at 1280 and 390. The idea section under the hero says the journal lives on the device and no account is required.
-- Default `verify:live` headline expectations match that hero. The X campaign headline is unchanged.
+- Completed-drive count persists in `membership.completed-drives.v1`. Counts 0–2 unlock Plus features without changing StoreKit `status.tier`. Tessie stays on a verified entitlement. Siri reads `JourneyDeckFreeDriveAccess`.
+- The annual paywall (`com.journeydeck.recorder.pro.annual`) opens on the trip summary once the count passes 3 for a non-subscriber. V4 launch does not show it. Offer copy comes from StoreKit. Weekly is not offered.
+- `expo-store-review` runs once after the third replay that plays to the end.
+- Version and runtime `4.5.1`. Local iOS build floor `52`. `eas.json` `production` builds `v4-store`.
+- From main: `web/tesla-drive-journal.html` has no "Tesla journal" nav link, a `step-note` Tessie fees line, and `public-page.css?v=grand-tour-5`. Homepage hero is "A road trip journal" / "for your iPhone."
 
 ## Verification
 
-- `npm run lint:server`
-- `npm run test:server` (66 pass)
-- At 390 the Tessie fees line is 16px below the steps.
-- Earlier on this branch: `npm run test:e2e` (15 pass), `npm run test:atlas-performance`, and `npm run verify:live -- --base http://127.0.0.1:8795`
+- `npm run typecheck` in `mobile/recorder` passed after the merge.
+- `npm test` in `mobile/recorder`: 1040 pass, 2 fail. Both failures are already on `main`: Atlas expects Evening and gets Night under UTC, and private-content still looks for the Migration 3 comment removed in #280.
+- Root `node_modules` is not installed here, so server tests were not rerun. The merge did not change server or web source beyond `main`.
 
-## Unresolved / owner decisions
+## Unresolved
 
-- Leave the pull request open. This session does not merge or deploy.
-- Homepage Plus still says US$24.99 a year. The Tesla page says $39.99 a year, as requested.
-- PowerShell analysis runs in Windows CI. This environment does not have `powershell.exe`.
+- Do not build, submit, or merge PR #291.
+- EAS remote version must be `4.5.1` with a build number above 51 before `eas build --profile production`.
+- App Store Connect still needs the annual 7-day intro offer, and weekly removed from sale.
+- Homepage Plus still says US$24.99 a year. The Tesla page says $39.99 a year. This merge did not change either price.
 
 ## Next steps
 
-1. Confirm JourneyDeck CI is green on the updated PR.
-2. Leave the pull request open.
+1. Push the merge commit. Leave PR #291 open for the owner to merge.
+2. When asked to ship: from `mobile/recorder`, set the remote version, then `eas build -p ios --profile production` and `eas submit -p ios --profile production --latest`.

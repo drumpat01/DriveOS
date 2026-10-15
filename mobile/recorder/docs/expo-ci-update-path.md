@@ -84,7 +84,7 @@ Extend the tools that already exist. Do not add a new CI product.
 
 **V3 internal device (current):** `.github/workflows/ios-v3-device.yml` on `macos-26` with the existing six signing secrets. Fingerprint skip applies. Encrypted IPA artifact, local decrypt, temporary HTTPS install. Not TestFlight.
 
-**V2 / public iOS (frozen):** EAS Build `production` + `eas submit --platform ios --profile production` from Windows. `eas.json` already has `submit.production.ios.ascAppId = 6806502526`. Reuse existing EAS Apple credentials / ASC API key. Do not add the `.p8` to git.
+**App Store 4.5.1:** From `mobile/recorder`, EAS Build and Submit profile `production` (`APP_VARIANT=v4-store`, version and runtime `4.5.1`, bundle `com.journeydeck.recorder`). `cli.appVersionSource` is `remote`, so set the EAS app version to `4.5.1` and keep the remote iOS build number above 51 before building; local `ios.buildNumber` `52` is only the source floor. `submit.production.ios.ascAppId` is `6806502526`. Reuse the existing EAS Apple credentials and ASC API key. Do not add the `.p8` to git. A config export with no EAS profile still resolves the V2 `2.0.0` identity.
 
 **ASC / TestFlight ops on runners:** use `asc` (already in the App Store preflight skill) with `ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_PRIVATE_KEY` on the existing Mac GHA or locally on Windows — list builds, metadata pull, TestFlight state. Do not put keys in source. Preflight skill: `.claude/skills/app-store-preflight-skills/`.
 

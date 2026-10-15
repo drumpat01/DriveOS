@@ -12,6 +12,7 @@ declare class JourneyDeckMembershipModule extends NativeModule<JourneyDeckMember
   getProductsAsync(productIds: string[]): Promise<JourneyDeckMembershipProduct[]>;
   purchaseAsync(productId: string): Promise<JourneyDeckMembershipPurchaseResult>;
   restorePurchasesAsync(): Promise<JourneyDeckMembershipStatus>;
+  setFreeDriveAccess?(allowed: boolean): void;
 }
 
 export default requireOptionalNativeModule<JourneyDeckMembershipModule>('JourneyDeckMembership');

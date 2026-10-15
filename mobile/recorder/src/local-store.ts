@@ -922,6 +922,11 @@ export function upsertJourney(input: UpsertJourneyInput, options: UpsertJourneyO
   );
 }
 
+export function countJourneys(userId: LocalUserId): number {
+  initializeLocalStore();
+  return Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_journeys WHERE user_id=?;', userId)?.n ?? 0);
+}
+
 export function listJourneys(userId: LocalUserId, options: { limit?: number; cursor?: string } = {}): { items: LocalJourney[]; nextCursor: string | null } {
   initializeLocalStore();
   const limit = Math.max(1, Math.min(100, Math.trunc(options.limit ?? 25)));

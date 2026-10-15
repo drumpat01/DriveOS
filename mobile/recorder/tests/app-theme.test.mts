@@ -89,7 +89,7 @@ test('public V2 remains an ordinary App Store update; only internal preview chan
   const previousVariant = process.env.APP_VARIANT, previousProfile = process.env.EAS_BUILD_PROFILE;
   try {
     delete process.env.APP_VARIANT;
-    process.env.EAS_BUILD_PROFILE = 'production';
+    delete process.env.EAS_BUILD_PROFILE;
     const production = resolve({ config });
     assert.equal(production.name, config.name);
     assert.equal(production.ios.bundleIdentifier, config.ios.bundleIdentifier);
