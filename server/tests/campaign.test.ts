@@ -175,14 +175,14 @@ test("the X headline variant replaces only #hero-title when the source is x", ()
   assert.match(X_HEADLINE_VARIANT, /Keep the drive/);
   assert.match(X_HEADLINE_VARIANT, /Keep the song/);
   assert.doesNotMatch(X_HEADLINE_VARIANT, /[\u2013\u2014]/);
-  const title = { innerHTML: 'A private road trip journal<br><span class="gold">for your iPhone.</span>' };
+  const title = { innerHTML: 'A road trip journal<br><span class="gold">for your iPhone.</span>' };
   const documentLike = {
     querySelector(selector: string) {
       return selector === "#hero-title" ? title : null;
     }
   };
   applyHomeHeadlineVariant(documentLike, "twitter");
-  assert.equal(title.innerHTML, 'A private road trip journal<br><span class="gold">for your iPhone.</span>');
+  assert.equal(title.innerHTML, 'A road trip journal<br><span class="gold">for your iPhone.</span>');
   applyHomeHeadlineVariant(documentLike, "X");
   assert.equal(title.innerHTML, X_HEADLINE_VARIANT);
 });
@@ -322,7 +322,8 @@ test("served public pages keep the plain App Store URL and load the first-party 
     }
 
     const home = await runtime.app.inject({ method: "GET", url: "/" });
-    assert.match(home.body, /<h1 id="hero-title">A private road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
+    assert.match(home.body, /<h1 id="hero-title">A road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
+    assert.match(home.body, /Your journal lives on your device\. No account required\./);
     assert.match(home.body, /Your drives, and the music you played\. Tesla owners can connect Tessie with Plus so drives and charging record automatically\./);
     assert.doesNotMatch(home.body, /Keep the drive/);
     assert.match(home.body, /href="https:\/\/tools\.launchllama\.co\/products\/journeydeck\?utm_source=badge&utm_medium=referral"/);
