@@ -1,4 +1,13 @@
+import fs from 'node:fs';
 import { expect, test } from '@playwright/test';
+
+const liveExpectations = JSON.parse(fs.readFileSync('tools/verify-live/expectations.json', 'utf8'));
+
+function staticHtmlPath(pathname) {
+  if (pathname === '/') return '/beta.html';
+  if (pathname === liveExpectations.appStore.notFoundPath) return '/404.html';
+  return `${pathname}.html`;
+}
 
 test('homepage and Tesla page show annual Plus pricing', async ({ page }) => {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
@@ -62,7 +71,7 @@ test('phone layout offers medallions in place and preserves download, social and
   await expect(page.locator('#medallion-how')).toHaveText('Create your first Memory.');
   await expect(page.locator('.medallion-explorer')).toHaveAttribute('data-theme', 'light');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await expect(page.locator('.header-actions .button')).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526');
+  await expect(page.locator('.header-actions .button')).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=home&mt=8');
   await page.locator('.mobile-menu summary').click();
   await expect(page.getByRole('link', { name: 'Follow @JourneyDeck on X', exact: true })).toHaveAttribute('href', 'https://x.com/JourneyDeck');
   await expect(page.getByRole('link', { name: 'Apple Terms of Use', exact: true })).toHaveAttribute('href', 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/');
@@ -129,6 +138,62 @@ test('reduced motion keeps all content visible and the feature tour manually usa
   await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Atlas');
   await expect(page.locator('#feature-label')).toHaveText('05 / ATLAS');
   expect(await page.locator('.tour-slide:visible').evaluate(element => element.getAnimations().length)).toBe(0);
+});
+
+test('static HTML App Store links carry pt and a per-page ct', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  const pages = [
+    ...liveExpectations.publicPages.map((pathname) => [staticHtmlPath(pathname), liveExpectations.appStore.pageCampaigns[pathname]]),
+    ['/404.html', liveExpectations.appStore.pageCampaigns[liveExpectations.appStore.notFoundPath]]
+  ];
+  try {
+    for (const [path, ct] of pages) {
+      const response = await page.goto(path);
+      expect(response?.ok(), path).toBe(true);
+      const hrefs = await page.locator('a[href*="apps.apple.com/us/app/journeydeck/id6806502526"]').evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href')));
+      expect(hrefs.length, path).toBeGreaterThan(0);
+      for (const href of hrefs) {
+        const url = new URL(href);
+        expect(url.searchParams.get('pt'), href).toBe(liveExpectations.appStore.providerToken);
+        expect(url.searchParams.get('ct'), `${path} ${href}`).toBe(ct);
+        expect(url.searchParams.get('mt'), href).toBe(liveExpectations.appStore.mediaType);
+        expect(url.searchParams.getAll('pt'), href).toHaveLength(1);
+        expect(url.searchParams.getAll('ct'), href).toHaveLength(1);
+        expect(url.searchParams.getAll('mt'), href).toHaveLength(1);
+      }
+      if (path === '/beta.html') expect(hrefs.some((href) => href.includes('see-all=reviews'))).toBe(true);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+test('X bio traffic rewrites App Store ct to xbio without dropping pt', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__umami = [];
+    window.umami = {
+      track(name, detail) {
+        window.__umami.push({ name, detail });
+      }
+    };
+  });
+  await page.goto('/beta.html?utm_source=x&utm_campaign=bio');
+  const header = page.locator('.header-actions .button');
+  const reviews = page.locator('a[href*="see-all=reviews"]');
+  await expect(header).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=xbio&mt=8');
+  await expect(reviews).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?see-all=reviews&pt=129344416&ct=xbio&mt=8');
+  await header.evaluate((anchor) => anchor.addEventListener('click', (event) => event.preventDefault()));
+  await header.click();
+  await expect.poll(() => page.evaluate(() => window.__umami)).toEqual([{
+    name: 'appstore_click',
+    detail: {
+      page: '/beta.html',
+      source: 'x',
+      campaign: 'bio',
+      href: 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=xbio&mt=8'
+    }
+  }]);
 });
 
 test('the page remains readable without JavaScript', async ({ browser }) => {
