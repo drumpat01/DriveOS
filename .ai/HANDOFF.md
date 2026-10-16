@@ -2,31 +2,31 @@
 
 ## Current objective
 
-Public Plus pricing matches App Store Connect at $39.99/year with a 7-day free trial. Design nits are on PR #293. Do not merge.
+QA iOS 4.5.1 free drives, the trip-summary paywall, StoreKit trial wording, Restore Purchases, and the once-only rating prompt. Fixes are on one unmerged PR.
 
 ## Checkout
 
-- Branch `cursor/plus-annual-pricing-44cf` off `origin/main` (`386a40c`).
+- Branch `cursor/ios-451-paywall-qa-9c78` off `main` (`6ac588f`, after `386a40c` and `4245be7`).
 
 ## Material changes
 
-- Public HTML states Plus at $39.99/year, with a 7-day free trial. Weekly $0.99 and annual $24.99 are gone.
-- Tesla Plus card states full history and Tessie auto recording. The FAQ keeps the short price answer.
-- Homepage Plus card opens on the yearly price. The membership intro states that price and does not say annual only. Support states the yearly price the same way.
-- Privacy and terms meta and og descriptions do not pitch the price. The price stays in the page body and the JSON-LD Offer.
-- `tools/verify-live` forbids only `3-day` as trial wording. Pricing checks require `$39.99/year` and `7-day free trial`, and forbid `0.99`, `24.99`, `per week`, and `weekly`.
+- Native auto-finish keeps `lastEventSessionId`. JS counts `finished`, `manual_finished`, and `manual_auto_finished` from that id when the active session is already cleared. A seeded library journey does not increment again. The paywall opens only when the count increases.
+- A StoreKit 1-week free trial is 7 days. Ineligible, paid, month, and year offers stay null.
+- The V4 paywall states price, period, auto-renew, the 24-hour renewal charge, and trial forfeiture, plus Privacy and Apple's standard EULA. A missing product does not invent a price.
+- Restore returns the verified tier and closes the trip-summary paywall when that tier is paid.
 
 ## Verification
 
-- `npm run check:server`, `npm run test:server` (66 pass), and `tests/e2e/public-beta.spec.ts` (7 pass) passed on Node 24 after the nits.
-- Homepage pricing and the Tesla page were reshot at 1280 and 390. Horizontal overflow was 0.
+- `npx tsc --noEmit` in `mobile/recorder` passed.
+- 34 tests passed: completed-drive-count, subscription-offer, trip-replay-review, membership-entitlements, membership-store.
+- No iOS simulator or device. Build 54's shipped binary does not persist `lastEventSessionId`. The JS listener covers finishes while the bridge is awake. A finish while JS is suspended needs the next native binary.
 
 ## Unresolved
 
-- Do not merge this PR. CI on the updated head still has to finish green.
-- Dashboard "Weekly" statistics in `web/index.html` and music week totals in `server/src/recorder-mobile.ts` are not Plus plans. They were left as they are.
+- Do not merge. The rating prompt and the absence of a launch paywall were verified in code and unit tests, not on a simulator.
+- `planName` still returns `Weekly` for the weekly product id. V4 does not offer that product. Atlas "Weekly" stats are not a Plus plan.
 
 ## Next steps
 
-1. Push this branch and update PR #293 with the refreshed screenshots.
-2. Leave the PR open. Do not merge until the owner says so.
+1. Review the PR. Leave it open until the owner says to merge.
+2. Ship a new native binary before relying on the persisted session id for a background auto-finish.

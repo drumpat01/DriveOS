@@ -35,6 +35,30 @@ private func environmentName(_ environment: AppStore.Environment) -> String? {
   }
 }
 
+/// Matches `introductoryTrialDays` in subscription-offer.ts. A 7-day App Store trial is one week.
+private func freeTrialDayCount(
+  paymentMode: Product.SubscriptionOffer.PaymentMode,
+  unit: Product.SubscriptionPeriod.Unit,
+  value: Int,
+  periodCount: Int,
+  eligible: Bool
+) -> Int? {
+  guard eligible, paymentMode == .freeTrial, value > 0, periodCount > 0 else { return nil }
+  let daysPerUnit: Int
+  switch unit {
+  case .day:
+    daysPerUnit = 1
+  case .week:
+    daysPerUnit = 7
+  case .month, .year:
+    return nil
+  @unknown default:
+    return nil
+  }
+  let days = daysPerUnit * value * periodCount
+  return days > 0 && days <= 366 ? days : nil
+}
+
 private func subscriptionPeriodUnit(_ unit: Product.SubscriptionPeriod.Unit) -> String {
   switch unit {
   case .day:
@@ -83,12 +107,14 @@ public final class JourneyDeckMembershipModule: Module {
       for product in sortedProducts {
         let period = product.subscription?.subscriptionPeriod
         var introTrialDays: Int?
-        if let subscription = product.subscription,
-           let offer = subscription.introductoryOffer,
-           offer.paymentMode == .freeTrial,
-           offer.period.unit == .day,
-           await subscription.isEligibleForIntroOffer {
-          introTrialDays = offer.period.value
+        if let subscription = product.subscription, let offer = subscription.introductoryOffer {
+          introTrialDays = freeTrialDayCount(
+            paymentMode: offer.paymentMode,
+            unit: offer.period.unit,
+            value: offer.period.value,
+            periodCount: offer.periodCount,
+            eligible: await subscription.isEligibleForIntroOffer
+          )
         }
         result.append([
           "id": product.id,

@@ -63,6 +63,7 @@ import {
 } from './modules/journeydeck-recorder';
 import { getCurrentUser, isDemoProfile } from './src/auth';
 import { commitCompletedDrive } from './src/completed-drive-store';
+import { sessionIdForFinishedDrive } from './src/completed-drive-count';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_FIFTY_STATES_ENABLED } from './src/release-features';
@@ -211,7 +212,10 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
 
   const noteDriveCompleted = useCallback((sessionId: string | null | undefined) => {
     if (!sessionId || isDemoProfile()) return;
-    try { onCompletedDrive?.(commitCompletedDrive(getCurrentUser().id, sessionId)); } catch { /* the next completed drive records the count */ }
+    try {
+      const result = commitCompletedDrive(getCurrentUser().id, sessionId);
+      if (result.counted) onCompletedDrive?.(result.count);
+    } catch { /* the next completed drive records the count */ }
   }, [onCompletedDrive]);
 
   const runExclusive = useCallback(async (work: () => Promise<void>) => {
@@ -382,14 +386,22 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     if (refreshMayPublish && nativeRecorder?.lastEvent === 'manual_auto_finished' && nativeRecorder.lastEventAt
       && announcedAutomaticEvent.current !== nativeRecorder.lastEventAt) {
       announcedAutomaticEvent.current = nativeRecorder.lastEventAt;
-      noteDriveCompleted(nativeRecorder.sessionId);
+      noteDriveCompleted(sessionIdForFinishedDrive({
+        kind: nativeRecorder.lastEvent,
+        eventSessionId: nativeRecorder.lastEventSessionId,
+        activeSessionId: nativeRecorder.sessionId,
+      }));
       setNotice('Journey finished automatically and is saved on this iPhone.');
     }
     if (refreshMayPublish && automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
       && announcedAutomaticEvent.current !== automaticEvent.occurredAt) {
       announcedAutomaticEvent.current = automaticEvent.occurredAt;
       if (automaticEvent.kind === 'finished') {
-        noteDriveCompleted('sessionId' in automaticEvent ? automaticEvent.sessionId : nativeRecorder?.sessionId);
+        noteDriveCompleted(sessionIdForFinishedDrive({
+          kind: automaticEvent.kind,
+          eventSessionId: 'sessionId' in automaticEvent ? automaticEvent.sessionId : nativeRecorder?.lastEventSessionId,
+          activeSessionId: nativeRecorder?.sessionId,
+        }));
       }
       setNotice(automaticEvent.kind === 'started'
         ? 'JourneyDeck detected driving and started this journey automatically.'
@@ -416,6 +428,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       && statusEventState.current.sessionId === identity.sessionId
       ? statusEventState.current : { ...identity, streamId: null, sequence: -1 };
     if (!recorderStatusEventNeedsRefresh(prior, event)) return;
+    if (event.status === 'finished') noteDriveCompleted(event.journeyId);
     const accepted = acceptRecorderStatusEvent(prior, event);
     statusEventEpoch.current += 1;
     if (accepted) statusEventState.current = accepted;
@@ -439,7 +452,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
         eventRefreshQueued.current = false;
       }
     })();
-  }), [refresh]);
+  }), [noteDriveCompleted, refresh]);
 
   const reconcileAutomaticRecorder = useCallback(async () => {
     if (!deviceId || isIpad()) return false;

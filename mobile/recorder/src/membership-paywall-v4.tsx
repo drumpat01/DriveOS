@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { JourneyDeckMembershipProduct } from '../modules/journeydeck-membership';
 import { haptics } from './haptics';
+import { subscriptionRenewalDisclosure } from './subscription-offer';
 import { withAlpha } from './redesign-palette';
 import { SERIF, useRedesignColors } from './redesign-ui';
 
@@ -117,7 +118,7 @@ export function MembershipPaywallV4({ hero, plans, selectedId, onSelect, loading
         <Text style={[styles.footerLink, { color: c.textTertiary }]}>·</Text>
         <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')} hitSlop={8}><Text style={[styles.footerLink, { color: c.textTertiary }]}>Terms</Text></Pressable>
       </View>
-      <Text style={[styles.fine, { color: c.textTertiary }]}>Charged to your Apple Account. Renews automatically unless cancelled at least 24 hours before the period ends; manage it in Settings.</Text>
+      <Text style={[styles.fine, { color: c.textTertiary }]}>{subscriptionRenewalDisclosure(selected?.product ?? null)}</Text>
     </ScrollView>
   </View>;
 }

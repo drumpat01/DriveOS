@@ -1038,7 +1038,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     spotifyOwnerState={spotifyOwnerState}
     onDataHealth={() => openMore('health')}
     onMembership={() => membershipStore.state.status.tier === 'paid' ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
-    onRestoreMembership={membershipStore.restore}
+    onRestoreMembership={async () => { await membershipStore.restore(); }}
     sampleActive={isDemoProfile(currentUser)} onSampleToggle={REDESIGN_PHONE ? toggleSampleData : undefined}
     onReplayOnboarding={REDESIGN_PHONE ? () => { setFirstRunProgress(saveFirstRunProgress({ stage: 'welcome', recordingMode: firstRunRecordingMode })); } : undefined}
     onSpotifyOwnerConnect={() => void connectSpotifyOwner()}
@@ -1257,7 +1257,12 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : ROADS_STEP_ENABLED ? 'photos' : 'instructions'); return; }
           setMembershipPaywallVisible(false);
         })}
-        onRestore={membershipStore.restore}
+        onRestore={async () => {
+          const tier = await membershipStore.restore();
+          if (tier !== 'paid') return;
+          if (firstRunStage === 'membership') { sampleAfterSetup.current = REDESIGN_PHONE; advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : ROADS_STEP_ENABLED ? 'photos' : 'instructions'); return; }
+          setMembershipPaywallVisible(false);
+        }}
       />
     </View></NativeNavigationContext.Provider></IphoneRequiredProvider>
   );
