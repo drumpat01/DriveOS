@@ -23,10 +23,11 @@ Static App Store links on the public site carry Apple campaign tokens so App Sto
 
 ## Unresolved
 
-- Do not merge this PR. CI on the pushed head still has to finish green.
+- PR #294 is open and non-draft: https://github.com/drumpat01/DriveOS/pull/294. Do not merge.
+- CI on the branch head still has to finish green.
 - Live `verify:live` against production will fail the new App Store checks until this ships.
 
 ## Next steps
 
-1. Push this branch and open a non-draft PR against main.
+1. Wait for CI on PR #294.
 2. Leave the PR open. Do not merge until the owner says so.
