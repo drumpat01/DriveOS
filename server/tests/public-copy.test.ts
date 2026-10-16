@@ -12,7 +12,7 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
     const home = await runtime.app.inject({ method: "GET", url: "/" });
     assert.equal(home.statusCode, 200, home.body);
     assert.match(home.body, /JOURNEYDECK 4\.0/);
-    assert.match(home.body, /class="button app-store-button" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526"/);
+    assert.match(home.body, /class="button app-store-button" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=home&mt=8"/);
     assert.match(home.body, /<small>Download on the<\/small>App Store/);
     assert.match(home.body, /class="closing-actions"[\s\S]*app-store-button/);
     assert.doesNotMatch(home.body, /JOURNEYDECK 2\.0|JourneyDeck 2\.0/);
@@ -26,7 +26,7 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
 
     const journal = await runtime.app.inject({ method: "GET", url: "/private-driving-journal" });
     assert.equal(journal.statusCode, 200, journal.body);
-    assert.match(journal.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526">Download on the App Store/);
+    assert.match(journal.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=journal&mt=8">Download on the App Store/);
     assert.doesNotMatch(journal.body, /Start free on iPhone/);
     assert.match(journal.body, /sit with the road\. It is not a navigation app or an automatic cloud trip log\./);
     assert.match(journal.body, /everyday drives and longer trips, without/);

@@ -294,7 +294,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal((teslaVisible.match(/Free to record\. Plus is \$39\.99\/year, with a 7-day free trial\./g) || []).length, 1);
     assert.match(teslaJournal.body, /href="\/privacy"/);
     assert.match(teslaJournal.body, /href="\/apple-music-soundtrack"/);
-    assert.match(teslaJournal.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526">Download on the App Store/);
+    assert.match(teslaJournal.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=tesla&mt=8">Download on the App Store/);
     assert.match(teslaJournal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/tesla-drive-journal"/);
     assert.match(String(teslaJournal.headers["content-security-policy"]), /script-src[^;]*https:\/\/cloud\.umami\.is/);
     assert.doesNotMatch(teslaJournal.body, /[\u2013\u2014]/);
@@ -456,7 +456,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/assets/v4/08-themes.webp", /image\/webp/],
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
       ["/beta.js?v=v4-1", /javascript/],
-      ["/campaign.js?v=4", /javascript/],
+      ["/campaign.js?v=5", /javascript/],
       ["/medallions/medallions.css?v=medallions-2", /text\/css/],
       ["/medallions/medallions.js?v=medallions-2", /javascript/],
       ["/medallions/catalog.js", /javascript/],

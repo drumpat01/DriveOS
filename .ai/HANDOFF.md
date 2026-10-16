@@ -2,31 +2,31 @@
 
 ## Current objective
 
-Public Plus pricing matches App Store Connect at $39.99/year with a 7-day free trial. Design nits are on PR #293. Do not merge.
+Static App Store links on the public site carry Apple campaign tokens so App Store Connect can credit downloads. Open PR against main. Do not merge.
 
 ## Checkout
 
-- Branch `cursor/plus-annual-pricing-44cf` off `origin/main` (`386a40c`).
+- Branch `cursor/app-store-campaign-tokens-b523` off `origin/main` (`6ac588f`).
 
 ## Material changes
 
-- Public HTML states Plus at $39.99/year, with a 7-day free trial. Weekly $0.99 and annual $24.99 are gone.
-- Tesla Plus card states full history and Tessie auto recording. The FAQ keeps the short price answer.
-- Homepage Plus card opens on the yearly price. The membership intro states that price and does not say annual only. Support states the yearly price the same way.
-- Privacy and terms meta and og descriptions do not pitch the price. The price stays in the page body and the JSON-LD Offer.
-- `tools/verify-live` forbids only `3-day` as trial wording. Pricing checks require `$39.99/year` and `7-day free trial`, and forbid `0.99`, `24.99`, `per week`, and `weekly`.
+- Every `apps.apple.com/us/app/journeydeck/id6806502526` href in `web/*.html` includes `pt=129344416`, a per-page `ct`, and `mt=8`. Reviews links keep `see-all=reviews` and append the campaign query with `&`.
+- Page tokens: `home` on `/` (`beta.html`); `tesla` on `/tesla-drive-journal`; `soundtrack` on `/apple-music-soundtrack`; `journal` on the other SEO landing pages; `site` on `/support`, `/privacy`, `/terms`, and `web/404.html`.
+- `web/campaign.js` still rewrites `ct` from UTM values. `utm_source=x` and `utm_campaign=bio` set `ct=xbio`. The rewrite keeps a single `pt` and does not duplicate `pt`, `ct`, or `mt`. With no UTM, the static href stays.
+- Public pages load `/campaign.js?v=5`. The JSON-LD `installUrl` on the homepage stays the bare listing URL.
+- `tools/verify-live/expectations.json` records `pageCampaigns` and checks `pt` plus the page `ct`.
 
 ## Verification
 
-- `npm run check:server`, `npm run test:server` (66 pass), and `tests/e2e/public-beta.spec.ts` (7 pass) passed on Node 24 after the nits.
-- Homepage pricing and the Tesla page were reshot at 1280 and 390. Horizontal overflow was 0.
+- `npm run check:server`, `npm run lint:server`, and `npm run test:server` (66 pass) on Node 24.
+- `tests/e2e/public-beta.spec.ts` (9 pass), including static tokens with JavaScript off, the X bio `ct=xbio` rewrite, and `appstore_click`.
 
 ## Unresolved
 
-- Do not merge this PR. CI on the updated head still has to finish green.
-- Dashboard "Weekly" statistics in `web/index.html` and music week totals in `server/src/recorder-mobile.ts` are not Plus plans. They were left as they are.
+- Do not merge this PR. CI on the pushed head still has to finish green.
+- Live `verify:live` against production will fail the new App Store checks until this ships.
 
 ## Next steps
 
-1. Push this branch and update PR #293 with the refreshed screenshots.
+1. Push this branch and open a non-draft PR against main.
 2. Leave the PR open. Do not merge until the owner says so.

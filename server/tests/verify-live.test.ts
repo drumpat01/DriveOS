@@ -13,6 +13,7 @@ import {
   compareGeneratedAtSince,
   evaluateLaunchBadge,
   evaluateLoginUmami,
+  evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
   evaluateUmamiScripts,
   extractAppStoreHrefs,
@@ -78,6 +79,21 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.appStore.baseUrl, "https://apps.apple.com/us/app/journeydeck/id6806502526");
   assert.equal(expectations.appStore.providerToken, "129344416");
   assert.equal(expectations.appStore.mediaType, "8");
+  assert.equal(expectations.appStore.notFoundPath, "/not-a-published-page");
+  assert.equal(expectations.appStore.pageCampaigns["/"], "home");
+  assert.equal(expectations.appStore.pageCampaigns["/tesla-drive-journal"], "tesla");
+  assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
+  assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "journal");
+  assert.equal(expectations.appStore.pageCampaigns["/road-trip-tracker-app"], "journal");
+  assert.equal(expectations.appStore.pageCampaigns["/support"], "site");
+  assert.equal(expectations.appStore.pageCampaigns["/privacy"], "site");
+  assert.equal(expectations.appStore.pageCampaigns["/terms"], "site");
+  assert.equal(expectations.appStore.pageCampaigns[expectations.appStore.notFoundPath], "site");
+  for (const pathname of [...expectations.publicPages, expectations.appStore.notFoundPath]) {
+    const ct = expectations.appStore.pageCampaigns[pathname];
+    assert.match(ct, /^[a-z0-9_-]{1,40}$/, pathname);
+  }
+  assert.throws(() => validateExpectations({ ...expectations, appStore: { ...expectations.appStore, pageCampaigns: {} } }), /pageCampaigns/);
   assert.equal(expectations.campaign.query, "?utm_source=x&utm_medium=social&utm_campaign=launch_oct13");
   assert.equal(expectations.campaign.expectedCt, "x-launch_oct13");
   assert.equal(expectations.headlines.default.lead, "A road trip journal");
@@ -113,8 +129,8 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
     <script type="application/ld+json">{"@type":"Organization","name":"JourneyDeck"}</script>
   </head><body>
     <h1 id="hero-title">Take the road.<br><span class="gold">Keep the story.</span></h1>
-    <a href="https://apps.apple.com/us/app/journeydeck/id6806502526">Get the app</a>
-    <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?see-all=reviews">Reviews</a>
+    <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=home&mt=8">Get the app</a>
+    <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?see-all=reviews&pt=129344416&ct=home&mt=8">Reviews</a>
     <p>Available products, price, billing period, trial terms, and included features are shown before purchase.</p>
     <p>Free to record. Plus is $39.99/year, with a 7-day free trial.</p>
     <footer><span style="display:inline-block;text-align:center;font-family:system-ui,sans-serif;line-height:1;">
@@ -162,30 +178,43 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   assert.equal(supportChecks.some((check) => check.name === "page:/support launch-badge"), false);
 });
 
-test("App Store href assertions keep campaign tokens, reviews, and the served default hrefs", () => {
-  const served = [APP_STORE, `${APP_STORE}?see-all=reviews`];
+test("App Store href assertions keep campaign tokens, reviews, and the served static hrefs", () => {
+  const homeQuery = `pt=${expectations.appStore.providerToken}&ct=home&mt=${expectations.appStore.mediaType}`;
+  const served = [`${APP_STORE}?${homeQuery}`, `${APP_STORE}?see-all=reviews&${homeQuery}`];
   const campaign = [`${APP_STORE}?${CAMPAIGN_QUERY}`, `${APP_STORE}?see-all=reviews&${CAMPAIGN_QUERY}`];
   const campaignCheck = assertCampaignAppStoreHrefs(campaign, expectations);
   assert.equal(campaignCheck.pass, true, campaignCheck.problems.join("; "));
   const missingReviews = assertCampaignAppStoreHrefs([`${APP_STORE}?${CAMPAIGN_QUERY}`], expectations);
   assert.equal(missingReviews.pass, false);
+  const duplicated = assertCampaignAppStoreHrefs([
+    `${APP_STORE}?pt=${expectations.appStore.providerToken}&pt=1&ct=${expectations.campaign.expectedCt}&mt=8`,
+    `${APP_STORE}?see-all=reviews&${CAMPAIGN_QUERY}`
+  ], expectations);
+  assert.equal(duplicated.pass, false);
+  assert.match(duplicated.problems.join("; "), /duplicate pt/);
   const defaultCheck = assertDefaultAppStoreHrefs(served, served, expectations);
   assert.equal(defaultCheck.pass, true, defaultCheck.problems.join("; "));
+  const bare = assertDefaultAppStoreHrefs([APP_STORE, `${APP_STORE}?see-all=reviews`], [APP_STORE, `${APP_STORE}?see-all=reviews`], expectations);
+  assert.equal(bare.pass, false);
   const rewritten = assertDefaultAppStoreHrefs(campaign, served, expectations);
   assert.equal(rewritten.pass, false);
   const otherApp = "https://apps.apple.com/us/app/other/id0000000000";
   const wrongListing = assertCampaignAppStoreHrefs([`${otherApp}?${CAMPAIGN_QUERY}`, `${otherApp}?see-all=reviews&${CAMPAIGN_QUERY}`], expectations);
   assert.equal(wrongListing.pass, false);
   assert.match(wrongListing.problems.join("; "), /not the JourneyDeck App Store listing/);
-  const wrongDefault = assertDefaultAppStoreHrefs([otherApp, `${otherApp}?see-all=reviews`], [otherApp, `${otherApp}?see-all=reviews`], expectations);
+  const wrongDefault = assertDefaultAppStoreHrefs(
+    [`${otherApp}?${homeQuery}`, `${otherApp}?see-all=reviews&${homeQuery}`],
+    [`${otherApp}?${homeQuery}`, `${otherApp}?see-all=reviews&${homeQuery}`],
+    expectations
+  );
   assert.equal(wrongDefault.pass, false);
   const droppedDuplicate = assertDefaultAppStoreHrefs(
-    [APP_STORE, APP_STORE, `${APP_STORE}?see-all=reviews`],
-    [APP_STORE, APP_STORE, APP_STORE, `${APP_STORE}?see-all=reviews`],
+    [served[0], served[0], served[1]],
+    [served[0], served[0], served[0], served[1]],
     expectations
   );
   assert.equal(droppedDuplicate.pass, false);
-  assert.deepEqual(extractAppStoreHrefs(`<a href="${APP_STORE}"></a><a href="/support"></a>`, expectations), [APP_STORE]);
+  assert.deepEqual(extractAppStoreHrefs(`<a href="${served[0]}"></a><a href="/support"></a>`, expectations), [served[0]]);
 });
 
 test("readyz --since compares Atlas snapshot time, not deploy time", () => {
@@ -296,6 +325,9 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
       const checks = evaluatePublicPageHtml(page.body, pathname, expectations, page.statusCode);
       assert.ok(checks.every((check) => check.pass), `${pathname}: ${checks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; ")}`);
     }
+    const missing = await runtime.app.inject({ method: "GET", url: expectations.appStore.notFoundPath });
+    const missingChecks = evaluateNotFoundAppStore(missing.body, expectations, missing.statusCode);
+    assert.ok(missingChecks.every((check) => check.pass), missingChecks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; "));
     const login = await runtime.app.inject({ method: "GET", url: expectations.loginPath });
     const loginChecks = evaluateLoginUmami(login.body, expectations, login.statusCode);
     assert.ok(loginChecks.every((check) => check.pass), loginChecks.filter((check) => !check.pass).map((check) => check.name).join(","));
