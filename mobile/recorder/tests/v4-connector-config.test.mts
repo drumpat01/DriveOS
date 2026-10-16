@@ -15,8 +15,8 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     process.env.APP_VARIANT = 'v4-store';
     process.env.EAS_BUILD_PROFILE = 'v4-testflight';
     const config = configure({ config: base });
-    assert.equal(config.version, '4.5.1');
-    assert.equal(config.runtimeVersion, '4.5.1');
+    assert.equal(config.version, '4.5.2');
+    assert.equal(config.runtimeVersion, '4.5.2');
     assert.equal(config.ios.buildNumber, '52');
     assert.equal(config.updates.requestHeaders['xprem-branch'], 'v4-testflight');
     assert.equal(config.ios.bundleIdentifier, 'com.journeydeck.recorder');
@@ -41,7 +41,8 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     process.env.APP_VARIANT = 'v4-store';
     process.env.EAS_BUILD_PROFILE = 'production';
     const production = configure({ config: base });
-    assert.equal(production.version, '4.5.1');
+    assert.equal(production.version, '4.5.2');
+    assert.equal(production.runtimeVersion, '4.5.2');
     assert.equal(production.ios.buildNumber, '52');
     assert.equal(production.ios.bundleIdentifier, 'com.journeydeck.recorder');
     assert.equal(production.updates.requestHeaders['expo-channel-name'], 'production');

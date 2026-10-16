@@ -95,6 +95,7 @@ private enum RecorderDefaults {
   static let durableState = "journeydeck.native-recorder.state-v1"
   static let lastEvent = "journeydeck.native-recorder.last-event-v1"
   static let lastEventAt = "journeydeck.native-recorder.last-event-at-v1"
+  static let lastEventSession = "journeydeck.native-recorder.last-event-session-v1"
   static let lastError = "journeydeck.native-recorder.last-error-v1"
   static let manualOwner = "journeydeck.native-recorder.manual-owner-v1"
   static let legacyManualActive = "journeydeck.native-recorder.legacy-manual-v1"
@@ -135,6 +136,7 @@ private struct RecorderStatusSnapshot {
   let sequence: Int
   let lastEvent: String?
   let lastEventAt: String?
+  let lastEventSessionId: String?
   let lastError: String?
   let controlToken: String
   let manualReady: Bool
@@ -557,6 +559,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
             self.defaults.set(UUID().uuidString, forKey: RecorderDefaults.controlToken)
             self.defaults.removeObject(forKey: RecorderDefaults.lastEvent)
             self.defaults.removeObject(forKey: RecorderDefaults.lastEventAt)
+            self.defaults.removeObject(forKey: RecorderDefaults.lastEventSession)
             self.defaults.removeObject(forKey: RecorderDefaults.lastError)
             self.state = .empty
             self.candidateLocations = []
@@ -616,12 +619,14 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
         let legacyManualActive = self.defaults.bool(forKey: RecorderDefaults.legacyManualActive)
         let manualReady = identity != nil && identity?.owner == self.defaults.string(forKey: RecorderDefaults.manualOwner)
           && !legacyManualActive
+        let lastEventSessionId = self.defaults.string(forKey: RecorderDefaults.lastEventSession)
         do {
           guard let identity else {
             continuation.resume(returning: RecorderStatusSnapshot(session: nil, error: nil, owner: nil, device: nil,
               enabled: enabled, streamID: self.eventStreamID, sequence: self.eventSequence,
               lastEvent: self.defaults.string(forKey: RecorderDefaults.lastEvent),
               lastEventAt: self.defaults.string(forKey: RecorderDefaults.lastEventAt),
+              lastEventSessionId: lastEventSessionId,
               lastError: self.defaults.string(forKey: RecorderDefaults.lastError), controlToken: controlToken,
               manualReady: manualReady, legacyManualActive: legacyManualActive)); return
           }
@@ -637,6 +642,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
             device: identity.device, enabled: enabled, streamID: self.eventStreamID, sequence: self.eventSequence,
             lastEvent: self.defaults.string(forKey: RecorderDefaults.lastEvent),
             lastEventAt: self.defaults.string(forKey: RecorderDefaults.lastEventAt),
+            lastEventSessionId: lastEventSessionId,
             lastError: self.defaults.string(forKey: RecorderDefaults.lastError), controlToken: controlToken,
             manualReady: manualReady, legacyManualActive: legacyManualActive))
         } catch {
@@ -644,6 +650,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
             owner: identity?.owner, device: identity?.device, enabled: enabled, streamID: self.eventStreamID,
             sequence: self.eventSequence, lastEvent: self.defaults.string(forKey: RecorderDefaults.lastEvent),
             lastEventAt: self.defaults.string(forKey: RecorderDefaults.lastEventAt),
+            lastEventSessionId: lastEventSessionId,
             lastError: self.defaults.string(forKey: RecorderDefaults.lastError),
             controlToken: controlToken, manualReady: manualReady, legacyManualActive: legacyManualActive))
         }
@@ -690,6 +697,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       "authorization": locationState.0,
       "lastEvent": eventValue,
       "lastEventAt": eventAtValue,
+      "lastEventSessionId": snapshot.lastEventSessionId.map { $0 as Any } ?? NSNull(),
       "lastErrorCode": errorValue,
       "controlToken": snapshot.controlToken,
       "manualReady": snapshot.manualReady && coherent,
@@ -1226,6 +1234,11 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let occurredAt = iso(Date())
     defaults.set(kind, forKey: RecorderDefaults.lastEvent)
     defaults.set(occurredAt, forKey: RecorderDefaults.lastEventAt)
+    if let sessionID, !sessionID.isEmpty {
+      defaults.set(sessionID, forKey: RecorderDefaults.lastEventSession)
+    } else {
+      defaults.removeObject(forKey: RecorderDefaults.lastEventSession)
+    }
     let status = kind.contains("failed") ? "failed" : kind == "paused" ? "paused"
       : ((kind.contains("finish") || kind == "finished") ? "finished" : "recording")
     eventSequence += 1

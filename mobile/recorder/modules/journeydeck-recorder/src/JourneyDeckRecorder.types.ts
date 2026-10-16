@@ -19,6 +19,8 @@ export type NativeRecorderStatus = {
   authorization: NativeRecorderAuthorization;
   lastEvent: 'started' | 'finished' | 'start_failed' | 'manual_started' | 'manual_finished' | 'manual_auto_finished' | null;
   lastEventAt: string | null;
+  /** Present when the native recorder persisted the session that produced lastEvent. */
+  lastEventSessionId?: string | null;
   lastErrorCode: string | null;
 };
 

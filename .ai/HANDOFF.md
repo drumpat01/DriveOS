@@ -2,32 +2,32 @@
 
 ## Current objective
 
-Static App Store links on the public site carry Apple campaign tokens so App Store Connect can credit downloads. Open PR against main. Do not merge.
+iOS paywall QA fixes on one unmerged PR, now at V4 version and runtime 4.5.2, with main merged in. Do not merge.
 
 ## Checkout
 
-- Branch `cursor/app-store-campaign-tokens-b523` off `origin/main` (`6ac588f`).
+- Branch `cursor/ios-451-paywall-qa-9c78`. Main through `3355503` (PR #294, App Store campaign tokens) is merged. PR: https://github.com/drumpat01/DriveOS/pull/295
 
 ## Material changes
 
-- Every `apps.apple.com/us/app/journeydeck/id6806502526` href in `web/*.html` includes `pt=129344416`, a per-page `ct`, and `mt=8`. Reviews links keep `see-all=reviews` and append the campaign query with `&`.
-- Page tokens: `home` on `/` (`beta.html`); `tesla` on `/tesla-drive-journal`; `soundtrack` on `/apple-music-soundtrack`; `journal` on the other SEO landing pages; `site` on `/support`, `/privacy`, `/terms`, and `web/404.html`.
-- `web/campaign.js` still rewrites `ct` from UTM values. `utm_source=x` and `utm_campaign=bio` set `ct=xbio`. The rewrite keeps a single `pt` and does not duplicate `pt`, `ct`, or `mt`. With no UTM, the static href stays.
-- Public pages load `/campaign.js?v=5`. The JSON-LD `installUrl` on the homepage stays the bare listing URL.
-- `tools/verify-live/expectations.json` records `pageCampaigns` and checks `pt` plus the page `ct`.
+- Native auto-finish keeps `lastEventSessionId`. JS counts `finished`, `manual_finished`, and `manual_auto_finished` from that id when the active session is already cleared. A seeded library journey does not increment again. The paywall opens only when the count increases.
+- A StoreKit 1-week free trial is 7 days. Ineligible, paid, month, and year offers stay null.
+- The V4 paywall states price, period, auto-renew, the 24-hour renewal charge, and trial forfeiture, plus Privacy and Apple's standard EULA. A missing product does not invent a price.
+- Restore returns the verified tier and closes the trip-summary paywall when that tier is paid.
+- V4 `version` and `runtimeVersion` are `4.5.2` in `mobile/recorder/app.config.js`. The local iOS build-number floor stays 52.
 
 ## Verification
 
-- `npm run check:server`, `npm run lint:server`, and `npm run test:server` (66 pass) on Node 24.
-- `tests/e2e/public-beta.spec.ts` (9 pass), including static tokens with JavaScript off, the X bio `ct=xbio` rewrite, and `appstore_click`.
+- After the merge and version bump, `npx tsc --noEmit` in `mobile/recorder` passed.
+- 35 tests passed: completed-drive-count, subscription-offer, trip-replay-review, membership-entitlements, membership-store, and v4-connector-config.
 
 ## Unresolved
 
-- PR #294 is open and non-draft: https://github.com/drumpat01/DriveOS/pull/294. Do not merge.
-- CI on the branch head still has to finish green.
-- Live `verify:live` against production will fail the new App Store checks until this ships.
+- Do not merge PR #295. The rating prompt and the absence of a launch paywall were verified in code and unit tests, not on a simulator.
+- `planName` still returns `Weekly` for the weekly product id. V4 does not offer that product. Atlas "Weekly" stats are not a Plus plan.
+- Build 54 does not persist `lastEventSessionId`. A finish while JS is suspended needs the 4.5.2 native binary.
 
 ## Next steps
 
-1. Wait for CI on PR #294.
-2. Leave the PR open. Do not merge until the owner says so.
+1. Leave PR #295 open until the owner merges it.
+2. Ship a 4.5.2 native binary before relying on the persisted session id for a background auto-finish.

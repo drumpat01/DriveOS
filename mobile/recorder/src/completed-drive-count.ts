@@ -31,15 +31,42 @@ export function initialCompletedDriveCount(libraryCount: number, sessionMirrored
   return sessionMirrored ? library : library + 1;
 }
 
-export function applyRecordedDrive(record: CompletedDriveRecord, sessionId: string): { record: CompletedDriveRecord; counted: boolean } {
+/**
+ * A session already inside the seeded library must not advance the count again.
+ * A new completion, including one not mirrored into the library yet, does.
+ */
+export function applyRecordedDrive(
+  record: CompletedDriveRecord,
+  sessionId: string,
+  context: { mirrored?: boolean; libraryCount?: number } = {},
+): { record: CompletedDriveRecord; counted: boolean } {
   if (!sessionId || record.sessionIds.includes(sessionId)) return { record, counted: false };
-  return {
-    counted: true,
-    record: {
-      count: record.count + 1,
-      sessionIds: [...record.sessionIds, sessionId].slice(-MAX_SESSION_IDS),
-    },
-  };
+  const libraryCount = context.libraryCount;
+  const alreadySeeded = context.mirrored === true
+    && typeof libraryCount === 'number'
+    && Number.isInteger(libraryCount)
+    && libraryCount >= 0
+    && record.count >= libraryCount;
+  const sessionIds = [...record.sessionIds, sessionId].slice(-MAX_SESSION_IDS);
+  if (alreadySeeded) return { counted: false, record: { count: record.count, sessionIds } };
+  return { counted: true, record: { count: record.count + 1, sessionIds } };
+}
+
+const COUNTED_FINISH_KINDS = new Set(['finished', 'manual_finished', 'manual_auto_finished']);
+
+/**
+ * Session id for a drive that actually finished. Cancelled, failed, and
+ * not-yet-saved starts do not count. The finish event keeps the id because
+ * the active native session is cleared before the next status poll.
+ */
+export function sessionIdForFinishedDrive(input: {
+  kind?: string | null;
+  eventSessionId?: string | null;
+  activeSessionId?: string | null;
+}): string | null {
+  if (!input.kind || !COUNTED_FINISH_KINDS.has(input.kind)) return null;
+  const sessionId = (input.eventSessionId || input.activeSessionId || '').trim();
+  return sessionId.length > 0 ? sessionId : null;
 }
 
 /** Drives 1–3, while fewer than three completions are stored. */

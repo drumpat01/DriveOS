@@ -36,25 +36,31 @@ export function readCompletedDriveCount(userId: string): number {
   return seeded.count;
 }
 
-/** Records one finished drive. Repeating the same session id does not advance the count. */
-export function commitCompletedDrive(userId: string, sessionId: string): number {
-  if (!sessionId) return readCompletedDriveCount(userId);
+/**
+ * Records one finished drive. Repeating the same session id does not advance
+ * the count. `counted` is false when this call only seeds history that was
+ * already on the iPhone, so a relaunch does not raise the trip-summary paywall.
+ */
+export function commitCompletedDrive(userId: string, sessionId: string): { count: number; counted: boolean } {
+  if (!sessionId) return { count: readCompletedDriveCount(userId), counted: false };
   const stored = parseCompletedDriveRecord(getPrivatePreference(userId, KEY));
+  const mirrored = sessionMirrored(userId, sessionId);
+  const libraryCount = countJourneys(userId);
   if (!stored) {
     const record = {
-      count: initialCompletedDriveCount(countJourneys(userId), sessionMirrored(userId, sessionId)),
+      count: initialCompletedDriveCount(libraryCount, mirrored),
       sessionIds: [sessionId],
     } satisfies CompletedDriveRecord;
     write(userId, record);
     notify(record.count);
-    return record.count;
+    return { count: record.count, counted: !mirrored };
   }
-  const next = applyRecordedDrive(stored, sessionId);
-  if (next.counted) {
+  const next = applyRecordedDrive(stored, sessionId, { mirrored, libraryCount });
+  if (next.record !== stored) {
     write(userId, next.record);
-    notify(next.record.count);
+    if (next.counted) notify(next.record.count);
   }
-  return next.record.count;
+  return { count: next.record.count, counted: next.counted };
 }
 
 export function subscribeCompletedDriveCount(listener: (count: number) => void) {

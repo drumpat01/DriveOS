@@ -129,19 +129,21 @@ export function useJourneyDeckMembership() {
     }
   }, [applyStatus]);
 
-  const restore = useCallback(async () => {
-    if (!mounted.current || purchaseInFlight.current) return;
+  const restore = useCallback(async (): Promise<'paid' | 'free' | null> => {
+    if (!mounted.current || purchaseInFlight.current) return null;
     purchaseInFlight.current = true;
     const generation = ++statusLoadGeneration.current;
     setPurchasePending(true);
     setMessage(null);
     try {
       const restoredStatus = await restoreMembershipPurchases();
-      if (!mounted.current) return;
+      if (!mounted.current) return null;
       if (generation === statusLoadGeneration.current) applyStatus(restoredStatus);
       if (statusRef.current.tier !== 'paid') setMessage('No active JourneyDeck membership was found for this App Store account.');
+      return statusRef.current.tier === 'paid' ? 'paid' : 'free';
     } catch (error) {
       if (mounted.current && generation === statusLoadGeneration.current) setMessage(error instanceof Error ? error.message : 'The App Store could not restore purchases.');
+      return statusRef.current.tier === 'paid' ? 'paid' : 'free';
     } finally {
       purchaseInFlight.current = false;
       if (mounted.current) setPurchasePending(false);

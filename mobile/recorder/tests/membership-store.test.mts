@@ -93,7 +93,9 @@ test('a late old refresh error cannot erase a newer restored entitlement', async
   const initial = deferred<any>();
   const h = await harness({ getMembershipStatus: () => initial.promise });
   try {
-    await act(async () => { await h.control.restore(); });
+    let restored: 'paid' | 'free' | null = null;
+    await act(async () => { restored = await h.control.restore(); });
+    assert.equal(restored, 'paid');
     assert.equal(h.control.state.entitlements.tier, 'paid');
     await act(async () => { initial.reject(new Error('old bridge read failed')); await initial.promise.catch(() => {}); });
     assert.equal(h.control.state.entitlements.tier, 'paid');
