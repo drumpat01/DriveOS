@@ -78,6 +78,8 @@ export function validateExpectations(raw) {
   if (typeof raw.canonicalOrigin !== "string") throw new Error("expectations.canonicalOrigin is required");
   if (!raw.umami?.scriptSrc || !raw.umami?.websiteId || !raw.umami?.dataDomains) throw new Error("expectations.umami is incomplete");
   if (!Array.isArray(raw.forbiddenTrialPhrases) || raw.forbiddenTrialPhrases.length === 0) throw new Error("expectations.forbiddenTrialPhrases must be a non-empty array");
+  if (!Array.isArray(raw.forbiddenPricePhrases) || raw.forbiddenPricePhrases.length === 0) throw new Error("expectations.forbiddenPricePhrases must be a non-empty array");
+  if (!Array.isArray(raw.requiredPricingPhrases) || raw.requiredPricingPhrases.length === 0) throw new Error("expectations.requiredPricingPhrases must be a non-empty array");
   if (!raw.appStore?.baseUrl || !raw.appStore?.providerToken || !raw.appStore?.mediaType) throw new Error("expectations.appStore is incomplete");
   if (!raw.campaign?.query || !raw.campaign?.expectedCt) throw new Error("expectations.campaign is incomplete");
   if (!raw.headlines?.default?.lead || !raw.headlines?.default?.accent) throw new Error("expectations.headlines.default is incomplete");
@@ -229,6 +231,11 @@ export async function runChecksContinuing(steps) {
 export function findForbiddenTrialPhrases(html, phrases) {
   const lower = html.toLowerCase();
   return phrases.filter((phrase) => lower.includes(String(phrase).toLowerCase()));
+}
+
+export function findMissingRequiredPhrases(html, phrases) {
+  const source = String(html);
+  return phrases.filter((phrase) => !source.includes(String(phrase)));
 }
 
 export function extractAnchorHrefs(html) {
@@ -383,6 +390,8 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   const jsonLd = parseJsonLdBlocks(extractJsonLdBlocks(html));
   const umami = evaluateUmamiScripts(findUmamiScripts(html, expectations), expectations, { requireOne: true });
   const trialHits = findForbiddenTrialPhrases(html, expectations.forbiddenTrialPhrases);
+  const priceHits = findForbiddenTrialPhrases(html, expectations.forbiddenPricePhrases);
+  const missingPricing = findMissingRequiredPhrases(html, expectations.requiredPricingPhrases);
   const checks = [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
     makeCheck(`page:${pathname} title`, title.count === 1 && Boolean(title.value), title),
@@ -394,7 +403,8 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} og:image`, ogImage.count === 1 && Boolean(ogImage.value), ogImage),
     makeCheck(`page:${pathname} json-ld`, jsonLd.pass, { count: jsonLd.count, errors: jsonLd.errors }),
     makeCheck(`page:${pathname} umami`, umami.pass, umami.observed),
-    makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits })
+    makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits }),
+    makeCheck(`page:${pathname} pricing`, priceHits.length === 0 && missingPricing.length === 0, { forbidden: priceHits, missing: missingPricing })
   ];
   if (pathname === "/") {
     const badge = evaluateLaunchBadge(html, expectations);

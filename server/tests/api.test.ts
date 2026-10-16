@@ -100,7 +100,11 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
     assert.match(support.body, /Recording needs an iPhone/);
-    assert.match(support.body, /A weekly or annual subscription unlocks full history/);
+    assert.match(support.body, /Plus unlocks full history/);
+    assert.doesNotMatch(support.body, /annual only/);
+    assert.match(support.body, /\$39\.99\/year/);
+    assert.match(support.body, /7-day free trial/);
+    assert.doesNotMatch(support.body, /0\.99|24\.99|3-day|per week|weekly/i);
     assert.match(support.body, /Restore Purchases is in Settings &gt; Membership/);
     assert.match(support.body, /items are still arriving/);
     assert.match(support.body, /mailto:journeydeckapp@gmail\.com/i);
@@ -275,7 +279,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(teslaJournal.body, /Tesla and EV owners\. You do not need a Tesla\./);
     assert.match(teslaJournal.body, /Tesla owners can connect Tessie with Plus\. Drives and charging are recorded automatically, instead of tapping Start\. JourneyDeck tracks charging and efficiency\./);
     assert.match(teslaJournal.body, /<p class="step-note">Tessie is a separate service, and any Tessie fees are separate\.<\/p>/);
-    assert.match(teslaJournal.body, /Free to record\. Plus is \$0\.99 a week or \$39\.99 a year\./);
+    assert.match(teslaJournal.body, /<h2>Plus<\/h2>\s*<p>Plus unlocks your full history\. Tesla owners can connect Tessie so drives and charging record automatically\.<\/p>/);
+    assert.match(teslaJournal.body, /Free to record\. Plus is \$39\.99\/year, with a 7-day free trial\./);
     assert.match(teslaJournal.body, /<h2>Frequently asked questions<\/h2>/);
     assert.match(teslaJournal.body, /What iPhone does it need\?/);
     assert.match(teslaJournal.body, /iOS 17 or later\./);
@@ -286,13 +291,15 @@ test("public information and discovery pages are accessible without an authentic
     const teslaVisible = teslaJournal.body.replace(/<head[\s\S]*?<\/head>/i, "").replace(/<script[\s\S]*?<\/script>/gi, "");
     assert.equal((teslaVisible.match(/private journal of your drives and the music you played/gi) || []).length, 1);
     assert.equal((teslaVisible.match(/charging and efficiency/gi) || []).length, 1);
+    assert.equal((teslaVisible.match(/Free to record\. Plus is \$39\.99\/year, with a 7-day free trial\./g) || []).length, 1);
     assert.match(teslaJournal.body, /href="\/privacy"/);
     assert.match(teslaJournal.body, /href="\/apple-music-soundtrack"/);
     assert.match(teslaJournal.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526">Download on the App Store/);
     assert.match(teslaJournal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/tesla-drive-journal"/);
     assert.match(String(teslaJournal.headers["content-security-policy"]), /script-src[^;]*https:\/\/cloud\.umami\.is/);
     assert.doesNotMatch(teslaJournal.body, /[\u2013\u2014]/);
-    assert.doesNotMatch(teslaJournal.body, /free trial|plus trial|3-day/i);
+    // The old ban also rejected "free trial" and "plus trial". Only 3-day stays forbidden.
+    assert.doesNotMatch(teslaJournal.body, /3-day|0\.99|24\.99/i);
     const journalAlias = await runtime.app.inject({ method: "GET", url: "/driving-journal" });
     assert.equal(journalAlias.statusCode, 301);
     assert.equal(journalAlias.headers.location, "/private-driving-journal");
@@ -577,14 +584,24 @@ test("public marketing pages expose one title, description, canonical, Open Grap
         assert.doesNotMatch(documentTitle(html), /[\u2013\u2014]/, "home title");
         assert.doesNotMatch(metaPropertyContent(html, "og:title"), /[\u2013\u2014]/, "home og:title");
       }
+      if (page.url === "/privacy" || page.url === "/terms") {
+        assert.doesNotMatch(description, /\$39\.99|7-day free trial/, `${page.url} meta price`);
+        assert.doesNotMatch(metaPropertyContent(html, "og:description"), /\$39\.99|7-day free trial/, `${page.url} og price`);
+      }
       for (const block of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
         assert.doesNotThrow(() => JSON.parse(block[1]), `${page.url} JSON-LD`);
       }
+      assert.match(html, /\$39\.99\/year/, `${page.url} price`);
+      assert.match(html, /7-day free trial/, `${page.url} trial`);
+      assert.match(html, /"@type": "Offer"/, `${page.url} offer`);
+      assert.doesNotMatch(html, /3-day/i, `${page.url} 3-day`);
+      assert.doesNotMatch(html, /0\.99/, `${page.url} weekly price`);
+      assert.doesNotMatch(html, /24\.99/, `${page.url} old annual price`);
     }
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
-test("hosted home and Support HTML do not advertise a 3-day Plus trial", async () => {
+test("hosted home and Support HTML advertise annual Plus and ban only the 3-day trial wording", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
     const home = await runtime.app.inject({ method: "GET", url: "/" });
@@ -592,8 +609,12 @@ test("hosted home and Support HTML do not advertise a 3-day Plus trial", async (
     assert.equal(home.statusCode, 200, home.body);
     assert.equal(support.statusCode, 200, support.body);
     for (const [name, body] of [["home", home.body], ["Support", support.body]] as const) {
+      assert.match(body, /\$39\.99\/year/, name);
+      assert.match(body, /7-day free trial/, name);
+      assert.doesNotMatch(body, /annual only/, name);
+      // Previously this also banned "Plus trial". That ban is replaced by a 3-day ban only.
       assert.doesNotMatch(body, /3-day/, name);
-      assert.doesNotMatch(body, /Plus trial/, name);
+      assert.doesNotMatch(body, /0\.99/, name);
     }
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });

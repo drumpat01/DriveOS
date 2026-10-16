@@ -24,9 +24,17 @@
     "dataDomains": "journeydeck.me"
   },
   "forbiddenTrialPhrases": [
-    "3-day",
-    "plus trial",
-    "free trial"
+    "3-day"
+  ],
+  "forbiddenPricePhrases": [
+    "0.99",
+    "24.99",
+    "per week",
+    "weekly"
+  ],
+  "requiredPricingPhrases": [
+    "$39.99/year",
+    "7-day free trial"
   ],
   "appStore": {
     "baseUrl": "https://apps.apple.com/us/app/journeydeck/id6806502526",

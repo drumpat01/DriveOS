@@ -5,7 +5,7 @@ import { fixtureDatabase, root } from "./helpers.js";
 
 const publicPages = ["/", "/privacy", "/support", "/terms", "/apple-music-soundtrack", "/private-driving-journal"];
 
-test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels, and no trial offers", async () => {
+test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels, and annual Plus pricing", async () => {
   const fixture = fixtureDatabase();
   const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
@@ -35,9 +35,13 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
     for (const url of publicPages) {
       const page = await runtime.app.inject({ method: "GET", url });
       assert.equal(page.statusCode, 200, url);
+      assert.match(page.body, /\$39\.99\/year/, url);
+      assert.match(page.body, /7-day free trial/, url);
+      // The old trial-wording ban covered "3-day", "plus trial", and "free trial".
+      // Only the 3-day wording stays forbidden. A 7-day free trial is the annual offer.
       assert.doesNotMatch(page.body, /3-day/i, url);
-      assert.doesNotMatch(page.body, /plus trial/i, url);
-      assert.doesNotMatch(page.body, /free trial/i, url);
+      assert.doesNotMatch(page.body, /0\.99/, url);
+      assert.doesNotMatch(page.body, /24\.99/, url);
     }
 
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });

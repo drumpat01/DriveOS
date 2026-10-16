@@ -72,7 +72,9 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   ]);
   assert.equal(expectations.umami.websiteId, "a5f66e11-ec7d-4133-8e1a-f8e6c08593af");
   assert.equal(expectations.umami.dataDomains, "journeydeck.me");
-  assert.deepEqual(expectations.forbiddenTrialPhrases, ["3-day", "plus trial", "free trial"]);
+  assert.deepEqual(expectations.forbiddenTrialPhrases, ["3-day"]);
+  assert.deepEqual(expectations.forbiddenPricePhrases, ["0.99", "24.99", "per week", "weekly"]);
+  assert.deepEqual(expectations.requiredPricingPhrases, ["$39.99/year", "7-day free trial"]);
   assert.equal(expectations.appStore.baseUrl, "https://apps.apple.com/us/app/journeydeck/id6806502526");
   assert.equal(expectations.appStore.providerToken, "129344416");
   assert.equal(expectations.appStore.mediaType, "8");
@@ -114,6 +116,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526">Get the app</a>
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?see-all=reviews">Reviews</a>
     <p>Available products, price, billing period, trial terms, and included features are shown before purchase.</p>
+    <p>Free to record. Plus is $39.99/year, with a 7-day free trial.</p>
     <footer><span style="display:inline-block;text-align:center;font-family:system-ui,sans-serif;line-height:1;">
   <a href="https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral" target="_blank" rel="noopener noreferrer" style="display:block;line-height:0;">
   <img src="https://tools.launchllama.co/featured-badge-white.jpg?v=5"
@@ -131,10 +134,16 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   assert.equal(jsonLd.pass, true);
   assert.equal(jsonLd.count, 1);
   assert.deepEqual(findForbiddenTrialPhrases(html, expectations.forbiddenTrialPhrases), []);
+  // The previous ban was "3-day", "plus trial", and "free trial".
+  // Only "3-day" remains, so a 7-day free trial and the legal phrase "trial terms" both pass.
   assert.deepEqual(findForbiddenTrialPhrases("Enjoy a 3-day Plus trial or a Free trial today.", expectations.forbiddenTrialPhrases), [
-    "3-day",
-    "plus trial",
-    "free trial"
+    "3-day"
+  ]);
+  assert.deepEqual(findForbiddenTrialPhrases("Plus is $39.99/year, with a 7-day free trial.", expectations.forbiddenTrialPhrases), []);
+  assert.deepEqual(findForbiddenTrialPhrases("US$0.99 per week or US$24.99 per year", expectations.forbiddenPricePhrases), [
+    "0.99",
+    "24.99",
+    "per week"
   ]);
   const broken = parseJsonLdBlocks(["{not-json"]);
   assert.equal(broken.pass, false);
