@@ -1,5 +1,24 @@
 import { expect, test } from '@playwright/test';
 
+test('homepage and Tesla page show annual Plus pricing', async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/beta.html');
+    const membership = page.locator('#membership');
+    await membership.scrollIntoViewIfNeeded();
+    await expect(membership).toContainText('$39.99/year');
+    await expect(membership).toContainText('7-day free trial');
+    await expect(membership).toContainText('Free to record');
+    await expect(membership).not.toContainText('0.99');
+    await expect(membership).not.toContainText('24.99');
+    await expect(membership).not.toContainText('3-day');
+    await page.goto('/tesla-drive-journal.html');
+    await expect(page.locator('main')).toContainText('Free to record. Plus is $39.99/year, with a 7-day free trial.');
+    await expect(page.locator('main')).not.toContainText('0.99');
+    await expect(page.locator('main')).not.toContainText('3-day');
+  }
+});
+
 test('public feature tour starts with Today and keeps its copy with the selected screenshot', async ({ page }) => {
   await page.goto('/beta.html');
   await expect(page.locator('.tour-slide:visible')).toHaveAttribute('data-feature', 'Today');
