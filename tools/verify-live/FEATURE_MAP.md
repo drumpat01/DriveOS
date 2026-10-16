@@ -56,7 +56,7 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 
 ## Plus pricing
 
-- Owner: public HTML, including meta descriptions and JSON-LD offers. Plus is annual only.
+- Owner: public HTML, including visible copy and JSON-LD offers. Privacy and terms meta descriptions do not pitch the price. Plus is $39.99/year, with a 7-day free trial.
 - Required phrases: `$39.99/year`, `7-day free trial`.
 - Forbidden price phrases (case-insensitive): `0.99`, `24.99`, `per week`, `weekly`.
 - Free recording stays available.
