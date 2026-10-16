@@ -81,6 +81,14 @@ export function validateExpectations(raw) {
   if (!Array.isArray(raw.forbiddenPricePhrases) || raw.forbiddenPricePhrases.length === 0) throw new Error("expectations.forbiddenPricePhrases must be a non-empty array");
   if (!Array.isArray(raw.requiredPricingPhrases) || raw.requiredPricingPhrases.length === 0) throw new Error("expectations.requiredPricingPhrases must be a non-empty array");
   if (!raw.appStore?.baseUrl || !raw.appStore?.providerToken || !raw.appStore?.mediaType) throw new Error("expectations.appStore is incomplete");
+  if (typeof raw.appStore.notFoundPath !== "string" || !raw.appStore.notFoundPath.startsWith("/")) throw new Error("expectations.appStore.notFoundPath is required");
+  if (!raw.appStore.pageCampaigns || typeof raw.appStore.pageCampaigns !== "object") throw new Error("expectations.appStore.pageCampaigns is incomplete");
+  for (const pathname of [...raw.publicPages, raw.appStore.notFoundPath]) {
+    const ct = raw.appStore.pageCampaigns[pathname];
+    if (typeof ct !== "string" || !/^[a-z0-9_-]{1,40}$/.test(ct)) {
+      throw new Error(`expectations.appStore.pageCampaigns[${pathname}] must be a campaign token of at most 40 characters`);
+    }
+  }
   if (!raw.campaign?.query || !raw.campaign?.expectedCt) throw new Error("expectations.campaign is incomplete");
   if (!raw.headlines?.default?.lead || !raw.headlines?.default?.accent) throw new Error("expectations.headlines.default is incomplete");
   if (!raw.headlines?.x?.lead || !raw.headlines?.x?.accent) throw new Error("expectations.headlines.x is incomplete");
@@ -281,7 +289,21 @@ export function extractAppStoreHrefs(html, expectations) {
   return extractAnchorHrefs(html).filter((href) => isAppStoreHref(href, expectations));
 }
 
-export function assertCampaignAppStoreHrefs(hrefs, expectations) {
+export function campaignParamProblems(href) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return [`${href} is not a valid App Store URL`];
+  }
+  const problems = [];
+  for (const name of ["pt", "ct", "mt"]) {
+    if (url.searchParams.getAll(name).length > 1) problems.push(`${href} has duplicate ${name}`);
+  }
+  return problems;
+}
+
+export function assertStaticAppStoreCampaign(hrefs, expectedCt, expectations, { requireReviews = false } = {}) {
   const inspected = hrefs.map((href) => inspectAppStoreHref(href, expectations));
   const problems = [];
   if (inspected.length === 0) problems.push("no App Store links found");
@@ -289,11 +311,13 @@ export function assertCampaignAppStoreHrefs(hrefs, expectations) {
   for (const item of inspected) {
     if (item.originPath !== listing) problems.push(`${item.href} is not the JourneyDeck App Store listing`);
     if (item.pt !== expectations.appStore.providerToken) problems.push(`${item.href} missing pt=${expectations.appStore.providerToken}`);
-    if (item.ct !== expectations.campaign.expectedCt) problems.push(`${item.href} missing ct=${expectations.campaign.expectedCt}`);
+    if (item.ct !== expectedCt) problems.push(`${item.href} ct=${item.ct ?? ""} expected ${expectedCt}`);
     if (item.mt !== expectations.appStore.mediaType) problems.push(`${item.href} missing mt=${expectations.appStore.mediaType}`);
+    problems.push(...campaignParamProblems(item.href));
   }
-  const reviews = inspected.filter((item) => item.seeAll === expectations.appStore.reviewsParam);
-  if (reviews.length === 0) problems.push(`no App Store reviews link kept see-all=${expectations.appStore.reviewsParam}`);
+  if (requireReviews && !inspected.some((item) => item.seeAll === expectations.appStore.reviewsParam)) {
+    problems.push(`no App Store reviews link kept see-all=${expectations.appStore.reviewsParam}`);
+  }
   return {
     pass: problems.length === 0,
     observed: inspected,
@@ -301,28 +325,26 @@ export function assertCampaignAppStoreHrefs(hrefs, expectations) {
   };
 }
 
+export function assertCampaignAppStoreHrefs(hrefs, expectations) {
+  const expectedCt = expectations.campaign.expectedCt;
+  const checked = assertStaticAppStoreCampaign(hrefs, expectedCt, expectations, { requireReviews: true });
+  return checked;
+}
+
 export function assertDefaultAppStoreHrefs(hrefs, servedHrefs, expectations) {
-  const inspected = hrefs.map((href) => inspectAppStoreHref(href, expectations));
-  const problems = [];
-  if (inspected.length === 0) problems.push("no App Store links found");
-  const listing = appStoreOriginPath(expectations);
-  for (const item of inspected) {
-    if (item.originPath !== listing) problems.push(`${item.href} is not the JourneyDeck App Store listing`);
-    if (item.pt !== null) problems.push(`${item.href} has pt`);
-    if (item.ct !== null) problems.push(`${item.href} has ct`);
-    if (item.mt !== null) problems.push(`${item.href} has mt`);
-  }
-  for (const href of servedHrefs) {
-    if (inspectAppStoreHref(href, expectations).originPath !== listing) {
-      problems.push(`served ${href} is not the JourneyDeck App Store listing`);
-    }
-  }
+  const expectedCt = expectations.appStore.pageCampaigns?.["/"];
+  const browser = assertStaticAppStoreCampaign(hrefs, expectedCt, expectations, { requireReviews: true });
+  const served = assertStaticAppStoreCampaign(servedHrefs, expectedCt, expectations, { requireReviews: true });
+  const problems = [
+    ...browser.problems,
+    ...served.problems.map((problem) => `served ${problem}`)
+  ];
   if (!hrefListsMatch(hrefs, servedHrefs)) {
     problems.push("browser App Store hrefs do not match the HTML as served");
   }
   return {
     pass: problems.length === 0,
-    observed: { browser: inspected, served: servedHrefs },
+    observed: { browser: browser.observed, served: servedHrefs },
     problems
   };
 }
@@ -406,11 +428,28 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits }),
     makeCheck(`page:${pathname} pricing`, priceHits.length === 0 && missingPricing.length === 0, { forbidden: priceHits, missing: missingPricing })
   ];
+  const expectedCt = expectations.appStore?.pageCampaigns?.[pathname];
+  if (expectedCt) {
+    const hrefs = extractAppStoreHrefs(html, expectations);
+    const appStore = assertStaticAppStoreCampaign(hrefs, expectedCt, expectations, { requireReviews: pathname === "/" });
+    checks.push(makeCheck(`page:${pathname} app-store`, appStore.pass, { problems: appStore.problems, hrefs }));
+  }
   if (pathname === "/") {
     const badge = evaluateLaunchBadge(html, expectations);
     checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
   }
   return checks;
+}
+
+export function evaluateNotFoundAppStore(html, expectations, statusCode) {
+  const pathname = expectations.appStore.notFoundPath;
+  const expectedCt = expectations.appStore.pageCampaigns?.[pathname];
+  const hrefs = extractAppStoreHrefs(html, expectations);
+  const appStore = assertStaticAppStoreCampaign(hrefs, expectedCt, expectations);
+  return [
+    makeCheck(`page:${pathname} status`, statusCode === 404, statusCode),
+    makeCheck(`page:${pathname} app-store`, appStore.pass, { problems: appStore.problems, hrefs })
+  ];
 }
 
 export function evaluateLoginUmami(html, expectations, statusCode) {

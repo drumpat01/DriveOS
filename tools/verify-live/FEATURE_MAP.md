@@ -64,13 +64,16 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 
 ## Campaign pass-through and X headline
 
-- Owner: `web/campaign.js`, loaded as `/campaign.js?v=4` from the public HTML files. Home headline markup starts in `web/beta.html` `#hero-title`.
+- Owner: `web/campaign.js`, loaded as `/campaign.js?v=5` from the public HTML files. Home headline markup starts in `web/beta.html` `#hero-title`.
 - Campaign values persist in `sessionStorage`, so the default visit uses a fresh browser context.
-- Test campaign query: `?utm_source=x&utm_medium=social&utm_campaign=launch_oct13`.
-- Expected App Store extras: `pt=129344416`, `ct=x-launch_oct13`, `mt=8`. Every App Store link must stay on `https://apps.apple.com/us/app/journeydeck/id6806502526`. The reviews link keeps `see-all=reviews`.
-- Default visit: headline `A road trip journal` / `for your iPhone.`, and App Store hrefs exactly as served in the HTML (same URLs and the same number of repeated CTAs) with none of `pt`, `ct`, or `mt`.
+- Static App Store hrefs include `pt=129344416`, the page `ct` from `expectations.appStore.pageCampaigns`, and `mt=8`. Every App Store link must stay on `https://apps.apple.com/us/app/journeydeck/id6806502526`. The homepage reviews link keeps `see-all=reviews` and appends the campaign query with `&`.
+- Test campaign query: `?utm_source=x&utm_medium=social&utm_campaign=launch_oct13`. That visit rewrites `ct` to `x-launch_oct13` and keeps a single `pt=129344416` and `mt=8`.
+- `utm_source=x` with `utm_campaign=bio` rewrites `ct` to `xbio`. A visit with no UTM leaves the static `ct` in place.
+- Default visit: headline `A road trip journal` / `for your iPhone.`, and App Store hrefs exactly as served in the HTML (same URLs and the same number of repeated CTAs), including `pt=129344416`, homepage `ct=home`, and `mt=8`.
 - X visit: headline `Keep the drive.` / `Keep the song.`.
+- Unknown public paths serve `web/404.html` with `ct=site`. The verifier fetches `expectations.appStore.notFoundPath` and expects HTTP 404.
 - Checks, at `390x844` and `1280x800`: `browser <viewport> campaign headline`, `browser <viewport> campaign app-store-hrefs`, `browser <viewport> default headline`, `browser <viewport> default app-store-hrefs`.
+- Checks: `page:<path> app-store` on each public page, plus `page:<notFoundPath> status` and `page:<notFoundPath> app-store`.
 
 ## Launch Llama badge
 

@@ -40,8 +40,14 @@ export function forwardAppStoreClickToUmami(windowLike, detail) {
   }
 }
 
+// Joined UTM tokens are source-campaign. X bio traffic uses the shorter ct=xbio.
+const APPLE_CAMPAIGN_TOKEN_ALIASES = {
+  'x-bio': 'xbio'
+};
+
 export function buildAppleCampaignToken(source, campaign) {
-  return sanitizeCampaignToken([sanitizeCampaignToken(source), sanitizeCampaignToken(campaign)].filter(Boolean).join('-'));
+  const joined = sanitizeCampaignToken([sanitizeCampaignToken(source), sanitizeCampaignToken(campaign)].filter(Boolean).join('-'));
+  return sanitizeCampaignToken(APPLE_CAMPAIGN_TOKEN_ALIASES[joined] || joined);
 }
 
 export function isAppStoreHref(href, base = 'https://journeydeck.me') {
@@ -62,7 +68,8 @@ export function rewriteAppStoreHref(href, source, campaign, providerToken = APP_
   } catch {
     return href;
   }
-  const provider = String(providerToken || '').trim();
+  // Override ct for this visit. Keep a single pt: the provider token, or the pt already on the href.
+  const provider = String(providerToken || '').trim() || url.searchParams.get('pt') || '';
   if (provider) url.searchParams.set('pt', provider);
   url.searchParams.set('ct', token);
   url.searchParams.set('mt', '8');

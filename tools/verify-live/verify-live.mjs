@@ -9,6 +9,7 @@ import {
   compareGeneratedAtSince,
   errorMessage,
   evaluateLoginUmami,
+  evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
   extractAppStoreHrefs,
   formatHumanReport,
@@ -305,6 +306,15 @@ async function run() {
       }
       if (pathname === "/") servedHomeHrefs = extractAppStoreHrefs(page.text, expectations);
       for (const check of evaluatePublicPageHtml(page.text, pathname, expectations, page.status)) {
+        recordCheck(check);
+      }
+    }
+
+    const missing = await fetchResource(expectations.appStore.notFoundPath);
+    if (missing.error) {
+      recordCheck(makeCheck(`page:${expectations.appStore.notFoundPath} status`, false, { error: missing.error, status: missing.status }));
+    } else {
+      for (const check of evaluateNotFoundAppStore(missing.text, expectations, missing.status)) {
         recordCheck(check);
       }
     }

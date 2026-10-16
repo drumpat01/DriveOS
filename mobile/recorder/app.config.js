@@ -34,10 +34,10 @@ module.exports = ({ config }) => {
   return {
     ...config,
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
-    version: v4Store ? '4.5.1' : v3 ? '3.0.0' : '2.0.0',
+    version: v4Store ? '4.5.2' : v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // V4 4.5.1 adds the StoreKit rating request. Its runtime must not receive OTAs from 4.0.0-preview.3 binaries.
-    runtimeVersion: v4Store ? '4.5.1' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    // V4 4.5.2 persists the finished-drive session id in native code. Its runtime must not receive OTAs from 4.5.1 binaries.
+    runtimeVersion: v4Store ? '4.5.2' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       ...(modern ? {

@@ -40,7 +40,26 @@
     "baseUrl": "https://apps.apple.com/us/app/journeydeck/id6806502526",
     "providerToken": "129344416",
     "mediaType": "8",
-    "reviewsParam": "reviews"
+    "reviewsParam": "reviews",
+    "notFoundPath": "/not-a-published-page",
+    "pageCampaigns": {
+      "/": "home",
+      "/apple-music-soundtrack": "soundtrack",
+      "/private-driving-journal": "journal",
+      "/road-trip-journal-app": "journal",
+      "/road-trip-tracker-app": "journal",
+      "/travel-journal-app-with-photos": "journal",
+      "/driving-history-app": "journal",
+      "/route-66-road-trip-journal": "journal",
+      "/pacific-coast-highway-road-trip-journal": "journal",
+      "/national-parks-road-trip-journal": "journal",
+      "/texas-hill-country-road-trip-journal": "journal",
+      "/tesla-drive-journal": "tesla",
+      "/support": "site",
+      "/privacy": "site",
+      "/terms": "site",
+      "/not-a-published-page": "site"
+    }
   },
   "campaign": {
     "query": "?utm_source=x&utm_medium=social&utm_campaign=launch_oct13",

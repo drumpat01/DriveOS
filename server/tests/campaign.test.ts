@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../src/app.js";
+import { loadExpectations } from "../../tools/verify-live/lib.mjs";
 import { fixtureDatabase, root } from "./helpers.js";
 import {
   APP_STORE_PROVIDER_TOKEN,
@@ -22,25 +23,10 @@ import {
 
 const UMAMI_TAG = '<script defer src="https://cloud.umami.is/script.js" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af" data-domains="journeydeck.me"></script>';
 
+const liveExpectations = loadExpectations();
 const APP_STORE_URL = "https://apps.apple.com/us/app/journeydeck/id6806502526";
 const APPLE_CAMPAIGN_QUERY = "pt=129344416&ct=x-launch_oct13&mt=8";
-const publicPages = [
-  "/",
-  "/apple-music-soundtrack",
-  "/private-driving-journal",
-  "/road-trip-journal-app",
-  "/road-trip-tracker-app",
-  "/travel-journal-app-with-photos",
-  "/driving-history-app",
-  "/route-66-road-trip-journal",
-  "/pacific-coast-highway-road-trip-journal",
-  "/national-parks-road-trip-journal",
-  "/texas-hill-country-road-trip-journal",
-  "/tesla-drive-journal",
-  "/support",
-  "/privacy",
-  "/terms"
-] as const;
+const STATIC_HOME_QUERY = "pt=129344416&ct=home&mt=8";
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -75,13 +61,23 @@ test("Apple campaign tokens combine source and campaign and stay within 40 chara
   assert.equal(buildAppleCampaignToken("x", ""), "x");
   assert.equal(buildAppleCampaignToken("", "launch_oct13"), "launch_oct13");
   assert.equal(buildAppleCampaignToken("", ""), "");
+  assert.equal(buildAppleCampaignToken("x", "bio"), "xbio");
+  assert.equal(buildAppleCampaignToken("X", "Bio"), "xbio");
+  assert.equal(buildAppleCampaignToken("x", "biography"), "x-biography");
   assert.equal(buildAppleCampaignToken("x", "a".repeat(50)).length, 40);
+  for (const ct of Object.values(liveExpectations.appStore.pageCampaigns)) {
+    assert.ok(ct.length <= 40, ct);
+  }
 });
 
 test("App Store href rewrite adds pt, ct, and mt with UTM, keeps HTML hrefs without UTM, and preserves see-all=reviews", () => {
   assert.equal(APP_STORE_PROVIDER_TOKEN, "129344416");
+  const staticHome = `${APP_STORE_URL}?${STATIC_HOME_QUERY}`;
+  const staticReviews = `${APP_STORE_URL}?see-all=reviews&${STATIC_HOME_QUERY}`;
   assert.equal(rewriteAppStoreHref(APP_STORE_URL, "", ""), APP_STORE_URL);
   assert.equal(rewriteAppStoreHref(`${APP_STORE_URL}?see-all=reviews`, "", ""), `${APP_STORE_URL}?see-all=reviews`);
+  assert.equal(rewriteAppStoreHref(staticHome, "", ""), staticHome);
+  assert.equal(rewriteAppStoreHref(staticReviews, "", ""), staticReviews);
   assert.equal(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), `${APP_STORE_URL}?${APPLE_CAMPAIGN_QUERY}`);
   assert.equal(
     rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13", ""),
@@ -114,6 +110,18 @@ test("App Store href rewrite adds pt, ct, and mt with UTM, keeps HTML hrefs with
   assert.doesNotMatch(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /(?:[?&]pt=.*){2}/);
   assert.doesNotMatch(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /(?:[?&]ct=.*){2}/);
   assert.doesNotMatch(rewriteAppStoreHref(APP_STORE_URL, "x", "launch_oct13"), /(?:[?&]mt=.*){2}/);
+  assert.equal(rewriteAppStoreHref(staticHome, "x", "launch_oct13"), `${APP_STORE_URL}?${APPLE_CAMPAIGN_QUERY}`);
+  assert.equal(rewriteAppStoreHref(staticReviews, "x", "launch_oct13"), `${APP_STORE_URL}?see-all=reviews&${APPLE_CAMPAIGN_QUERY}`);
+  assert.equal(rewriteAppStoreHref(staticHome, "x", "bio"), `${APP_STORE_URL}?pt=129344416&ct=xbio&mt=8`);
+  assert.equal(rewriteAppStoreHref(staticReviews, "x", "bio"), `${APP_STORE_URL}?see-all=reviews&pt=129344416&ct=xbio&mt=8`);
+  assert.equal(rewriteAppStoreHref(staticHome, "x", "bio", ""), `${APP_STORE_URL}?pt=129344416&ct=xbio&mt=8`);
+  const collapsed = rewriteAppStoreHref(`${APP_STORE_URL}?pt=129344416&ct=home&pt=999&mt=8&ct=old`, "x", "bio");
+  assert.equal(collapsed, `${APP_STORE_URL}?pt=129344416&ct=xbio&mt=8`);
+  assert.equal(new URL(collapsed).searchParams.getAll("pt").length, 1);
+  assert.equal(new URL(collapsed).searchParams.getAll("ct").length, 1);
+  assert.equal(new URL(collapsed).searchParams.getAll("mt").length, 1);
+  const twice = rewriteAppStoreHref(collapsed, "x", "bio");
+  assert.equal(twice, collapsed);
 });
 
 test("landing UTM values persist in session storage and other query params are ignored", () => {
@@ -167,6 +175,21 @@ test("App Store anchors keep their exact href without UTM and gain pt, ct, and m
   assert.deepEqual(documentLike.links.map(link => link.href), [
     `${APP_STORE_URL}?${APPLE_CAMPAIGN_QUERY}`,
     `${APP_STORE_URL}?see-all=reviews&${APPLE_CAMPAIGN_QUERY}`,
+    "/support"
+  ]);
+
+  documentLike.links[0].href = `${APP_STORE_URL}?${STATIC_HOME_QUERY}`;
+  documentLike.links[1].href = `${APP_STORE_URL}?see-all=reviews&${STATIC_HOME_QUERY}`;
+  applyAppStoreCampaigns(documentLike, "", "");
+  assert.deepEqual(documentLike.links.map(link => link.href), [
+    `${APP_STORE_URL}?${STATIC_HOME_QUERY}`,
+    `${APP_STORE_URL}?see-all=reviews&${STATIC_HOME_QUERY}`,
+    "/support"
+  ]);
+  applyAppStoreCampaigns(documentLike, "x", "bio");
+  assert.deepEqual(documentLike.links.map(link => link.href), [
+    `${APP_STORE_URL}?pt=129344416&ct=xbio&mt=8`,
+    `${APP_STORE_URL}?see-all=reviews&pt=129344416&ct=xbio&mt=8`,
     "/support"
   ]);
 });
@@ -291,28 +314,46 @@ test("Umami click forward clips values to 200 characters and is a safe no-op whe
   }, { page: "/", source: "x", campaign: "launch_oct13", href: APP_STORE_URL }));
 });
 
-test("served public pages keep the plain App Store URL and load the first-party campaign script", async () => {
+function assertStaticAppStoreHrefs(body: string, expectedCt: string, label: string) {
+  const hrefs = [...body.matchAll(/href="(https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526[^"]*)"/g)].map(match => match[1]);
+  assert.ok(hrefs.length > 0, label);
+  for (const href of hrefs) {
+    const parsed = new URL(href);
+    assert.equal(parsed.searchParams.get("pt"), APP_STORE_PROVIDER_TOKEN, `${label} ${href}`);
+    assert.equal(parsed.searchParams.get("ct"), expectedCt, `${label} ${href}`);
+    assert.equal(parsed.searchParams.get("mt"), "8", `${label} ${href}`);
+    assert.equal(parsed.searchParams.getAll("pt").length, 1, href);
+    assert.equal(parsed.searchParams.getAll("ct").length, 1, href);
+    assert.equal(parsed.searchParams.getAll("mt").length, 1, href);
+    assert.ok(expectedCt.length <= 40, expectedCt);
+  }
+  assert.doesNotMatch(body, /href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526"/, label);
+  return hrefs;
+}
+
+test("served public pages embed Apple campaign tokens and load the first-party campaign script", async () => {
   const fixture = fixtureDatabase();
   const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
-    const script = await runtime.app.inject({ method: "GET", url: "/campaign.js?v=4" });
+    const script = await runtime.app.inject({ method: "GET", url: "/campaign.js?v=5" });
     assert.equal(script.statusCode, 200, script.body);
     assert.match(String(script.headers["content-type"]), /javascript/);
     assert.match(script.body, /APP_STORE_PROVIDER_TOKEN/);
     assert.match(script.body, /129344416/);
     assert.match(script.body, /journeydeck:appstore-click/);
     assert.match(script.body, /umami\?\.track/);
+    assert.match(script.body, /xbio/);
     assert.doesNotMatch(script.body, /\bfetch\s*\(|XMLHttpRequest|sendBeacon|gtag|googletagmanager|analytics\.js/);
     assert.doesNotMatch(script.body, /[\u2013\u2014]/);
 
-    for (const url of publicPages) {
+    for (const url of liveExpectations.publicPages) {
       const page = await runtime.app.inject({ method: "GET", url });
       assert.equal(page.statusCode, 200, url);
-      assert.match(page.body, /src="\/campaign\.js\?v=4"/, url);
+      assert.match(page.body, /src="\/campaign\.js\?v=5"/, url);
       assert.ok(page.body.includes(UMAMI_TAG), url);
       assert.match(page.body, /data-domains="journeydeck\.me"/, url);
-      assert.match(page.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526"/, url);
-      assert.doesNotMatch(page.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?ct=/, url);
+      const hrefs = assertStaticAppStoreHrefs(page.body, liveExpectations.appStore.pageCampaigns[url], url);
+      if (url === "/") assert.ok(hrefs.some(href => new URL(href).searchParams.get("see-all") === "reviews"), url);
       assert.doesNotMatch(page.body, /googletagmanager|gtag\(|plausible|cloudflareinsights/i, url);
       assert.match(String(page.headers["content-security-policy"]), /script-src[^;]*https:\/\/cloud\.umami\.is/, url);
       assert.match(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/gateway\.umami\.is/, url);
@@ -332,6 +373,10 @@ test("served public pages keep the plain App Store URL and load the first-party 
     assert.match(home.body, /width="200" height="52"/);
     assert.match(home.body, /href="https:\/\/launchmcp\.co\/\?utm_source=badge&utm_medium=referral"/);
     assert.match(home.body, />Launch MCP<\/a>/);
+
+    const missing = await runtime.app.inject({ method: "GET", url: liveExpectations.appStore.notFoundPath });
+    assert.equal(missing.statusCode, 404, missing.body);
+    assertStaticAppStoreHrefs(missing.body, liveExpectations.appStore.pageCampaigns[liveExpectations.appStore.notFoundPath], "404");
 
     for (const url of ["/login", "/index.html"]) {
       const privatePage = await runtime.app.inject({ method: "GET", url });
