@@ -6,7 +6,7 @@ Serve Apple's Get Retention Message endpoint from the existing journeydeck.me Fa
 
 ## Checkout
 
-- Branch `cursor/retention-messaging-endpoint-5d8a`, based on main `de0cc35`.
+- Branch `cursor/retention-messaging-endpoint-5d8a`, based on main `de0cc35`. Draft PR: https://github.com/drumpat01/DriveOS/pull/296
 - Public URL to paste after deploy: `https://journeydeck.me/retention-messaging-api`
 - The same POST handler is registered at the trailing-slash path and does not redirect.
 
