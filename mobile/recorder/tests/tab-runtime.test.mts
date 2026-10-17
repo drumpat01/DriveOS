@@ -733,6 +733,10 @@ test('Journey sharing has web-parity controls and never exports raw saved-place 
   assert.match(shareRoutePrivacy, /distanceMeters\(endpoint, firstSong\.point\.coordinate\)/);
   assert.match(shareRoutePrivacy, /distanceMeters\(endpoint, lastSong\.point\.coordinate\)/);
   assert.match(shareCard, /function JourneyShareControls/);
+  assert.equal(shareCard.match(/<SafeAreaView [^>]*accessibilityViewIsModal/g)?.length, 2);
+  assert.equal(shareCard.match(/accessibilityRole="button" accessibilityLabel="Close share card"/g)?.length, 2);
+  assert.equal(shareCard.match(/accessibilityRole="button" accessibilityLabel="Close"/g)?.length, 2);
+  assert.equal(shareCard.match(/accessibilityRole="button" accessibilityLabel="Share image"/g)?.length, 2);
   assert.match(shareCard, /BUILD YOUR CARD/);
   assert.match(shareCard, /Featured album/);
   assert.match(shareCard, /SHOW ON CARD/);
