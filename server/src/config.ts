@@ -15,6 +15,34 @@ function boundedInteger(name: string, fallback: number, minimum: number, maximum
   return value;
 }
 
+export const DEFAULT_RETENTION_MESSAGE_ID = "7f3c1a92-4e58-4b0d-8c6a-1d2e3f4a5b6c";
+const retentionEnvironmentValues = ["Production", "Sandbox"] as const;
+export type RetentionEnvironment = typeof retentionEnvironmentValues[number];
+const retentionMessageIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function retentionMessageId() {
+  const value = process.env.JOURNEYDECK_RETENTION_MESSAGE_ID || DEFAULT_RETENTION_MESSAGE_ID;
+  if (!retentionMessageIdPattern.test(value)) throw new Error("JOURNEYDECK_RETENTION_MESSAGE_ID must be a UUID.");
+  return value;
+}
+
+function isRetentionEnvironment(value: string): value is RetentionEnvironment {
+  return retentionEnvironmentValues.some(environment => environment === value);
+}
+
+function retentionEnvironments(): RetentionEnvironment[] {
+  const raw = process.env.JOURNEYDECK_RETENTION_ENVIRONMENTS || "Production,Sandbox";
+  const unique: RetentionEnvironment[] = [];
+  for (const part of raw.split(",")) {
+    const value = part.trim();
+    if (!value) continue;
+    if (!isRetentionEnvironment(value)) throw new Error("JOURNEYDECK_RETENTION_ENVIRONMENTS must list Production, Sandbox, or both.");
+    if (!unique.includes(value)) unique.push(value);
+  }
+  if (unique.length === 0) throw new Error("JOURNEYDECK_RETENTION_ENVIRONMENTS must list Production, Sandbox, or both.");
+  return unique;
+}
+
 export const config = Object.freeze({
   root,
   webRoot: path.join(root, "web"),
@@ -45,5 +73,9 @@ export const config = Object.freeze({
   recorderToken: process.env.JOURNEYDECK_RECORDER_TOKEN || "",
   lastFmApiKey: process.env.LASTFM_API_KEY || "",
   tessieToken: process.env.TESSIE_TOKEN || "",
-  recorderDurableTurso: process.env.JOURNEYDECK_RECORDER_DURABLE_TURSO === "true" || process.env.DRIVEOS_ATLAS_DURABLE_TURSO === "true"
+  recorderDurableTurso: process.env.JOURNEYDECK_RECORDER_DURABLE_TURSO === "true" || process.env.DRIVEOS_ATLAS_DURABLE_TURSO === "true",
+  retentionBundleId: "com.journeydeck.recorder",
+  retentionAppAppleId: 6806502526,
+  retentionMessageId: retentionMessageId(),
+  retentionEnvironments: retentionEnvironments()
 });
