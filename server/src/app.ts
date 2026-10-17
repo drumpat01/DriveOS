@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { Writable } from "node:stream";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import compress from "@fastify/compress";
 import staticPlugin from "@fastify/static";
@@ -18,6 +19,7 @@ import { RecorderStore, type RecorderPoint } from "./recorder.js";
 import { RecorderMobileStore } from "./recorder-mobile.js";
 import { registerRecorderMobileRoutes } from "./recorder-mobile-routes.js";
 import { loadTessieRouteCoordinates } from "./tessie-route.js";
+import { isRetentionMessagingPath, loadPinnedAppleRootCertificates, registerRetentionMessagingRoutes } from "./retention-messaging.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
@@ -118,10 +120,15 @@ function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
   }
 }
 
-type CreateAppOverrides = Partial<typeof defaultConfig> & { lastFmFetch?: typeof fetch; tessieFetch?: typeof fetch };
+type CreateAppOverrides = Partial<typeof defaultConfig> & {
+  lastFmFetch?: typeof fetch;
+  tessieFetch?: typeof fetch;
+  retentionRootCertificates?: Buffer[];
+  logStream?: Writable;
+};
 
 export async function createApp(overrides: CreateAppOverrides = {}) {
-  const { lastFmFetch, tessieFetch, ...configOverrides } = overrides;
+  const { lastFmFetch, tessieFetch, retentionRootCertificates, logStream, ...configOverrides } = overrides;
   const cfg = { ...defaultConfig, ...configOverrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
   const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root, cfg.atlasDurableTurso ? tursoAtlasDurableState : undefined, cfg.atlasInlineRebuild);
   const hostedRefresh = new HostedSnapshotRefresher({
@@ -142,7 +149,15 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     cfg.recorderDurableTurso,
     cfg.tessieToken ? input => loadTessieRouteCoordinates(input, cfg.tessieToken, tessieFetch) : undefined,
   );
-  const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
+  const app = Fastify({
+    logger: {
+      level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info",
+      redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "req.body.signedPayload", "res.headers.set-cookie"],
+      ...(logStream ? { stream: logStream } : {})
+    },
+    bodyLimit: 4 * 1024 * 1024,
+    trustProxy: false
+  });
   const forwardLegacy = async (req: FastifyRequest, reply: FastifyReply) => {
     if (compatibility) {
       try { await compatibility.ensureStarted(); }
@@ -160,10 +175,12 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     const cacheControl = publicCacheControl(publicCacheClass(req.url));
     if (cacheControl && (reply.statusCode === 200 || reply.statusCode === 304)) reply.header("cache-control", cacheControl);
     if (shouldSendRobotsTag(pathname, cfg.mode)) reply.header("x-robots-tag", "noindex, nofollow");
+    if (isRetentionMessagingPath(pathname)) reply.header("cache-control", "no-store");
     return payload;
   });
   app.addHook("onRequest", async (req, reply) => {
     const requestPath = req.url.split("?")[0];
+    if (isRetentionMessagingPath(requestPath)) return;
     if (requestPath === "/" && cfg.mode === "web") return;
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
     if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/") && !["/app", "/wife", "/spotify-callback"].includes(requestPath)) return;
@@ -245,6 +262,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     try { return (await recorder.complete(req.params.id, req.body.deviceId, new Date(req.body.endedAt).toISOString())) || reply.code(404).send({ error: "Recording was not found." }); }
     catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "Recording could not be completed." }); }
   });
+  registerRetentionMessagingRoutes(app, cfg, retentionRootCertificates ?? loadPinnedAppleRootCertificates(cfg.root));
   await registerRecorderMobileRoutes(app, recorderMobile, {
     lastFmApiKey: cfg.lastFmApiKey,
     tessieConfigured: Boolean(cfg.tessieToken),
