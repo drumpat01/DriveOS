@@ -74,6 +74,7 @@ import { recorderClockRunning, recorderDurationLabel, updateRecorderClock, type 
 import type { ActiveJourneyProgress } from './src/tessie-home-widgets';
 import { acceptRecorderStatusEvent, recorderEventStopTime, recorderRefreshMayPublish, recorderStatusEventNeedsRefresh, recorderStatusEventStopsClock, type RecorderStatusEventState } from './src/recorder-status-events';
 import { waitForRecorderResponse } from './src/recorder-response';
+import { AppErrorBoundary } from './src/app-error-boundary';
 import { DatabaseStartupGate } from './src/database-startup-gate';
 import { haptics } from './src/haptics';
 import { RecorderAccessoryBar } from './src/recorder-accessory';
@@ -931,7 +932,7 @@ function RecorderAtmosphere() {
 }
 
 function App() {
-  return <GestureHandlerRootView style={{ flex: 1 }}><DisplayLayoutProvider><DatabaseStartupGate><AppThemeProvider><AppIconProvider><CardMotionProvider><JourneyDeckShell recorder={RecorderScreen}><JourneyDeckNativeStack /></JourneyDeckShell></CardMotionProvider></AppIconProvider></AppThemeProvider></DatabaseStartupGate></DisplayLayoutProvider></GestureHandlerRootView>;
+  return <AppErrorBoundary><GestureHandlerRootView style={{ flex: 1 }}><DisplayLayoutProvider><DatabaseStartupGate><AppThemeProvider><AppIconProvider><CardMotionProvider><JourneyDeckShell recorder={RecorderScreen}><JourneyDeckNativeStack /></JourneyDeckShell></CardMotionProvider></AppIconProvider></AppThemeProvider></DatabaseStartupGate></DisplayLayoutProvider></GestureHandlerRootView></AppErrorBoundary>;
 }
 
 export default ObserveRoot.wrap(App);
