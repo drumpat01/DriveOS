@@ -17,7 +17,7 @@ import {
 } from './database-hardening';
 import { findDuplicatePlayback, partitionDuplicatePlaybacks } from './music-playback-dedupe';
 import { getMasterDatabase, openMasterDatabase } from './database-owner';
-import { PRIVATE_PLACE_PREFIX, parsePrivatePlace, privatePlaceValue, savedPlaceLocalId } from './private-place-record';
+import { PRIVATE_PLACE_PREFIX, tryParsePrivatePlace, privatePlaceValue, savedPlaceLocalId } from './private-place-record';
 import { JOURNEY_MARKER_SCHEMA_SQL, JOURNEY_MARKER_SYNC_SCHEMA_SQL } from './journey-marker-schema';
 import { JOURNEY_EDITOR_SCHEMA_SQL } from './journey-editor-schema';
 import { TESSIE_JOURNEY_SCHEMA_SQL } from './tessie-journey-schema';
@@ -1702,7 +1702,8 @@ export function deletePlace(userId: LocalUserId, id: string, options: { fromClou
 function privatePlacePreferences(userId: LocalUserId, canonicalId: string): LocalPrivatePreference[] {
   return listPrivatePreferences(userId, true).filter(preference => {
     if (!preference.key.startsWith(PRIVATE_PLACE_PREFIX)) return false;
-    const value = parsePrivatePlace(preference.valueJson);
+    const value = tryParsePrivatePlace(preference.valueJson);
+    if (!value) return false;
     return value.id === canonicalId || savedPlaceLocalId(value.id, userId) === canonicalId
       || placeByIdInternal(userId, value.id)?.id === canonicalId;
   });
@@ -1716,7 +1717,9 @@ function queuePrivatePlace(place: LocalPlace): void {
       { createdAt: place.createdAt, updatedAt: place.updatedAt });
   }
   for (const preference of existing) {
-    const value = privatePlaceValue(place, parsePrivatePlace(preference.valueJson).id);
+    const parsed = tryParsePrivatePlace(preference.valueJson);
+    if (!parsed) continue;
+    const value = privatePlaceValue(place, parsed.id);
     if (preference.deletedAt || JSON.stringify(value) !== preference.valueJson) {
       upsertPrivatePreference(place.userId, preference.key, value, { updatedAt: place.updatedAt });
     }
@@ -1736,7 +1739,8 @@ export function privateCloudPlaceId(userId: LocalUserId, id: string | null): str
   const place = getPlace(userId, id);
   if (!place) throw new Error('A journey is waiting for its saved place before it can sync.');
   const preference = privatePlacePreferences(userId, place.id).find(item => !item.deletedAt);
-  return preference ? parsePrivatePlace(preference.valueJson).id : place.id;
+  const parsed = preference ? tryParsePrivatePlace(preference.valueJson) : null;
+  return parsed ? parsed.id : place.id;
 }
 
 // --- Memories (legacy Collection storage remains dormant) -------------------
