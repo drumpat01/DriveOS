@@ -192,68 +192,6 @@ function Test-DriveOSScheduledSyncRequest {
     return $Difference -eq 0
 }
 
-function Test-DriveOSNodeProxyAddress {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.Net.IPAddress]$RemoteAddress
-    )
-
-    $Address = $RemoteAddress
-
-    if ($Address.IsIPv4MappedToIPv6) {
-        $Address = $Address.MapToIPv4()
-    }
-
-    return $Address.Equals([System.Net.IPAddress]::Loopback) -or $Address.Equals([System.Net.IPAddress]::IPv6Loopback)
-}
-
-function Get-DriveOSLoginClientKey {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.Net.IPAddress]$RemoteAddress,
-
-        [hashtable]$Headers,
-
-        [bool]$TrustLoopbackClientHeader = $false
-    )
-
-    $RemoteKey = $RemoteAddress.ToString()
-
-    # Desktop clients also connect from loopback. Honor the proxy header only
-    # for the hosted service, where 127.0.0.1 is the Node process.
-    if (-not $TrustLoopbackClientHeader -or -not (Test-DriveOSNodeProxyAddress -RemoteAddress $RemoteAddress)) {
-        return $RemoteKey
-    }
-
-    if (-not $Headers -or -not $Headers.ContainsKey("x-driveos-client-ip")) {
-        return $RemoteKey
-    }
-
-    $Candidate = "$($Headers['x-driveos-client-ip'])".Trim()
-
-    if (
-        -not $Candidate -or
-        $Candidate.Length -gt 128 -or
-        $Candidate.Contains(",") -or
-        $Candidate.Contains(" ") -or
-        $Candidate.Contains("%")
-    ) {
-        return $RemoteKey
-    }
-
-    $Parsed = $null
-
-    if (-not [System.Net.IPAddress]::TryParse($Candidate, [ref]$Parsed) -or -not $Parsed) {
-        return $RemoteKey
-    }
-
-    if ($Parsed.IsIPv4MappedToIPv6) {
-        $Parsed = $Parsed.MapToIPv4()
-    }
-
-    return $Parsed.ToString()
-}
-
 function Test-DriveOSLoginAllowed {
     param(
         [Parameter(Mandatory = $true)]
@@ -326,7 +264,6 @@ Export-ModuleMember -Function `
     Test-DriveOSWebOrigin, `
     Test-DriveOSWebPublicRequest, `
     Test-DriveOSScheduledSyncRequest, `
-    Get-DriveOSLoginClientKey, `
     Test-DriveOSLoginAllowed, `
     Register-DriveOSLoginFailure, `
     Clear-DriveOSLoginFailures
