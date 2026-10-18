@@ -7,7 +7,7 @@ Stop hosted login throttling from treating every caller as 127.0.0.1. Draft pull
 ## Checkout
 
 - Branch `cursor/login-client-ip-throttle-f653`, rebased onto main `2c190bf` (includes merged #298).
-- Draft PR is opened from that branch. Do not merge it.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/302. Do not merge it.
 
 ## Material changes
 
