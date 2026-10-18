@@ -200,6 +200,10 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.throws(() => validateExpectations({ ...expectations, pageSnippets: { "/terms": ["hello"] } }), /7-day refund line/);
   assert.throws(() => validateExpectations({}), /publicPages/);
   assert.throws(() => validateExpectations({ ...expectations, launchBadge: {} }), /launchBadge is incomplete/);
+  assert.equal(expectations.footerLinks.forbiddenHref, "/login");
+  assert.equal(expectations.footerLinks.homeStudioHref, "https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink");
+  assert.equal(expectations.footerLinks.homeStudioText, "From the studio: Road Trip templates");
+  assert.throws(() => validateExpectations({ ...expectations, footerLinks: {} }), /footerLinks is incomplete/);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-verify-live-"));
   const filePath = path.join(directory, "expectations.json");
   fs.writeFileSync(filePath, JSON.stringify({ ...expectations, umami: { scriptSrc: expectations.umami.scriptSrc } }), "utf8");
@@ -231,7 +235,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
     width="200" height="52" style="display:block;border:0;" />
 </a>
   <a href="https://launchmcp.co/?utm_source=badge&utm_medium=referral" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:-2px;padding-top:0;font-size:7px;font-weight:600;color:#888;text-decoration:none;line-height:1;letter-spacing:0.02em;">Launch MCP</a>
-</span></footer>
+</span><a href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">From the studio: Road Trip templates</a></footer>
   </body></html>`;
   const title = extractDocumentTitle(html);
   assert.equal(title.count, 1);
@@ -267,6 +271,13 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   assert.equal(evaluateLaunchBadge(html, expectations).pass, true);
   const supportChecks = evaluatePublicPageHtml(html, "/support", expectations, 200);
   assert.equal(supportChecks.some((check) => check.name === "page:/support launch-badge"), false);
+  assert.equal(checks.find((check) => check.name === "page:/ studio-link")?.pass, true);
+  assert.equal(checks.find((check) => check.name === "page:/ no-footer-login")?.pass, true);
+  assert.equal(supportChecks.find((check) => check.name === "page:/support no-footer-login")?.pass, true);
+  assert.equal(supportChecks.some((check) => check.name === "page:/support studio-link"), false);
+  const withLogin = html.replace("</footer>", '<a href="/login">Sign in</a></footer>');
+  const loginFooter = evaluatePublicPageHtml(withLogin, "/", expectations, 200);
+  assert.equal(loginFooter.find((check) => check.name === "page:/ no-footer-login")?.pass, false);
 });
 
 test("App Store href assertions keep campaign tokens, reviews, and the served static hrefs", () => {

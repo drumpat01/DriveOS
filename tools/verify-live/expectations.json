@@ -232,5 +232,10 @@
     "imageHeight": "52",
     "mcpHref": "https://launchmcp.co/?utm_source=badge&utm_medium=referral",
     "mcpText": "Launch MCP"
+  },
+  "footerLinks": {
+    "forbiddenHref": "/login",
+    "homeStudioHref": "https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink",
+    "homeStudioText": "From the studio: Road Trip templates"
   }
 }
