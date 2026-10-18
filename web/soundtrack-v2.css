@@ -14,5 +14,10 @@
 @media (min-width:701px){
   .soundtrack-proof--pair{ grid-template-columns:1fr; row-gap:32px; }
   .soundtrack-proof--pair > div:first-child{ max-width:560px; }
-  .soundtrack-proof--pair .soundtrack-shots{ grid-template-columns:repeat(2,minmax(0,300px)); justify-content:center; align-items:start; }
+  .soundtrack-proof--pair .soundtrack-shots{ grid-template-columns:repeat(2,minmax(0,300px)); justify-content:center; align-items:stretch; }
+  .soundtrack-proof--pair .soundtrack-shots > figure{ display:flex; flex-direction:column; }
+  .soundtrack-proof--pair .soundtrack-shots figcaption{ margin-top:auto; padding-top:12px; }
+}
+@media (min-width:900px){
+  .soundtrack-proof--pair .soundtrack-shots{ justify-content:start; }
 }
