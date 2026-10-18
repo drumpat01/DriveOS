@@ -6,7 +6,7 @@ Phase-one `journeydeck-site` Worker: serve public files from `web/`, answer rete
 
 ## Checkout
 
-- Branch `cursor/journeydeck-site-worker-4cad`, based on main `ec46402`.
+- Branch `cursor/journeydeck-site-worker-4cad`, based on main `ec46402`. Draft PR: https://github.com/drumpat01/DriveOS/pull/303
 - Config is `workers_dev` only. No routes, DNS, or secrets.
 - Do not regenerate `cloudflare/site/route-list.csv` from this tree. The CSV includes `/homeworld`, which is not in this commit's `server/src/app.ts`.
 
