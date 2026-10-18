@@ -2,30 +2,32 @@
 
 ## Current objective
 
-Keep `verify:live` aligned with the site Worker on https://journeydeck.me. Do not merge. Do not change site or Worker code.
+Add the approved home-page cross-link to the studio Road Trip templates. Open a non-draft PR. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/verify-live-retired-410-dd91`, based on main `48178cb` (#312).
-- PR: https://github.com/drumpat01/DriveOS/pull/313. Do not merge.
-- Render (`driveos.onrender.com`) is suspended. The apex is the Cloudflare Worker. Nothing proxies to Render.
+- Branch `cursor/home-studio-crosslink-1e8d`, based on main `48178cb` (#312).
+- Public home is `web/beta.html` served at `GET /`. `web/index.html` is the private app shell and was not changed.
 
 ## Material changes
 
-- Retired HTML paths expect HTTP 410, `noindex`, `no-store`, and `The old web app has been retired`. `/login` stays Umami-free.
-- `/healthz` and `/readyz` expect HTTP 200 and `{"ok":true,"service":"journeydeck-site"}`, with `Cache-Control: no-store` and no `rndr-id`.
-- The body must not include `atlas`, `generatedAtUtc`, `legacyCompatibilityReachable`, or `snapshotStale`.
-- `--since` is still accepted and does not read a snapshot time.
+- Footer nav in `web/beta.html` gains one same-tab link: `From the studio: Road Trip templates` to `https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink`.
+- The existing footer `/login` link (`Sign in`) is unchanged.
+- Header Studio links, Worker code, `cloudflare/`, and private pages are unchanged.
+- `expectations.json` and `FEATURE_MAP.md` do not list footer nav links, so they were not edited.
 
 ## Verification
 
-- `npm run test:server`: 79 passed, 0 failed.
-- `npm run verify:live -- --base https://journeydeck.me`: 233 passed, 0 failed. Exit 0.
+- Node v24.22.0.
+- `npm run check:server`, `npm run lint:server`, `npm run test:server`, and `npm run test:e2e` passed (19 e2e).
+- Local `npm run verify:live -- --base http://127.0.0.1:8795` passed, including `page:/ launch-badge` and `/login` HTTP 200.
+- Footer screenshots at 390 and 1280, before and after, are in the PR.
 
 ## Unresolved
 
-- Do not merge this PR.
+- Do not merge. No deploy.
 
 ## Next steps
 
-1. Wait for CI on https://github.com/drumpat01/DriveOS/pull/313. Rebase onto main if it moves. Do not merge.
+1. Review the PR. Do not merge it from this handoff.
+2. After merge, both the site Worker and Render serve the updated `web/beta.html` at `/`.

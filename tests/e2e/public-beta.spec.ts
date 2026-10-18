@@ -130,6 +130,12 @@ test('homepage footer centers the Launch Llama badge at 390 and 1280', async ({ 
     expect(box, `badge box at ${width}`).toBeTruthy();
     const center = (box?.x ?? 0) + ((box?.width ?? 0) / 2);
     expect(Math.abs(center - (width / 2))).toBeLessThan(12);
+    const studioTemplates = page.getByRole('link', { name: 'From the studio: Road Trip templates', exact: true });
+    await expect(studioTemplates).toHaveCount(1);
+    await expect(studioTemplates).toHaveAttribute('href', 'https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink');
+    await expect(studioTemplates).not.toHaveAttribute('target', /.+/);
+    await expect(page.locator('footer a[href="/login"]')).toHaveCount(1);
+    await expect(page.locator('footer a[href="/login"]')).toHaveText('Sign in');
   }
 });
 
