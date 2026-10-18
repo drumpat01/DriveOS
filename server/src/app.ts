@@ -11,6 +11,8 @@ import { compatibilityProcessReady, compatibilityReady } from "./compatibility-r
 import { CompatibilitySupervisor } from "./compatibility-supervisor.js";
 import { applyMigrations, openDatabase } from "./database.js";
 import { HostedSnapshotRefresher } from "./hosted-snapshot-refresh.js";
+import { deriveClientIp } from "./client-ip.js";
+import { isThrottledLogin, LOGIN_RETRY_AFTER_SECONDS, LOGIN_THROTTLE_MESSAGE, LoginThrottle } from "./login-throttle.js";
 import { proxyLegacy } from "./legacy-proxy.js";
 import { config as defaultConfig } from "./config.js";
 import { atlasMapSchema, bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } from "./schemas.js";
@@ -179,12 +181,25 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     bodyLimit: 4 * 1024 * 1024,
     trustProxy: false
   });
+  const loginThrottle = new LoginThrottle();
   const forwardLegacy = async (req: FastifyRequest, reply: FastifyReply) => {
     if (compatibility) {
       try { await compatibility.ensureStarted(); }
       catch (error) { return reply.code(503).send({ error: error instanceof Error ? error.message : "The compatibility API is starting." }); }
     }
-    return proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin);
+    const clientIp = deriveClientIp({
+      socketAddress: req.socket?.remoteAddress || req.raw.socket?.remoteAddress,
+      xForwardedFor: req.headers["x-forwarded-for"],
+      cfConnectingIp: req.headers["cf-connecting-ip"],
+      trustHops: cfg.trustProxyHops
+    });
+    const requestPath = req.url.split("?")[0];
+    if (isThrottledLogin(req.method, requestPath) && !loginThrottle.allowed(clientIp)) {
+      return reply.code(429).header("retry-after", String(LOGIN_RETRY_AFTER_SECONDS)).send({ error: LOGIN_THROTTLE_MESSAGE });
+    }
+    const forwarded = await proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin, clientIp);
+    if (isThrottledLogin(req.method, requestPath)) loginThrottle.observe(clientIp, reply.statusCode);
+    return forwarded;
   };
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);

@@ -4636,6 +4636,7 @@ try {
                         "content-length",
                         "transfer-encoding",
                         "x-driveos-session",
+                        "x-driveos-client-ip",
                         "tailscale-user-login",
                         "tailscale-user-name",
                         "tailscale-user-profile-pic",
@@ -4975,7 +4976,7 @@ try {
                 -Target $Target `
                 -BodyText $BodyText `
                 -Headers $Headers `
-                -ClientKey $Remote.Address.ToString() `
+                -ClientKey (Get-DriveOSLoginClientKey -RemoteAddress $Remote.Address -Headers $Headers -TrustLoopbackClientHeader:$RuntimeConfig.IsWeb) `
                 -Principal $WebPrincipal
         }
         catch {
