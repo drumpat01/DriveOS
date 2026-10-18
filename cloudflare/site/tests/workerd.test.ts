@@ -150,6 +150,26 @@ test("workerd retention answers without calling Render and stays inside the Appl
     const proxied = await worker.fetch("http://127.0.0.1/readyz");
     assert.equal(proxied.status, 200);
     assert.equal(hits.some(hit => hit.startsWith("GET /readyz")), true);
+
+    const beforeRetired = hits.length;
+    const api = await worker.fetch("http://127.0.0.1/api/anything", { method: "POST", body: "{}" });
+    assert.equal(api.status, 410);
+    assert.equal(api.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await api.json(), { error: "gone", message: "This API has been retired." });
+    const login = await worker.fetch("http://127.0.0.1/login");
+    assert.equal(login.status, 410);
+    const loginHtml = await login.text();
+    assert.match(loginHtml, /The old web app has been retired\./);
+    assert.match(loginHtml, /apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(loginHtml, /href="\/"/);
+    assert.equal(login.headers.get("x-robots-tag"), "noindex");
+    const appPath = await worker.fetch("http://127.0.0.1/app/library");
+    assert.equal(appPath.status, 410);
+    const wife = await worker.fetch("http://127.0.0.1/wife");
+    assert.equal(wife.status, 410);
+    await wife.arrayBuffer();
+    await appPath.arrayBuffer();
+    assert.equal(hits.length, beforeRetired);
   } finally {
     await worker.stop();
     await new Promise<void>(resolve => origin.server.close(() => resolve()));

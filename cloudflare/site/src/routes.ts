@@ -1,7 +1,7 @@
 // Route map for journeydeck-site. route-list.csv is the only source.
 // Paige owns the list. Regenerate it with gen-route-list.mjs; do not hand-edit rows.
 
-export const routeActions = ["asset", "asset_typed", "redirect", "not_found_page", "status_only", "native", "proxy", "none"] as const;
+export const routeActions = ["asset", "asset_typed", "redirect", "not_found_page", "status_only", "native", "gone", "retired_page", "proxy", "none"] as const;
 export type RouteAction = typeof routeActions[number];
 
 export const matchKinds = ["exact", "pattern", "prefix", "fallback", "query"] as const;

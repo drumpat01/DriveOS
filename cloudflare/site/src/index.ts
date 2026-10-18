@@ -2,6 +2,7 @@ import routeListCsv from "../route-list.csv";
 import type { SiteEnv } from "./env.ts";
 import { HOMEPAGE_LINKS, jsonResponse, mimeForPath, versionedCache, VERSIONED_IMMUTABLE, withOwnedHeaders } from "./headers.ts";
 import { proxyToRender } from "./proxy.ts";
+import { retiredApiResponse, retiredPageResponse } from "./retired.ts";
 import { appleRootDer, assertPinnedCertificateDigests, handleRetention, retentionSettingsFromEnv } from "./retention.ts";
 import { matchRoute, parseRouteList, type RouteRow } from "./routes.ts";
 
@@ -91,6 +92,10 @@ export default {
           return applyRouteHeaders(request, statusOnly(route), route);
         case "native":
           return applyRouteHeaders(request, await handleRetention(request, await retentionSettingsFromEnv(env, appleRootDer, request.headers.get("host") || url.host)), route);
+        case "gone":
+          return applyRouteHeaders(request, retiredApiResponse(), route);
+        case "retired_page":
+          return applyRouteHeaders(request, retiredPageResponse(request), route);
         case "proxy":
           return proxyToRender(request, env.RENDER_ORIGIN || "https://driveos.onrender.com");
         case "none":

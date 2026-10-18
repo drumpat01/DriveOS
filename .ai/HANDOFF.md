@@ -2,40 +2,35 @@
 
 ## Current objective
 
-`journeydeck-site` answers Apple's Retention Messaging API itself. Draft PR only. Do not deploy, do not change DNS, Render, or App Store Connect. The Cloudflare account is Workers Free. Workers Paid needs Patrick's yes.
+Retire the `journeydeck-site` Worker routes that proxy `/api/*`, `/login`, `/app`, and `/wife` to Render. Draft PR only. Do not deploy, do not merge, and do not run wrangler against the real account.
 
 ## Checkout
 
-- Branch `cursor/worker-retention-api-02df`, based on main `75cffb2`.
-- Draft PR: https://github.com/drumpat01/DriveOS/pull/310. Do not merge.
-- R029–R032 are `native` on `cloudflare/site/src/retention.ts`. Every other route is unchanged. Render's `server/src/retention-messaging.ts` is still there.
-- Config is `workers_dev` only. No routes, DNS, or new secrets. `preview_urls` is false.
+- Branch `cursor/retire-render-web-routes-800d`, based on main `880926f`.
+- Draft PR: open from this branch. Do not merge.
 
 ## Material changes
 
-- Worker verifies the signed JWS with Web Crypto. No `@apple/app-store-server-library` on this path, and no OCSP fetch.
-- Apple Root CA - G3 and Apple WWDR G6 are base64 in `cloudflare/site/src/apple-pinned-certs.ts`. Module load decodes and X.509-parses them. `crypto.subtle.importKey` stays on the first request and is memoized per isolate. The request leaf is parsed once. Method, size, content-type, JSON, `alg`, and certificate expiry run before any signature check.
-- Response is `{ message: { messageIdentifier } }` from `JOURNEYDECK_RETENTION_MESSAGE_ID`. Sandbox and Production stay in `JOURNEYDECK_RETENTION_ENVIRONMENTS`. Bundle id `com.journeydeck.recorder`, app id `6806502526`.
-- `ALLOW_RETENTION_TEST_ROOT` still applies only to localhost, `127.0.0.1`, and `::1`. It is not in `wrangler.jsonc`.
+- `/api` and `/api/*`, every method: HTTP 410 JSON `{"error":"gone","message":"This API has been retired."}`, `Cache-Control: no-store`. No fetch to Render.
+- `/login`, `/app`, `/wife` and their subpaths, every method: HTML 410 notice, `noindex`, App Store link, home link. No fetch to Render.
+- Still proxied to `https://driveos.onrender.com`: `GET /healthz`, `GET /readyz`, `GET /spotify-callback`, `GET /login.html`, `GET /index.html`, `GET /wife.html`.
+- `/retention-messaging-api` and the static pages, including the footer `/login` link, are unchanged.
+- `wrangler.jsonc` is still `workers_dev` only. No routes, DNS, or secrets.
 
 ## Verification
 
-- `npm run check:site` passed. `npm run test:site`: 25 passed. `npm run predeploy:site` passed.
-- Totals are 435 rows (318 worker, 110 passthrough, 7 dead, 375 probes).
-- Node, 12 fresh processes, handler `process.cpuUsage`: cold median 5.195 ms, max 5.643 ms. Warm (120 requests) median 0.670 ms, max 2.688 ms.
-- workerd, 10 fresh isolates, `performance.now` inside the handler (1 ms resolution, no CPU counter): cold wall 8, 8, 9, 9, 10, 10, 10, 12, 12, 14 ms. Median 10 ms, max 14 ms. Warm (100 requests) median 1 ms, max 2 ms.
-- Cold workerd wall does not reliably get under about 8 ms. The account is Workers Free. A real Apple sandbox request was not sent.
+- `npm run check:site` passed.
+- `npm run test:site`: 27 passed, including `proxy.test.ts`, `retired.test.ts`, and the workerd retention test.
+- Local Node was v22.14.0. CI runs Node 24. `npm test` does not run `test:site`.
 
 ## Unresolved
 
-- No deploy. Login and passkeys stay known-fail on `workers.dev`.
-- Cutover blocker: Render logs the real visitor IP for /login through the Worker. Do not set `TRUST_PROXY=2`.
-- Phase 2 cutover needs a separate yes. www stays on Render until the apex is stable.
-- Free-plan cold start is still over the 10 ms CPU limit on some fresh isolates (workerd wall max 14 ms). Paid CPU default is 30 seconds and needs Patrick's yes. If it stays Free, Apple shows the default message on a request that exceeds the limit and does not retry.
+- No deploy. The apex stays on Render until a separate cutover.
+- `/login.html`, `/index.html`, `/wife.html`, and `/spotify-callback` still hit Render.
+- `verify:live` still expects the Node app's `/login` to be HTTP 200. That check is the server, not this Worker.
 
 ## Next steps
 
-1. Review https://github.com/drumpat01/DriveOS/pull/310. Do not merge it as a deploy.
-2. Patrick decides whether Workers Paid is acceptable before any route cutover.
-3. From a machine with approval: `npm run predeploy:site`, then `npx wrangler deploy --config cloudflare/site/wrangler.jsonc`.
-4. Re-run parity against the workers.dev URL. A real Apple sandbox retention request is still untested.
+1. Review the draft PR. Do not merge it as a deploy.
+2. After approval, from a machine with permission: `npm run predeploy:site`, then `npx wrangler deploy --config cloudflare/site/wrangler.jsonc`.
+3. Curl the workers.dev origin: `/api/anything` is 410 JSON, `/login` `/app` `/wife` are the notice, `/` `/privacy` `/support` are unchanged, `/healthz` still comes from Render.
