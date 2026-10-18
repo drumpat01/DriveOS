@@ -7,7 +7,7 @@ Put `/wife.html` behind the same login that already protects `/wife`. Open a dra
 ## Checkout
 
 - Branch `cursor/wife-html-auth-460d`, based on main `102a13b`.
-- Draft pull request is created at the end of this change. Do not merge it.
+- Draft pull request: https://github.com/drumpat01/DriveOS/pull/301. Do not merge it.
 
 ## Material changes
 
