@@ -13,6 +13,7 @@ import {
   evaluatePublicPageHtml,
   evaluateUnauthenticatedPage,
   evaluateRedirect,
+  evaluateRemovedPublicImages,
   extractAppStoreHrefs,
   formatHumanReport,
   headlineMatches,
@@ -61,6 +62,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       status: response.status,
       location: response.headers.get("location"),
       text,
+      cacheControl: response.headers.get("cache-control"),
       json: json ? safeJson(text) : null
     };
   } catch (error) {
@@ -69,6 +71,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       status: 0,
       location: null,
       text: "",
+      cacheControl: null,
       json: null,
       error: errorMessage(error)
     };
@@ -302,16 +305,32 @@ async function run() {
   };
   try {
     let servedHomeHrefs = [];
+    const pageHtml = {};
     for (const pathname of expectations.publicPages) {
       const page = await fetchResource(pathname);
       if (page.error) {
         recordCheck(makeCheck(`page:${pathname} status`, false, { error: page.error, status: page.status }));
         continue;
       }
+      pageHtml[pathname] = page.text;
       if (pathname === "/") servedHomeHrefs = extractAppStoreHrefs(page.text, expectations);
       for (const check of evaluatePublicPageHtml(page.text, pathname, expectations, page.status)) {
         recordCheck(check);
       }
+    }
+
+    const removedAssets = [];
+    for (const url of expectations.removedPublicImages.urls) {
+      const asset = await fetchResource(url);
+      removedAssets.push({
+        url,
+        status: asset.status,
+        cacheControl: asset.cacheControl,
+        error: asset.error
+      });
+    }
+    for (const check of evaluateRemovedPublicImages(expectations, pageHtml, removedAssets)) {
+      recordCheck(check);
     }
 
     const missing = await fetchResource(expectations.appStore.notFoundPath);

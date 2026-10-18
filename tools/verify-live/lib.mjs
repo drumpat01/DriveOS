@@ -108,6 +108,10 @@ export function validateExpectations(raw) {
   if (!raw.headlines?.x?.lead || !raw.headlines?.x?.accent) throw new Error("expectations.headlines.x is incomplete");
   if (!Array.isArray(raw.viewports) || raw.viewports.length === 0) throw new Error("expectations.viewports must be a non-empty array");
   if (!raw.blocked?.analyticsHost || !Array.isArray(raw.blocked?.appStoreHosts)) throw new Error("expectations.blocked is incomplete");
+  const removed = raw.removedPublicImages;
+  if (!removed || !Array.isArray(removed.urls) || removed.urls.length === 0) throw new Error("expectations.removedPublicImages.urls is required");
+  if (!Array.isArray(removed.pages) || removed.pages.length === 0) throw new Error("expectations.removedPublicImages.pages is required");
+  if (!Array.isArray(removed.forbidden) || removed.forbidden.length === 0) throw new Error("expectations.removedPublicImages.forbidden is required");
   if (
     !raw.launchBadge?.productHref
     || !raw.launchBadge?.imageSrc
@@ -451,6 +455,25 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   if (pathname === "/") {
     const badge = evaluateLaunchBadge(html, expectations);
     checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
+  }
+  return checks;
+}
+
+export function evaluateRemovedPublicImages(expectations, pages, assets) {
+  const removed = expectations.removedPublicImages;
+  const checks = [];
+  for (const pathname of removed.pages) {
+    const html = pages[pathname] ?? "";
+    const hits = removed.forbidden.filter((token) => html.includes(token));
+    checks.push(makeCheck(`removed-image ${pathname}`, html.length > 0 && hits.length === 0, { hits }));
+  }
+  for (const asset of assets) {
+    const cacheControl = String(asset.cacheControl || "");
+    const longLived = /immutable|max-age=31536000|max-age=604800/.test(cacheControl);
+    checks.push(makeCheck(`removed-image ${asset.url}`, asset.status === 404 && !longLived, {
+      status: asset.status,
+      cacheControl
+    }));
   }
   return checks;
 }
