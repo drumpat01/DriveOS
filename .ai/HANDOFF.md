@@ -7,6 +7,7 @@ Add the approved home-page cross-link to the studio Road Trip templates. Open a 
 ## Checkout
 
 - Branch `cursor/home-studio-crosslink-1e8d`, based on main `48178cb` (#312).
+- PR: https://github.com/drumpat01/DriveOS/pull/314. Do not merge.
 - Public home is `web/beta.html` served at `GET /`. `web/index.html` is the private app shell and was not changed.
 
 ## Material changes
