@@ -116,7 +116,9 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(soundtrack.body, /href="\/privacy"/);
     assert.match(soundtrack.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(soundtrack.body, /aria-current="page">Soundtracks<\/a>/);
-    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.webp/);
+    assert.match(soundtrack.body, /\/assets\/v4\/02-journey\.webp/);
+    assert.match(soundtrack.body, /width="660" height="1434"/);
+    assert.doesNotMatch(soundtrack.body, /\/assets\/v2\/soundtrack|\/assets\/v4\/05-soundtrack/);
     assert.match(soundtrack.body, /Identify Song uses ShazamKit/);
     assert.match(soundtrack.body, /rel="preload" as="image"/);
     assert.match(soundtrack.body, /grand-touring-home-800\.webp\?v=1/);
@@ -470,7 +472,6 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/v2-features.css?v=1", /text\/css/],
       ["/soundtrack-v2.css?v=1", /text\/css/],
       ["/assets/v4/02-journey.webp", /image\/webp/],
-      ["/assets/v2/soundtrack.jpg", /image\/jpeg/],
       ["/assets/v4/04-memory.webp", /image\/webp/],
       ["/assets/v4/08-themes.webp", /image\/webp/],
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
@@ -487,11 +488,21 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/assets/beta/grand-touring-home-1600.webp?v=1", /image\/webp/],
       ["/assets/beta/share-card.png", /image\/png/],
       ["/assets/beta/journeydeck-pulse.svg", /image\/svg/],
-      ...["01-today", "03-memories", "05-soundtrack", "06-atlas", "07-ask"].map(name => [`/assets/v4/${name}.webp`, /image\/webp/] as const)
+      ...["01-today", "03-memories", "06-atlas", "07-ask"].map(name => [`/assets/v4/${name}.webp`, /image\/webp/] as const)
     ] as const) {
       const asset = await runtime.app.inject({ method: "GET", url });
       assert.equal(asset.statusCode, 200, url);
       assert.match(String(asset.headers["content-type"]), mime, url);
+    }
+
+    assert.equal(landing.body.includes("05-soundtrack"), false);
+    assert.equal(landing.body.includes("v2/soundtrack"), false);
+    assert.match(landing.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/02-journey\.webp"/);
+    for (const url of ["/assets/v4/05-soundtrack.webp", "/assets/v2/soundtrack.webp", "/assets/v2/soundtrack.webp?v=1", "/assets/v2/soundtrack.jpg"]) {
+      const removed = await runtime.app.inject({ method: "GET", url });
+      assert.equal(removed.statusCode, 404, url);
+      assert.doesNotMatch(String(removed.headers["content-type"] || ""), /image\//, url);
+      assert.doesNotMatch(String(removed.headers["cache-control"] || ""), /immutable|max-age=31536000|max-age=604800/, url);
     }
 
     for (const url of ["/beta", "/beta/", "/beta.html", "/landing.html"]) {
@@ -652,6 +663,8 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       assert.doesNotMatch(html, /3-day/i, `${page.url} 3-day`);
       assert.doesNotMatch(html, /0\.99/, `${page.url} weekly price`);
       assert.doesNotMatch(html, /24\.99/, `${page.url} old annual price`);
+      assert.equal(html.includes("05-soundtrack"), false, page.url);
+      assert.equal(html.includes("v2/soundtrack"), false, page.url);
     }
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
@@ -696,6 +709,12 @@ test("hosted cache headers distinguish versioned assets, unversioned images, and
     assert.equal(unversionedImage.statusCode, 200, unversionedImage.body);
     assert.equal(unversionedImage.headers["cache-control"], "public, max-age=604800");
 
+    for (const url of ["/assets/v4/05-soundtrack.webp", "/assets/v2/soundtrack.webp?v=1", "/assets/v2/soundtrack.jpg"]) {
+      const removed = await runtime.app.inject({ method: "GET", url });
+      assert.equal(removed.statusCode, 404, url);
+      assert.doesNotMatch(String(removed.headers["cache-control"] || ""), /immutable|max-age=31536000|max-age=604800/, url);
+    }
+
     const unversionedMedallion = await runtime.app.inject({ method: "GET", url: "/assets/medallions/soundtrack-100-dark.webp" });
     assert.equal(unversionedMedallion.statusCode, 200, unversionedMedallion.body);
     assert.equal(unversionedMedallion.headers["cache-control"], "public, max-age=604800");
@@ -721,6 +740,8 @@ test("desktop root continues to serve only the authenticated private app", async
     const authenticated = await runtime.app.inject({ method: "GET", url: "/", headers: auth });
     assert.equal(authenticated.statusCode, 200, authenticated.body);
     assert.match(authenticated.body, /JourneyDeck/i);
+    assert.equal(authenticated.body.includes("05-soundtrack"), false);
+    assert.equal(authenticated.body.includes("v2/soundtrack"), false);
     const wife = await runtime.app.inject({ method: "GET", url: "/wife" });
     const wifeHtml = await runtime.app.inject({ method: "GET", url: "/wife.html" });
     assert.equal(wife.statusCode, 302);

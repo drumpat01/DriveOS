@@ -113,6 +113,21 @@
       "www.apps.apple.com"
     ]
   },
+  "removedPublicImages": {
+    "urls": [
+      "/assets/v4/05-soundtrack.webp",
+      "/assets/v2/soundtrack.webp?v=1",
+      "/assets/v2/soundtrack.jpg"
+    ],
+    "pages": [
+      "/",
+      "/apple-music-soundtrack"
+    ],
+    "forbidden": [
+      "/assets/v4/05-soundtrack",
+      "/assets/v2/soundtrack"
+    ]
+  },
   "launchBadge": {
     "productHref": "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral",
     "imageSrc": "https://tools.launchllama.co/featured-badge-white.jpg?v=5",

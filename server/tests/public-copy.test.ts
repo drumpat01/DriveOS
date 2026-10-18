@@ -20,7 +20,8 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
     const soundtrack = await runtime.app.inject({ method: "GET", url: "/apple-music-soundtrack" });
     assert.equal(soundtrack.statusCode, 200, soundtrack.body);
     assert.match(soundtrack.body, /THE SOUNDTRACK \/ JOURNEYDECK 4\.0/);
-    assert.match(soundtrack.body, /Soundtracks in JourneyDeck 4\.0/);
+    assert.match(soundtrack.body, /A saved drive and its songs in JourneyDeck 4\.0/);
+    assert.doesNotMatch(soundtrack.body, /\/assets\/v2\/soundtrack|\/assets\/v4\/05-soundtrack/);
     assert.match(soundtrack.body, /Download on the App Store/);
     assert.doesNotMatch(soundtrack.body, /JOURNEYDECK 2\.0|JourneyDeck 2\.0/);
 

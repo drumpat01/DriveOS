@@ -22,12 +22,16 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
     assert.match(home.body, /favicon-32\.png\?v=app-logo-1/);
     assert.match(home.body, /\/assets\/favicon\.png\?v=app-logo-1/);
 
+    assert.equal(home.body.includes("05-soundtrack"), false);
+    assert.equal(home.body.includes("v2/soundtrack"), false);
+    assert.match(home.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/02-journey\.webp" width="660" height="1434"/);
+
     for (const [url, mime] of [
       ["/assets/v4/01-today-400.webp?v=1", /image\/webp/],
       ["/assets/v4/01-today.webp?v=1", /image\/webp/],
+      ["/assets/v4/02-journey.webp", /image\/webp/],
       ["/assets/beta/grand-touring-home-800.webp?v=1", /image\/webp/],
       ["/assets/beta/grand-touring-home-1600.webp?v=1", /image\/webp/],
-      ["/assets/v2/soundtrack.webp?v=1", /image\/webp/],
       ["/assets/favicon-32.png?v=app-logo-1", /image\/png/],
       ["/favicon.ico", /image\/x-icon|image\/vnd\.microsoft\.icon|image\/png|application\/octet-stream/],
       ["/assets/medallions/soundtrack-100-redline-pick.webp", /image\/webp/],
@@ -42,17 +46,68 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
       "/assets/v4/01-today-400.webp?v=1",
       "/assets/beta/grand-touring-home-800.webp?v=1",
       "/assets/beta/grand-touring-home-1600.webp?v=1",
-      "/assets/v2/soundtrack.webp?v=1",
       "/assets/favicon-32.png?v=app-logo-1"
     ]) {
       const versioned = await runtime.app.inject({ method: "GET", url });
       assert.equal(versioned.headers["cache-control"], "public, max-age=31536000, immutable", url);
     }
 
+    for (const url of ["/assets/v4/05-soundtrack.webp", "/assets/v2/soundtrack.webp", "/assets/v2/soundtrack.webp?v=1", "/assets/v2/soundtrack.jpg"]) {
+      const removed = await runtime.app.inject({ method: "GET", url });
+      assert.equal(removed.statusCode, 404, url);
+      assert.doesNotMatch(String(removed.headers["content-type"] || ""), /image\//, url);
+      assert.doesNotMatch(String(removed.headers["cache-control"] || ""), /immutable|max-age=31536000|max-age=604800/, url);
+    }
+
     const soundtrack = await runtime.app.inject({ method: "GET", url: "/apple-music-soundtrack" });
     assert.equal(soundtrack.statusCode, 200, soundtrack.body);
-    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.webp\?v=1/);
-    assert.doesNotMatch(soundtrack.body, /\/assets\/v2\/soundtrack\.jpg"/);
+    assert.match(soundtrack.body, /src="\/assets\/v4\/02-journey\.webp" width="660" height="1434" loading="lazy"/);
+    assert.equal(soundtrack.body.includes("05-soundtrack"), false);
+    assert.equal(soundtrack.body.includes("v2/soundtrack"), false);
+    assert.doesNotMatch(soundtrack.body, /<picture/);
+
+    const htmlRoutes = [
+      "/",
+      "/apple-music-soundtrack",
+      "/private-driving-journal",
+      "/road-trip-journal-app",
+      "/road-trip-tracker-app",
+      "/travel-journal-app-with-photos",
+      "/driving-history-app",
+      "/route-66-road-trip-journal",
+      "/pacific-coast-highway-road-trip-journal",
+      "/national-parks-road-trip-journal",
+      "/texas-hill-country-road-trip-journal",
+      "/tesla-drive-journal",
+      "/support",
+      "/support.html",
+      "/privacy",
+      "/privacy.html",
+      "/terms",
+      "/terms.html",
+      "/login",
+      "/login.html",
+      "/index.html",
+      "/api-docs",
+      "/wife",
+      "/wife.html",
+      "/app",
+      "/spotify-callback",
+      "/beta",
+      "/beta.html",
+      "/landing.html",
+      "/a-page-that-does-not-exist"
+    ];
+    for (const url of htmlRoutes) {
+      const page = await runtime.app.inject({
+        method: "GET",
+        url,
+        headers: { "x-journeydeck-test-auth": "owner" }
+      });
+      assert.match(String(page.headers["content-type"]), /text\/html/, url);
+      assert.equal(page.body.includes("05-soundtrack"), false, url);
+      assert.equal(page.body.includes("v2/soundtrack"), false, url);
+    }
   } finally {
     await runtime.app.close();
     fixture.cleanup();

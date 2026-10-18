@@ -17,6 +17,7 @@ import {
   evaluatePublicPageHtml,
   evaluateUnauthenticatedPage,
   evaluateRedirect,
+  evaluateRemovedPublicImages,
   evaluateUmamiScripts,
   extractAppStoreHrefs,
   extractDocumentTitle,
@@ -114,6 +115,26 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.headlines.default.accent, "for your iPhone.");
   assert.equal(expectations.headlines.x.lead, "Keep the drive.");
   assert.equal(expectations.headlines.x.accent, "Keep the song.");
+  assert.deepEqual(expectations.removedPublicImages.urls, [
+    "/assets/v4/05-soundtrack.webp",
+    "/assets/v2/soundtrack.webp?v=1",
+    "/assets/v2/soundtrack.jpg"
+  ]);
+  assert.deepEqual(expectations.removedPublicImages.pages, ["/", "/apple-music-soundtrack"]);
+  assert.deepEqual(expectations.removedPublicImages.forbidden, ["/assets/v4/05-soundtrack", "/assets/v2/soundtrack"]);
+  assert.throws(() => validateExpectations({ ...expectations, removedPublicImages: { urls: [], pages: ["/"], forbidden: ["/assets/v2/soundtrack"] } }), /removedPublicImages\.urls/);
+  const removedChecks = evaluateRemovedPublicImages(
+    expectations,
+    { "/": "<img src=\"/assets/v4/02-journey.webp\">", "/apple-music-soundtrack": "<img src=\"/assets/v4/02-journey.webp\">" },
+    expectations.removedPublicImages.urls.map((url) => ({ url, status: 404, cacheControl: "public, max-age=0" }))
+  );
+  assert.ok(removedChecks.every((check) => check.pass), removedChecks.filter((check) => !check.pass).map((check) => check.name).join(","));
+  const leaked = evaluateRemovedPublicImages(
+    expectations,
+    { "/": "<img src=\"/assets/v4/05-soundtrack.webp\">", "/apple-music-soundtrack": "<img src=\"/assets/v4/02-journey.webp\">" },
+    [{ url: "/assets/v4/05-soundtrack.webp", status: 200, cacheControl: "public, max-age=604800" }]
+  );
+  assert.equal(leaked.every((check) => check.pass), false);
   assert.equal(expectations.launchBadge.productHref, "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral");
   assert.equal(expectations.launchBadge.imageSrc, "https://tools.launchllama.co/featured-badge-white.jpg?v=5");
   assert.equal(expectations.launchBadge.imageAlt, "Featured on Launch");

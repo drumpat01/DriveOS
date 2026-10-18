@@ -80,6 +80,13 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - Owner: the homepage footer in `web/beta.html`. The product href, image `src`, `alt`, `width`, `height`, and Launch MCP link must match `expectations.launchBadge` exactly.
 - Checks: `page:/ launch-badge` only. Other public pages are not required to include the badge.
 
+## Removed listening screenshots
+
+- Owner: `web/beta.html` and `web/apple-music-soundtrack.html`. The private Soundtrack captures are not served.
+- `expectations.removedPublicImages.urls` must return HTTP 404, and those responses must not advertise a year-long immutable cache or the 7-day image cache.
+- `expectations.removedPublicImages.pages` must not contain `expectations.removedPublicImages.forbidden`.
+- Checks: `removed-image <path>` for `/` and `/apple-music-soundtrack`, plus `removed-image <url>` for each removed file.
+
 ## Content Security Policy
 
 - Owner: `securityHeaders` in `server/src/app.ts`. `script-src` allows `https://cloud.umami.is`. `connect-src` allows `https://gateway.umami.is` and does not allow `https://cloud.umami.is`. `img-src` allows `https://tools.launchllama.co` for the homepage Launch Llama badge and does not add that host to other directives.
