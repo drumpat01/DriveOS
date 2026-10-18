@@ -39,5 +39,5 @@ Node `v24.22.0`, after the rebase onto `7c9383f`:
 
 ## Next steps
 
-1. Re-run checks on this rebase, push, and wait for GitHub CI. Do not merge.
+1. Push this rebase and wait for GitHub CI. Do not merge.
 2. If main moves again, rebase. The usual conflict is `.ai/HANDOFF.md`.
