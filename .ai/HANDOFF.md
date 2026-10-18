@@ -6,8 +6,8 @@ Retire the `journeydeck-site` Worker routes that proxy `/api/*`, `/login`, `/app
 
 ## Checkout
 
-- Branch `cursor/retire-render-web-routes-800d`, based on main `880926f`.
-- Draft PR: open from this branch. Do not merge.
+- Branch `cursor/retire-render-web-routes-800d`, based on main `880926f`. Head `327e96e`.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/311. Do not merge.
 
 ## Material changes
 
