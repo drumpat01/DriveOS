@@ -22,9 +22,11 @@ function matched(method: string, path: string) {
 
 test("route list has the phase-one shape", () => {
   assert.equal(routes.length, 435);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 318);
-  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 110);
-  assert.equal(routes.filter(route => route.worker_action === "proxy").length, 110);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 426);
+  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 2);
+  assert.equal(routes.filter(route => route.worker_action === "proxy").length, 2);
+  assert.equal(routes.filter(route => route.worker_action === "gone").length, 101);
+  assert.equal(routes.filter(route => route.worker_action === "retired_page").length, 7);
   assert.equal(routes.filter(route => route.worker_action === "native").length, 4);
   assert.equal(routes.filter(route => route.worker_action === "none").length, 7);
 });
@@ -34,7 +36,7 @@ test("every CSV row resolves to its action", () => {
     if (route.worker_action === "none") {
       const winner = matched(route.method === "ALL" ? "GET" : route.method, route.path);
       assert.notEqual(winner?.route_id, route.route_id, route.route_id);
-      if (route.path.startsWith("/api/")) assert.equal(winner?.worker_action, "proxy", route.path);
+      if (route.path.startsWith("/api/")) assert.equal(winner?.worker_action, "gone", route.path);
       continue;
     }
     const method = route.method === "ALL" ? "PUT" : route.method;
@@ -46,16 +48,26 @@ test("every CSV row resolves to its action", () => {
 });
 
 test("homepage, clean URLs, trailing slash, and app shell stay distinct", () => {
-  assert.equal(matched("GET", "/")?.target, "beta.html");
+  const home = matched("GET", "/");
+  const indexFile = matched("GET", "/index.html");
+  assert.equal(home?.target, "beta.html");
+  assert.equal(home?.worker_action, "asset");
+  assert.equal(home?.expected_status, "200");
+  assert.equal(home?.match, "exact");
+  assert.equal(matched("POST", "/"), undefined);
+  assert.equal(indexFile?.worker_action, "retired_page");
+  assert.equal(indexFile?.match, "exact");
+  assert.notEqual(indexFile?.route_id, home?.route_id);
+  assert.equal(matched("GET", "/index.html/")?.worker_action, "not_found_page");
   assert.equal(matched("GET", "/privacy")?.target, "privacy.html");
   assert.equal(matched("GET", "/privacy.html")?.worker_action, "asset");
   assert.equal(matched("GET", "/privacy.html")?.expected_status, "200");
   assert.equal(matched("GET", "/privacy/")?.worker_action, "not_found_page");
-  assert.equal(matched("GET", "/index.html")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/login.html")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/wife.html")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/wife.html")?.expected_status, "302");
-  assert.equal(matched("GET", "/wife.html")?.x_robots_tag, "noindex, nofollow");
+  assert.equal(matched("GET", "/login.html")?.worker_action, "retired_page");
+  assert.equal(matched("GET", "/login.html")?.match, "exact");
+  assert.equal(matched("POST", "/wife.html")?.worker_action, "retired_page");
+  assert.equal(matched("POST", "/spotify-callback")?.worker_action, "retired_page");
+  assert.equal(matched("GET", "/spotify-callback/extra")?.worker_action, "not_found_page");
   for (const path of ["/assets/v2/soundtrack.jpg", "/assets/v2/soundtrack.webp", "/assets/v4/05-soundtrack.webp"]) {
     assert.equal(routes.some(route => route.path === path), false, path);
   }
@@ -77,7 +89,7 @@ test("redirects, retired landings, directory 403, and unknown GET", () => {
   assert.equal(matched("POST", "/parity-check-not-a-page"), undefined);
 });
 
-test("retention is native and other api paths stay proxied", () => {
+test("retention stays native and retired routes do not proxy", () => {
   for (const routeId of ["R029", "R030", "R031", "R032"]) {
     const route = routes.find(row => row.route_id === routeId);
     assert.equal(route?.worker_action, "native", routeId);
@@ -90,10 +102,20 @@ test("retention is native and other api paths stay proxied", () => {
   assert.equal(matched("POST", "/retention-messaging-api")?.route_id, "R029");
   assert.equal(matched("GET", "/retention-messaging-api")?.route_id, "R030");
   assert.equal(routes.filter(route => route.worker_action === "proxy" && route.path.includes("retention-messaging")).length, 0);
-  assert.equal(matched("GET", "/api/auth/session")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/api/atlas/journeys")?.worker_action, "proxy");
+  assert.equal(matched("GET", "/api/auth/session")?.worker_action, "gone");
+  assert.equal(matched("POST", "/api/auth/login")?.worker_action, "gone");
+  assert.equal(matched("PUT", "/api/anything")?.worker_action, "gone");
+  assert.equal(matched("GET", "/api/atlas/journeys")?.worker_action, "gone");
+  assert.equal(matched("GET", "/api-docs")?.worker_action, "asset");
   assert.equal(matched("GET", "/readyz")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/app")?.worker_action, "proxy");
+  assert.equal(matched("GET", "/healthz")?.worker_action, "proxy");
+  assert.equal(matched("GET", "/app")?.worker_action, "retired_page");
+  assert.equal(matched("POST", "/app/library")?.worker_action, "retired_page");
+  assert.equal(matched("GET", "/login")?.worker_action, "retired_page");
+  assert.equal(matched("HEAD", "/login/reset")?.worker_action, "retired_page");
+  assert.equal(matched("DELETE", "/wife")?.worker_action, "retired_page");
+  assert.equal(matched("GET", "/wife/summary")?.worker_action, "retired_page");
+  assert.equal(matched("GET", "/app.js")?.worker_action, "asset");
   assert.equal(matched("GET", "/styles.css?v=6.0.1")?.cache_control, "public, max-age=31536000, immutable");
   assert.equal(matched("GET", "/styles.css")?.cache_control, "public, max-age=0");
   assert.equal(matched("GET", "/app.js")?.content_type, "application/javascript; charset=utf-8");
@@ -103,21 +125,41 @@ test("retention is native and other api paths stay proxied", () => {
   assert.equal(matched("GET", "/google8e611381b21882a8.html")?.cache_control, "");
 });
 
-test("login and passkey routes are proxied and known-fail on workers.dev", () => {
-  // requestOriginAllowed rejects a workers.dev Origin, and the WebAuthn RP ID is
-  // journeydeck.me. Those failures are the Render app, not Worker bugs.
-  const known = routes.filter(route => route.worker_action !== "none" && /workers\.dev|passkey|WebAuthn RP ID/.test(route.notes));
-  assert.ok(known.length >= 6);
-  for (const route of known) assert.equal(route.worker_action, "proxy", route.route_id);
-  for (const path of ["/login", "/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]) {
-    assert.equal(routes.find(route => route.path === path && route.worker_action !== "none")?.worker_action, "proxy", path);
+test("only the unretired shells still proxy to Render", () => {
+  const proxied = routes.filter(route => route.worker_action === "proxy").map(route => `${route.method} ${route.path}`).sort();
+  assert.deepEqual(proxied, [
+    "GET /healthz",
+    "GET /readyz"
+  ]);
+  for (const path of ["/login", "/app", "/wife"]) {
+    const route = routes.find(row => row.path === path);
+    assert.equal(route?.worker_action, "retired_page", path);
+    assert.equal(route?.method, "ALL", path);
+    assert.equal(route?.match, "prefix", path);
+    assert.equal(route?.expected_status, "410", path);
+    assert.equal(route?.x_robots_tag, "noindex", path);
+    assert.equal(route?.cache_control, "no-store", path);
+  }
+  for (const path of ["/login.html", "/index.html", "/wife.html", "/spotify-callback"]) {
+    const route = routes.find(row => row.path === path);
+    assert.equal(route?.worker_action, "retired_page", path);
+    assert.equal(route?.method, "ALL", path);
+    assert.equal(route?.match, "exact", path);
+    assert.equal(route?.expected_status, "410", path);
+    assert.equal(route?.x_robots_tag, "noindex", path);
+  }
+  for (const path of ["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify", "/api/auth/session"]) {
+    const route = routes.find(row => row.path === path && row.worker_action !== "none");
+    assert.equal(route?.worker_action, "gone", path);
+    assert.equal(route?.expected_status, "410", path);
+    assert.equal(route?.cache_control, "no-store", path);
   }
 });
 
 test("every web file is in the route map", () => {
   const named = new Set<string>();
   for (const route of routes) {
-    if (route.target && !route.target.startsWith("http") && route.target !== "403" && route.target !== "retention" && route.target !== "RENDER_ORIGIN") named.add(route.target);
+    if (route.target && !route.target.startsWith("http") && route.target !== "403" && route.target !== "retention" && route.target !== "RENDER_ORIGIN" && route.target !== "gone" && route.target !== "retired") named.add(route.target);
     if (route.path.startsWith("/") && !route.path.includes("*") && !route.path.includes("?")) named.add(route.path.slice(1));
   }
   const missing = walk(join(root, "web"))

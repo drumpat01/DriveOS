@@ -24,7 +24,7 @@
     "start:server": "node server/dist/index.js",
     "dev:server": "tsx server/src/index.ts",
     "verify:live": "node tools/verify-live/verify-live.mjs",
-    "test:site": "node --test --import tsx --test-timeout 180000 cloudflare/site/tests/*.test.ts",
+    "test:site": "node --test --import tsx --import ./cloudflare/site/tests/register-csv-hook.mjs --test-timeout 180000 cloudflare/site/tests/*.test.ts",
     "check:site": "tsc -p cloudflare/site/tsconfig.json --noEmit",
     "parity:site": "node cloudflare/site/parity-check.mjs",
     "predeploy:site": "node cloudflare/site/predeploy-check.mjs",
