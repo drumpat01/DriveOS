@@ -18,10 +18,13 @@ Stop hosted login throttling from treating every caller as 127.0.0.1. Draft pull
 
 ## Verification
 
+- Rebased onto main `2c190bf` and rechecked with Node 24.22.0.
 - `npm run check:server` passed.
 - `npm run lint:server` passed.
-- `npm run test:server`: 78 passed, 0 failed.
-- `tests/WebRequest.Tests.ps1` passed, including proxy header and per-address throttle checks.
+- `npm run test:server`: 78 passed, 0 failed, including the login throttle tests.
+- `npm run test:e2e`: 18 passed.
+- `tests/WebRequest.Tests.ps1` passed on PowerShell 7.5.4, including proxy header and per-address throttle checks.
+- `npm run verify:live -- --base http://127.0.0.1:8795` passed against a local web-mode server.
 
 ## Unresolved
 
