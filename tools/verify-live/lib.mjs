@@ -128,6 +128,17 @@ export function validateExpectations(raw) {
       }
     }
   }
+  const sample = raw.samplePublicImages;
+  if (!sample || !Array.isArray(sample.assets) || sample.assets.length === 0) throw new Error("expectations.samplePublicImages.assets is required");
+  for (const asset of sample.assets) {
+    if (typeof asset?.url !== "string" || !asset.url.startsWith("/") || typeof asset.contentType !== "string" || !asset.contentType.startsWith("image/")) {
+      throw new Error("expectations.samplePublicImages.assets entries need a path and an image content type");
+    }
+  }
+  if (!sample.pages || typeof sample.pages !== "object" || Array.isArray(sample.pages)) throw new Error("expectations.samplePublicImages.pages is required");
+  for (const [pathname, token] of Object.entries(sample.pages)) {
+    if (!pathname.startsWith("/") || typeof token !== "string" || token.length === 0) throw new Error("expectations.samplePublicImages.pages entries must map a path to an image path");
+  }
   if (
     !raw.launchBadge?.productHref
     || !raw.launchBadge?.imageSrc
@@ -528,6 +539,26 @@ export function evaluateRemovedPublicImages(expectations, pages, assets) {
     checks.push(makeCheck(`removed-image ${asset.url}`, asset.status === 404 && !longLived, {
       status: asset.status,
       cacheControl
+    }));
+  }
+  return checks;
+}
+
+export function evaluateSamplePublicImages(expectations, pages, assets) {
+  const sample = expectations.samplePublicImages;
+  const checks = [];
+  for (const [pathname, token] of Object.entries(sample.pages)) {
+    const html = pages[pathname] ?? "";
+    checks.push(makeCheck(`sample-image ${pathname}`, html.includes(token), { token }));
+  }
+  for (const asset of assets) {
+    const expected = sample.assets.find((item) => item.url === asset.url);
+    const contentType = String(asset.contentType || "");
+    const typeOk = Boolean(expected) && contentType.includes(expected.contentType);
+    checks.push(makeCheck(`sample-image ${asset.url}`, asset.status === 200 && typeOk, {
+      status: asset.status,
+      contentType,
+      expected: expected?.contentType ?? null
     }));
   }
   return checks;

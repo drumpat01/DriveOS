@@ -22,14 +22,24 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
     assert.match(home.body, /favicon-32\.png\?v=app-logo-1/);
     assert.match(home.body, /\/assets\/favicon\.png\?v=app-logo-1/);
 
-    assert.equal(home.body.includes("05-soundtrack"), false);
-    assert.equal(home.body.includes("v2/soundtrack"), false);
-    assert.match(home.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/02-journey\.webp" width="660" height="1434"/);
+    assert.equal(home.body.includes("/assets/v4/05-soundtrack.webp"), false);
+    assert.equal(home.body.includes("/assets/v2/soundtrack.webp"), false);
+    assert.equal(home.body.includes("/assets/v2/soundtrack.jpg"), false);
+    assert.match(home.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/05-soundtrack-sample\.webp" width="660" height="1434" alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
+    assert.match(home.body, /class="showcase-visual"[^>]*><img src="\/assets\/v4\/02-journey\.webp" width="660" height="1434"/);
+    const tourScript = await runtime.app.inject({ method: "GET", url: "/beta.js?v=v4-1" });
+    assert.equal(tourScript.statusCode, 200, tourScript.body);
+    assert.match(tourScript.body, /title: 'Hear the memory again\.'/);
+    assert.match(tourScript.body, /The songs you played belong to the story/);
 
     for (const [url, mime] of [
       ["/assets/v4/01-today-400.webp?v=1", /image\/webp/],
       ["/assets/v4/01-today.webp?v=1", /image\/webp/],
       ["/assets/v4/02-journey.webp", /image\/webp/],
+      ["/assets/v4/05-soundtrack-sample.webp", /image\/webp/],
+      ["/assets/v2/soundtrack-sample.webp", /image\/webp/],
+      ["/assets/v2/soundtrack-sample.webp?v=1", /image\/webp/],
+      ["/assets/v2/soundtrack-sample.jpg", /image\/jpeg/],
       ["/assets/beta/grand-touring-home-800.webp?v=1", /image\/webp/],
       ["/assets/beta/grand-touring-home-1600.webp?v=1", /image\/webp/],
       ["/assets/favicon-32.png?v=app-logo-1", /image\/png/],
@@ -46,7 +56,8 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
       "/assets/v4/01-today-400.webp?v=1",
       "/assets/beta/grand-touring-home-800.webp?v=1",
       "/assets/beta/grand-touring-home-1600.webp?v=1",
-      "/assets/favicon-32.png?v=app-logo-1"
+      "/assets/favicon-32.png?v=app-logo-1",
+      "/assets/v2/soundtrack-sample.webp?v=1"
     ]) {
       const versioned = await runtime.app.inject({ method: "GET", url });
       assert.equal(versioned.headers["cache-control"], "public, max-age=31536000, immutable", url);
@@ -61,9 +72,10 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
 
     const soundtrack = await runtime.app.inject({ method: "GET", url: "/apple-music-soundtrack" });
     assert.equal(soundtrack.statusCode, 200, soundtrack.body);
-    assert.match(soundtrack.body, /src="\/assets\/v4\/02-journey\.webp" width="660" height="1434" loading="lazy"/);
-    assert.equal(soundtrack.body.includes("05-soundtrack"), false);
-    assert.equal(soundtrack.body.includes("v2/soundtrack"), false);
+    assert.match(soundtrack.body, /src="\/assets\/v2\/soundtrack-sample\.webp\?v=1" width="600" height="1304" loading="lazy" alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
+    assert.equal(soundtrack.body.includes("/assets/v4/05-soundtrack.webp"), false);
+    assert.equal(soundtrack.body.includes("/assets/v2/soundtrack.webp"), false);
+    assert.equal(soundtrack.body.includes("/assets/v2/soundtrack.jpg"), false);
     assert.doesNotMatch(soundtrack.body, /<picture/);
 
     const htmlRoutes = [
@@ -105,8 +117,9 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
         headers: { "x-journeydeck-test-auth": "owner" }
       });
       assert.match(String(page.headers["content-type"]), /text\/html/, url);
-      assert.equal(page.body.includes("05-soundtrack"), false, url);
-      assert.equal(page.body.includes("v2/soundtrack"), false, url);
+      assert.equal(page.body.includes("/assets/v4/05-soundtrack.webp"), false, url);
+      assert.equal(page.body.includes("/assets/v2/soundtrack.webp"), false, url);
+      assert.equal(page.body.includes("/assets/v2/soundtrack.jpg"), false, url);
     }
   } finally {
     await runtime.app.close();

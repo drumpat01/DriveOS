@@ -116,9 +116,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(soundtrack.body, /href="\/privacy"/);
     assert.match(soundtrack.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(soundtrack.body, /aria-current="page">Soundtracks<\/a>/);
-    assert.match(soundtrack.body, /\/assets\/v4\/02-journey\.webp/);
-    assert.match(soundtrack.body, /width="660" height="1434"/);
-    assert.doesNotMatch(soundtrack.body, /\/assets\/v2\/soundtrack|\/assets\/v4\/05-soundtrack/);
+    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack-sample\.webp\?v=1/);
+    assert.match(soundtrack.body, /width="600" height="1304"/);
+    assert.match(soundtrack.body, /alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
+    assert.doesNotMatch(soundtrack.body, /\/assets\/v2\/soundtrack\.(?:webp|jpg)|\/assets\/v4\/05-soundtrack\.webp/);
     assert.match(soundtrack.body, /Identify Song uses ShazamKit/);
     assert.match(soundtrack.body, /rel="preload" as="image"/);
     assert.match(soundtrack.body, /grand-touring-home-800\.webp\?v=1/);
@@ -499,6 +500,10 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       ["/v2-features.css?v=1", /text\/css/],
       ["/soundtrack-v2.css?v=1", /text\/css/],
       ["/assets/v4/02-journey.webp", /image\/webp/],
+      ["/assets/v4/05-soundtrack-sample.webp", /image\/webp/],
+      ["/assets/v2/soundtrack-sample.webp", /image\/webp/],
+      ["/assets/v2/soundtrack-sample.webp?v=1", /image\/webp/],
+      ["/assets/v2/soundtrack-sample.jpg", /image\/jpeg/],
       ["/assets/v4/04-memory.webp", /image\/webp/],
       ["/assets/v4/08-themes.webp", /image\/webp/],
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
@@ -522,9 +527,11 @@ test("hosted root serves the Grand Touring launch page while private routes stay
       assert.match(String(asset.headers["content-type"]), mime, url);
     }
 
-    assert.equal(landing.body.includes("05-soundtrack"), false);
-    assert.equal(landing.body.includes("v2/soundtrack"), false);
-    assert.match(landing.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/02-journey\.webp"/);
+    assert.equal(landing.body.includes("/assets/v4/05-soundtrack.webp"), false);
+    assert.equal(landing.body.includes("/assets/v2/soundtrack.webp"), false);
+    assert.equal(landing.body.includes("/assets/v2/soundtrack.jpg"), false);
+    assert.match(landing.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/05-soundtrack-sample\.webp" width="660" height="1434" alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
+    assert.match(landing.body, /class="showcase-visual"[^>]*><img src="\/assets\/v4\/02-journey\.webp" width="660" height="1434"/);
     for (const url of ["/assets/v4/05-soundtrack.webp", "/assets/v2/soundtrack.webp", "/assets/v2/soundtrack.webp?v=1", "/assets/v2/soundtrack.jpg"]) {
       const removed = await runtime.app.inject({ method: "GET", url });
       assert.equal(removed.statusCode, 404, url);
@@ -695,8 +702,9 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       assert.doesNotMatch(html, /3-day/i, `${page.url} 3-day`);
       assert.doesNotMatch(html, /0\.99/, `${page.url} weekly price`);
       assert.doesNotMatch(html, /24\.99/, `${page.url} old annual price`);
-      assert.equal(html.includes("05-soundtrack"), false, page.url);
-      assert.equal(html.includes("v2/soundtrack"), false, page.url);
+      assert.equal(html.includes("/assets/v4/05-soundtrack.webp"), false, page.url);
+      assert.equal(html.includes("/assets/v2/soundtrack.webp"), false, page.url);
+      assert.equal(html.includes("/assets/v2/soundtrack.jpg"), false, page.url);
     }
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
@@ -741,6 +749,17 @@ test("hosted cache headers distinguish versioned assets, unversioned images, and
     assert.equal(unversionedImage.statusCode, 200, unversionedImage.body);
     assert.equal(unversionedImage.headers["cache-control"], "public, max-age=604800");
 
+    for (const [url, mime, cacheControl] of [
+      ["/assets/v4/05-soundtrack-sample.webp", /image\/webp/, "public, max-age=604800"],
+      ["/assets/v2/soundtrack-sample.jpg", /image\/jpeg/, "public, max-age=604800"],
+      ["/assets/v2/soundtrack-sample.webp?v=1", /image\/webp/, "public, max-age=31536000, immutable"]
+    ] as const) {
+      const sample = await runtime.app.inject({ method: "GET", url });
+      assert.equal(sample.statusCode, 200, url);
+      assert.match(String(sample.headers["content-type"]), mime, url);
+      assert.equal(sample.headers["cache-control"], cacheControl, url);
+    }
+
     for (const url of ["/assets/v4/05-soundtrack.webp", "/assets/v2/soundtrack.webp?v=1", "/assets/v2/soundtrack.jpg"]) {
       const removed = await runtime.app.inject({ method: "GET", url });
       assert.equal(removed.statusCode, 404, url);
@@ -772,8 +791,9 @@ test("desktop root continues to serve only the authenticated private app", async
     const authenticated = await runtime.app.inject({ method: "GET", url: "/", headers: auth });
     assert.equal(authenticated.statusCode, 200, authenticated.body);
     assert.match(authenticated.body, /JourneyDeck/i);
-    assert.equal(authenticated.body.includes("05-soundtrack"), false);
-    assert.equal(authenticated.body.includes("v2/soundtrack"), false);
+    assert.equal(authenticated.body.includes("/assets/v4/05-soundtrack.webp"), false);
+    assert.equal(authenticated.body.includes("/assets/v2/soundtrack.webp"), false);
+    assert.equal(authenticated.body.includes("/assets/v2/soundtrack.jpg"), false);
     const wife = await runtime.app.inject({ method: "GET", url: "/wife" });
     const wifeHtml = await runtime.app.inject({ method: "GET", url: "/wife.html" });
     assert.equal(wife.statusCode, 302);
