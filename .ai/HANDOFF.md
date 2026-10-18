@@ -6,8 +6,7 @@ Revise the JourneyDeck Studio terms card and keep pull request 306 open. Do not 
 
 ## Checkout
 
-- Branch `cursor/terms-studio-digital-products-b41d`, rebased onto `origin/main` `68657b7` (#305). Pull request: https://github.com/drumpat01/DriveOS/pull/306
-- #304 was still open at rebase time.
+- Branch `cursor/terms-studio-digital-products-b41d`, rebased onto `origin/main` `74e897b` (#304). Pull request: https://github.com/drumpat01/DriveOS/pull/306
 - Terms use an effective date, not a last-updated line. Effective date stays September 13, 2026.
 
 ## Material changes
