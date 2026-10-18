@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#081832">
-  <meta name="description" content="A private iPhone journal of your drives and the music you played. Tesla owners can connect Tessie with Plus so drives and charging record automatically. Free to record. Plus is $39.99/year, with a 7-day free trial.">
+  <meta name="description" content="I built an iPhone road journal. With Tessie and Plus, the iPhone detects drives and imports the car's drives and charging history from the last 30 days. JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.">
   <link rel="canonical" href="https://journeydeck.me/tesla-drive-journal">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://journeydeck.me/tesla-drive-journal">
   <meta property="og:title" content="Tesla drive journal for iPhone | JourneyDeck">
-  <meta property="og:description" content="A private iPhone journal of your drives and the music you played. Tesla owners can connect Tessie with Plus so drives and charging record automatically. Free to record. Plus is $39.99/year, with a 7-day free trial.">
+  <meta property="og:description" content="I built an iPhone road journal. With Tessie and Plus, the iPhone detects drives and imports the car's drives and charging history from the last 30 days. JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.">
   <meta property="og:image" content="https://journeydeck.me/assets/beta/share-card.png?v=1">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
@@ -22,16 +22,42 @@
   <meta name="twitter:image:alt" content="JourneyDeck: every route, every song, every memory. A phone showing a Summer Vacation Memory.">
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon.png?v=app-logo-1">
   <link rel="apple-touch-icon" href="/assets/journeydeck-cinematic-180.png">
+  <link rel="preload" as="image" href="/assets/beta/grand-touring-home-800.webp?v=1" imagesrcset="/assets/beta/grand-touring-home-800.webp?v=1 800w, /assets/beta/grand-touring-home-1600.webp?v=1 1600w" imagesizes="(max-width: 620px) calc(100vw - 28px), 940px" fetchpriority="high">
   <link rel="stylesheet" href="/public-page.css?v=grand-tour-5">
   <link rel="stylesheet" href="/site-mobile-nav.css?v=2">
-  <link rel="stylesheet" href="/soundtrack-v2.css?v=1">
+  <link rel="stylesheet" href="/soundtrack-v2.css?v=4">
   <link rel="stylesheet" href="/public-a11y.css?v=2">
+  <style>.tesla-lede { text-wrap: pretty; } .tesla-aside{ margin-top:14px; }</style>
   <title>Tesla drive journal for iPhone | JourneyDeck</title>
   <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What happens without Tessie?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "You start each drive yourself, with one tap or Siri. Automatic history needs Plus and Tessie."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What does the iPhone detect?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "With Plus and Tessie, the iPhone's GPS detects your drives automatically, and Tessie imports the car's drives and charging history from the last 30 days."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need a Tesla?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. You can record on an iPhone without a Tesla. Tessie is optional, for Tesla owners who already use it."
+      }
+    },
     {
       "@type": "Question",
       "name": "What iPhone does it need?",
@@ -45,7 +71,7 @@
       "name": "How much is Plus?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Free to record. Plus is $39.99/year, with a 7-day free trial."
+        "text": "JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers."
       }
     }
   ]
@@ -58,7 +84,7 @@
   "name": "JourneyDeck Plus",
   "price": "39.99",
   "priceCurrency": "USD",
-  "description": "Free to record. Plus is $39.99/year, with a 7-day free trial."
+  "description": "JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers."
 }
   </script>
   <script defer src="https://cloud.umami.is/script.js" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af" data-domains="journeydeck.me"></script>
@@ -67,45 +93,79 @@
 <body>
   <header class="site-header">
     <a class="brand" href="/" aria-label="JourneyDeck home"><img src="/assets/beta/journeydeck-pulse.svg" width="36" height="36" alt=""><span>Journey<span class="gold">Deck</span></span></a>
-    <nav class="desktop-nav" aria-label="Main navigation"><a href="/">Home</a><a href="/apple-music-soundtrack">Soundtracks</a><a href="/privacy">Privacy</a><a class="nav-studio" href="https://studio.journeydeck.me">Studio <span aria-hidden="true">↗</span></a></nav>
-    <div class="header-actions"><details class="mobile-menu"><summary><span aria-hidden="true">☰</span> Menu</summary><nav aria-label="Mobile navigation"><a href="/">Home</a><a href="/apple-music-soundtrack">Soundtracks</a><a href="/privacy">Privacy</a><a class="nav-studio" href="https://studio.journeydeck.me">Studio <span aria-hidden="true">↗</span></a><a href="/support">Support</a></nav></details><a class="button button-small" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla&mt=8">Get the app <span aria-hidden="true">↗</span></a></div>
+    <nav class="desktop-nav" aria-label="Main navigation"><a href="/">Home</a><a href="/tesla-drive-journal" aria-current="page">Tesla</a><a href="/apple-music-soundtrack">Soundtracks</a><a href="/privacy">Privacy</a><a class="nav-studio" href="https://studio.journeydeck.me">Studio <span aria-hidden="true">↗</span></a></nav>
+    <div class="header-actions"><details class="mobile-menu"><summary><span aria-hidden="true">☰</span> Menu</summary><nav aria-label="Mobile navigation"><a href="/">Home</a><a href="/tesla-drive-journal" aria-current="page">Tesla</a><a href="/apple-music-soundtrack">Soundtracks</a><a href="/privacy">Privacy</a><a class="nav-studio" href="https://studio.journeydeck.me">Studio <span aria-hidden="true">↗</span></a><a href="/support">Support</a></nav></details><a class="button button-small" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8">Get the app <span aria-hidden="true">↗</span></a></div>
   </header>
   <main class="page">
-    <section class="hero">
-      <p class="eyebrow">TESLA AND EV / YOUR ARCHIVE</p>
-      <h1>A Tesla drive journal for your iPhone</h1>
-      <p class="lede">A private journal of your drives and the music you played.</p>
-      <div class="page-actions"><a class="contact" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla&mt=8">Download on the App Store ↗</a></div>
+    <section class="hero has-photo">
+      <img class="hero-photo" src="/assets/beta/grand-touring-home-800.webp?v=1" srcset="/assets/beta/grand-touring-home-800.webp?v=1 800w, /assets/beta/grand-touring-home-1600.webp?v=1 1600w" sizes="(max-width: 620px) calc(100vw - 28px), 940px" width="1536" height="1024" alt="" fetchpriority="high" decoding="async">
+      <p class="eyebrow">TESLA / YOUR ARCHIVE</p>
+      <h1>The trip, later</h1>
+      <p class="lede tesla-lede">I built JourneyDeck so a long drive would still be there when I got home. With Tessie and Plus, the iPhone's GPS detects the drives, and Tessie imports the car's drives and charging history from the last 30 days. Then you can replay the whole trip. iPhone only.</p>
+      <p class="tesla-aside">I'm one guy, and I still forget the drive by the time I park.</p>
+      <div class="page-actions"><a class="contact" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8">Download on the App Store ↗</a></div>
     </section>
-    <section class="soundtrack-proof" aria-labelledby="tesla-proof-title">
-      <div><p class="eyebrow">THE ROAD / TESLA</p><h2 id="tesla-proof-title">The long drive.</h2><p>So you can look back on a long drive and remember what was playing.</p></div>
-      <figure><img src="/assets/v4/02-journey.webp" width="660" height="1434" loading="lazy" alt="JourneyDeck 4.0 screenshot showing a saved journey, route map, soundtrack, and replay control"><figcaption>A saved journey in JourneyDeck 4.0</figcaption></figure>
-    </section>
-    <section class="content" aria-label="Tesla drive journal details">
+    <section class="content" aria-label="How Tessie connects">
       <article class="card">
-        <h2>Who it is for</h2>
-        <p>Tesla and EV owners. You do not need a Tesla.</p>
-        <p>Read the <a href="/road-trip-journal-app">road trip journal</a>, the <a href="/private-driving-journal">private driving journal</a>, and the <a href="/privacy">privacy policy</a>.</p>
-      </article>
-      <article class="card">
-        <h2>How it works</h2>
+        <h2>How the Tessie connection works</h2>
         <ol>
-          <li>Download JourneyDeck on your iPhone.</li>
-          <li>Tap Start when you want to keep a drive.</li>
-          <li>Tesla owners can connect Tessie with Plus. Drives and charging are recorded automatically, instead of tapping Start. JourneyDeck tracks charging and efficiency.</li>
+          <li>In JourneyDeck, open Settings (the profile button on Today), then Music &amp; Connections, and tap Connect Tessie on the Tessie card. This needs Plus.</li>
+          <li>In the Tessie app, open Settings, then Developer, tap Generate Access Token, and copy it.</li>
+          <li>Paste it into the Tessie access token field in JourneyDeck and tap Connect Tessie.</li>
         </ol>
-        <p class="step-note">Tessie is a separate service, and any Tessie fees are separate.</p>
+        <p class="step-note">Tessie is a separate service, and any Tessie fees are separate. The token stays in this iPhone's Keychain.</p>
+        <p>Without Tessie, you start a drive yourself. One tap or Siri. Those are the Start Journey and Stop Journey shortcuts.</p>
+      </article>
+    </section>
+    <section class="soundtrack-proof soundtrack-proof--pair" aria-labelledby="replay-title">
+      <div>
+        <p class="eyebrow">LOOK BACK</p>
+        <h2 id="replay-title">Replay, then Atlas.</h2>
+        <p>These are real screens from the app. Neither one shows a Tesla drive.</p>
+      </div>
+      <div class="soundtrack-shots">
+        <figure>
+          <img src="/assets/v4/02-journey-screen-400.webp?v=1" srcset="/assets/v4/02-journey-screen-400.webp?v=1 400w, /assets/v4/02-journey-screen.webp?v=1 516w" sizes="(max-width: 700px) 255px, 300px" width="516" height="1108" loading="lazy" decoding="async" alt="A trip replay in JourneyDeck. Not a Tesla drive.">
+          <figcaption>A trip replay in JourneyDeck. Not a Tesla drive.</figcaption>
+        </figure>
+        <figure>
+          <img src="/assets/v4/06-atlas-400.webp?v=1" srcset="/assets/v4/06-atlas-400.webp?v=1 400w, /assets/v4/06-atlas.webp?v=1 660w" sizes="(max-width: 700px) 255px, 300px" width="660" height="1434" loading="lazy" decoding="async" alt="Atlas in JourneyDeck. Not Tesla data.">
+          <figcaption>Atlas in JourneyDeck. Not Tesla data.</figcaption>
+        </figure>
+      </div>
+    </section>
+    <section class="content" aria-label="Free recording and Plus">
+      <article class="card">
+        <h2>What's free</h2>
+        <p>Free to record. No account required. Tessie is not part of the free app.</p>
+        <ul>
+          <li>Manual drive recording and route viewing.</li>
+          <li>Today's journeys.</li>
+          <li>Optional Apple Music soundtracks and Identify Song.</li>
+          <li>Optional private iCloud continuity.</li>
+          <li>Grand Touring and Warm Ivory themes, with matching icons.</li>
+        </ul>
+        <p>Read the <a href="/privacy">privacy policy</a> and the <a href="/road-trip-journal-app">road trip journal</a>.</p>
       </article>
       <article class="card">
         <h2>Plus</h2>
-        <p>Plus unlocks your full history. Tesla owners can connect Tessie so drives and charging record automatically.</p>
+        <p>JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.</p>
+        <p>Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie. Any Tessie fees are separate.</p>
+        <div class="page-actions"><a class="contact" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8">Download on the App Store ↗</a></div>
       </article>
       <article class="card">
         <h2>Frequently asked questions</h2>
+        <h3>What happens without Tessie?</h3>
+        <p>You start each drive yourself, with one tap or Siri. Automatic history needs Plus and Tessie.</p>
+        <h3>What does the iPhone detect?</h3>
+        <p>With Plus and Tessie, the iPhone's GPS detects your drives automatically, and Tessie imports the car's drives and charging history from the last 30 days.</p>
+        <h3>Do I need a Tesla?</h3>
+        <p>No. You can record on an iPhone without a Tesla. Tessie is optional, for Tesla owners who already use it.</p>
         <h3>What iPhone does it need?</h3>
         <p>iOS 17 or later.</p>
         <h3>How much is Plus?</h3>
-        <p>Free to record. Plus is $39.99/year, with a 7-day free trial.</p>
+        <p>JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.</p>
+        <p><a href="/support">Would you use this on the next trip? I'd like to know.</a></p>
       </article>
     </section>
     <footer class="footer">© 2026 Patrick Benjamin Stewart · <a href="/">Home</a> · <a href="/private-driving-journal">Private driving journal</a> · <a href="/apple-music-soundtrack">Apple Music soundtracks</a> · <a href="/privacy">Privacy</a> · <a href="/support">Support</a></footer>

@@ -4,9 +4,15 @@
 .soundtrack-proof figure { margin:0; text-align:center; }
 .soundtrack-proof img { display:block; width:min(100%,300px); height:auto; margin:auto; border:1px solid #d4b15a55; border-radius:10px; box-shadow:0 22px 55px #0007; }
 .soundtrack-proof figcaption { margin-top:12px; color:#aeb9c7; font-size:12px; }
+.soundtrack-shots { display:grid; gap:28px; justify-items:center; }
 .soundtrack-steps { grid-column:1/-1; }
 .soundtrack-step-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px; }
 .soundtrack-step-grid span { color:#d4b15a; font-size:13px; font-weight:700; letter-spacing:.12em; }
 .soundtrack-step-grid h3 { margin:12px 0; }
 .soundtrack-step-grid p { margin:0; }
 @media(max-width:700px) { .soundtrack-proof { grid-template-columns:1fr; margin:36px 0; padding:28px 22px; } .soundtrack-proof img { width:min(100%,255px); } .soundtrack-step-grid { grid-template-columns:1fr; gap:22px; } }
+@media (min-width:701px){
+  .soundtrack-proof--pair{ grid-template-columns:1fr; row-gap:32px; }
+  .soundtrack-proof--pair > div:first-child{ max-width:560px; }
+  .soundtrack-proof--pair .soundtrack-shots{ grid-template-columns:repeat(2,minmax(0,300px)); justify-content:center; align-items:start; }
+}

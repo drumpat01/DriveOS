@@ -2,30 +2,33 @@
 
 ## Current objective
 
-Revise the JourneyDeck Studio terms card and keep pull request 306 open. Do not merge and do not deploy.
+Keep draft PR #299 open. The Tesla page layout stacks the replay text above the phones from 701px up. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/terms-studio-digital-products-b41d`, rebased onto `origin/main` `74e897b` (#304). Pull request: https://github.com/drumpat01/DriveOS/pull/306
-- Terms use an effective date, not a last-updated line. Effective date stays September 13, 2026.
+- Branch `cursor/tesla-journal-landing-e036`, rebased onto main `e490f0f` (#304 and #306).
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/299
 
 ## Material changes
 
-- `#studio-products` is three paragraphs: what is sold, the 7-day refund plus 90 days of free updates, and the personal license.
-- `support@journeydeck.me` is named once in that card. The Contact card on `/terms` uses the same address. Privacy was not changed.
-- `npm run verify:live` checks `page:/terms snippets` for `id="studio-products"` and `within 7 days of purchase and I’ll refund you.`
+- `.soundtrack-proof--pair` is one column above 700px. The text is at most 560px wide. The phones stay side by side, each at most 300px, top-aligned, with a 32px row gap.
+- The line under the hero lede has class `tesla-aside` and 14px of top margin.
+- Mobile under 701px is unchanged.
+- Rebase conflicts were `.ai/HANDOFF.md` and `expectations.json`. Tesla page checks stay next to the removed Soundtrack image checks and the Studio terms snippets. The Tesla page, CSS, and screenshots match the previous tip.
 
 ## Verification
 
-- Node 24.22.0: `check:server`, `lint:server`, `test:server` (69/69), `test:e2e` (18/18), local `verify:live --base http://127.0.0.1:8795` (pass, including `page:/terms snippets`).
-- Screenshots: `/opt/cursor/artifacts/terms-studio-products-390.png` and `terms-studio-products-1280.png`.
+- No horizontal overflow at 360, 390, 701, 768, 1024, or 1280.
+- Text width is 560px from 701px up. At 390 it is 316px. At 360 it is 286px, which is the full card width, and the heading does not overflow.
+- `npm run check:server` and `npm run lint:server` passed.
+- `npm run test:server`: 69 passed. `npm run test:e2e`: 19 passed.
+- Local `verify:live` against `http://127.0.0.1:8792`: 221 checks, 0 failed, including the Studio terms snippets, the removed Soundtrack URLs, `unauthenticated:/wife.html`, `redirect:/homeworld`, and the Tesla page.
+- Lighthouse mobile, from the layout pass: performance 99, LCP 2.0 s, accessibility 100, best practices 100, SEO 92.
 
 ## Unresolved
 
-- Do not merge and do not deploy. Render was not changed.
-- GitHub CI on the rebased head is still pending.
+- Do not merge and do not deploy.
 
 ## Next steps
 
-1. Leave pull request 306 open until the owner merges it.
-2. If CI fails only on the retention bad-signature test, rerun that job once.
+1. Leave the draft pull request open until the owner merges it.
