@@ -61,11 +61,17 @@ function signRealtimeRequest(chain: TestChain, payload: Record<string, unknown>)
   return `${input}.${signature.toString("base64url")}`;
 }
 
+function decodedSignature(jws: string) {
+  return Buffer.from(jws.split(".")[2] || "", "base64url");
+}
+
 function tamperSignature(jws: string) {
   const parts = jws.split(".");
-  const signature = parts[2] || "";
-  const flipped = signature.endsWith("A") ? `${signature.slice(0, -1)}B` : `${signature.slice(0, -1)}A`;
-  return `${parts[0]}.${parts[1]}.${flipped}`;
+  const signature = Buffer.from(decodedSignature(jws));
+  if (signature.length !== 64) throw new Error(`Expected a 64-byte P-1363 signature, received ${signature.length} bytes.`);
+  // r is the first 32 bytes. Flip its middle byte so the decoded signature always changes.
+  signature[16] ^= 0xff;
+  return `${parts[0]}.${parts[1]}.${signature.toString("base64url")}`;
 }
 
 function requestBody(overrides: Record<string, unknown> = {}) {
@@ -167,11 +173,13 @@ test("Get Retention Message accepts a verified request and rejects invalid ones"
     });
     assert.equal(desktopAccepted.statusCode, 200, desktopAccepted.body);
 
+    const tamperedPayload = tamperSignature(productionPayload);
+    assert.equal(decodedSignature(tamperedPayload).equals(decodedSignature(productionPayload)), false);
     const badSignature = await runtime.app.inject({
       method: "POST",
       url: "/retention-messaging-api",
       headers: { "content-type": "application/json" },
-      payload: { signedPayload: tamperSignature(productionPayload) }
+      payload: { signedPayload: tamperedPayload }
     });
     assert.equal(badSignature.statusCode, 401, badSignature.body);
     assert.equal(badSignature.body.includes(productionPayload), false);
