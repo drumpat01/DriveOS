@@ -54,7 +54,8 @@ test("wrangler config is workers.dev only", () => {
   assert.match(withoutComments, /"html_handling":\s*"none"/);
   assert.match(withoutComments, /"not_found_handling":\s*"none"/);
   assert.match(withoutComments, /"run_worker_first":\s*true/);
-  assert.match(withoutComments, /"RENDER_ORIGIN":\s*"https:\/\/driveos\.onrender\.com"/);
+  assert.doesNotMatch(withoutComments, /RENDER_ORIGIN/);
+  assert.doesNotMatch(withoutComments, /onrender\.com/);
   assert.doesNotMatch(withoutComments, /"routes"/);
   assert.doesNotMatch(withoutComments, /"route"/);
   assert.doesNotMatch(withoutComments, /custom_domain/);

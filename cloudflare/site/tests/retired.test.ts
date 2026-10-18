@@ -14,8 +14,7 @@ function siteEnv(): SiteEnv {
         }
         return new Response("missing", { status: 404 });
       }
-    },
-    RENDER_ORIGIN: "https://driveos.onrender.com"
+    }
   };
 }
 
@@ -29,7 +28,7 @@ test("the notice page names the retirement and links to the app and home", () =>
   assert.match(html, /\/public-page\.css/);
 });
 
-test("retired routes return 410 and the remaining shells still reach Render", async () => {
+test("retired routes return 410 and health does not reach Render", async () => {
   const calls: string[] = [];
   const previous = globalThis.fetch;
   globalThis.fetch = async input => {
@@ -86,13 +85,13 @@ test("retired routes return 410 and the remaining shells still reach Render", as
       }
     }
 
-    const stillProxied = ["/healthz", "/readyz"];
-    for (const path of stillProxied) {
+    for (const path of ["/healthz", "/readyz"]) {
       const response = await worker.fetch(new Request(`https://journeydeck.me${path}`), env);
       assert.equal(response.status, 200, path);
-      assert.equal(calls.at(-1), `https://driveos.onrender.com${path}`, path);
+      assert.equal(response.headers.get("cache-control"), "no-store", path);
+      assert.equal(await response.text(), "{\"ok\":true,\"service\":\"journeydeck-site\"}", path);
     }
-    assert.equal(calls.length, stillProxied.length);
+    assert.equal(calls.length, 0);
 
     const home = await worker.fetch(new Request("https://journeydeck.me/"), env);
     assert.equal(home.status, 200);
@@ -110,7 +109,7 @@ test("retired routes return 410 and the remaining shells still reach Render", as
     assert.equal(await script.text(), "/app.js");
     const docs = await worker.fetch(new Request("https://journeydeck.me/api-docs"), env);
     assert.notEqual(docs.status, 410);
-    assert.equal(calls.length, stillProxied.length);
+    assert.equal(calls.length, 0);
   } finally {
     globalThis.fetch = previous;
   }

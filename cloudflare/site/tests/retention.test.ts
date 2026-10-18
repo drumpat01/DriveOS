@@ -27,7 +27,6 @@ const appleWwdrFile = new Uint8Array(readFileSync(join(import.meta.dirname, ".."
 function settings(rootDer: Buffer, environments = "Production,Sandbox", messageId = DEFAULT_RETENTION_MESSAGE_ID) {
   return retentionSettingsFromEnv({
     ASSETS: { fetch: async () => new Response("missing", { status: 404 }) },
-    RENDER_ORIGIN: "https://driveos.onrender.com",
     JOURNEYDECK_RETENTION_MESSAGE_ID: messageId,
     JOURNEYDECK_RETENTION_ENVIRONMENTS: environments,
     ALLOW_RETENTION_TEST_ROOT: "true",
@@ -74,7 +73,6 @@ test("retention settings stay on vars and the wrangler config has no test root",
   assert.equal(source.includes("secret"), false);
   await assert.rejects(() => retentionSettingsFromEnv({
     ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
-    RENDER_ORIGIN: "https://driveos.onrender.com",
     ALLOW_RETENTION_TEST_ROOT: "true"
   }, appleRoot, "127.0.0.1"), /test root/);
 });
@@ -83,7 +81,6 @@ test("retention test root is honored only on local hosts", async () => {
   const root = Buffer.from("local-retention-test-root");
   const env = {
     ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
-    RENDER_ORIGIN: "https://driveos.onrender.com",
     ALLOW_RETENTION_TEST_ROOT: "true",
     RETENTION_TEST_ROOT_BASE64: root.toString("base64")
   } satisfies SiteEnv;

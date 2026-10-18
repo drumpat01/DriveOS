@@ -1,132 +1,106 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
-import { proxyToRender, RENDER_ORIGIN } from "../src/proxy.ts";
+import type { SiteEnv } from "../src/env.ts";
+import { HEALTH_BODY } from "../src/health.ts";
+import worker from "../src/index.ts";
+import { probePathFor, parseRouteList } from "../src/routes.ts";
 
-test("proxy strips tailscale and test-auth headers and keeps cookies", async () => {
-  let forwarded: Headers | undefined;
-  let target = "";
-  const response = await proxyToRender(new Request("https://journeydeck-site.example.workers.dev/healthz?device=1", {
-    method: "POST",
-    headers: {
-      cookie: "DriveOSSession=abc",
-      authorization: "Bearer recorder",
-      "x-driveos-sync-token": "sync-token",
-      "if-none-match": "W/\"etag\"",
-      origin: "https://journeydeck.me",
-      referer: "https://journeydeck.me/app",
-      host: "journeydeck-site.example.workers.dev",
-      "cf-connecting-ip": "203.0.113.8",
-      "cf-ray": "ray-id",
-      "cf-visitor": "{\"scheme\":\"https\"}",
-      "cdn-loop": "cloudflare",
-      "x-real-ip": "198.51.100.9",
-      "x-forwarded-for": "198.51.100.4",
-      "tailscale-user-login": "patrick@example.com",
-      "x-journeydeck-test-auth": "wife",
-      "content-type": "application/json"
-    },
-    body: "{\"ok\":true}"
-  }), RENDER_ORIGIN, async (input, init) => {
-    target = String(input);
-    forwarded = new Headers(init?.headers);
-    assert.equal(init?.method, "POST");
-    assert.equal(init?.redirect, "manual");
-    assert.equal(await new Response(init?.body).text(), "{\"ok\":true}");
-    const headers = new Headers({ "content-type": "application/json", etag: "W/\"up\"", location: "/login", "content-security-policy": "default-src 'self'" });
-    headers.append("set-cookie", "DriveOSSession=one; Path=/");
-    headers.append("set-cookie", "other=two; Path=/");
-    return new Response("{\"error\":\"Authentication required.\"}", { status: 401, headers });
-  });
-  assert.equal(target, "https://driveos.onrender.com/healthz?device=1");
-  assert.ok(forwarded);
-  assert.equal(forwarded.get("tailscale-user-login"), null);
-  assert.equal(forwarded.get("x-journeydeck-test-auth"), null);
-  assert.equal(forwarded.get("cf-connecting-ip"), null);
-  assert.equal(forwarded.get("cf-ray"), null);
-  assert.equal(forwarded.get("cf-visitor"), null);
-  assert.equal(forwarded.get("cdn-loop"), null);
-  assert.equal(forwarded.get("x-real-ip"), null);
-  assert.equal(forwarded.get("cookie"), "DriveOSSession=abc");
-  assert.equal(forwarded.get("authorization"), "Bearer recorder");
-  assert.equal(forwarded.get("x-driveos-sync-token"), "sync-token");
-  assert.equal(forwarded.get("if-none-match"), "W/\"etag\"");
-  assert.equal(forwarded.get("origin"), "https://journeydeck.me");
-  assert.equal(forwarded.get("referer"), "https://journeydeck.me/app");
-  assert.equal(forwarded.get("x-forwarded-proto"), "https");
-  assert.equal(forwarded.get("x-forwarded-host"), "journeydeck-site.example.workers.dev");
-  assert.equal(forwarded.get("x-forwarded-for"), "198.51.100.4, 203.0.113.8");
-  assert.equal(response.status, 401);
-  assert.deepEqual(response.headers.getSetCookie(), ["DriveOSSession=one; Path=/", "other=two; Path=/"]);
-  assert.equal(response.headers.get("location"), "/login");
-  assert.equal(response.headers.get("etag"), "W/\"up\"");
-  let policies = 0;
-  response.headers.forEach((_value, name) => { if (name === "content-security-policy") policies += 1; });
-  assert.equal(policies, 1);
-  assert.equal(response.headers.get("content-security-policy"), "default-src 'self'");
-});
+const routes = parseRouteList(readFileSync(new URL("../route-list.csv", import.meta.url), "utf8"));
 
-test("forwarding appends the inbound address and drops Cloudflare request headers", async () => {
-  async function capture(url: string, headers: Record<string, string>, method = "GET") {
-    let sent: Headers | undefined;
-    const response = await proxyToRender(new Request(url, { method, headers, body: method === "GET" ? undefined : "{}" }), RENDER_ORIGIN, async (_input, init) => {
-      sent = new Headers(init?.headers);
-      return new Response("ok", { status: 200 });
+function siteEnv(): SiteEnv {
+  return {
+    ASSETS: {
+      async fetch(input: RequestInfo | URL) {
+        const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+        return new Response(url.pathname, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", etag: "W/\"asset\"" } });
+      }
+    }
+  };
+}
+
+test("GET and HEAD health routes are Worker JSON and do not fetch", async () => {
+  const calls: string[] = [];
+  const previous = globalThis.fetch;
+  globalThis.fetch = async input => {
+    calls.push(String(input));
+    return new Response("upstream", {
+      status: 599,
+      headers: {
+        "x-render-origin-server": "render",
+        "rndr-id": "render"
+      }
     });
-    assert.equal(response.status, 200);
-    assert.ok(sent);
-    return sent;
+  };
+  try {
+    const env = siteEnv();
+    for (const path of ["/healthz", "/readyz", "/healthz?device=1", "/readyz?atlas=1"]) {
+      const get = await worker.fetch(new Request(`https://journeydeck.me${path}`), env);
+      assert.equal(get.status, 200, path);
+      assert.equal(get.headers.get("cache-control"), "no-store", path);
+      assert.equal(get.headers.get("content-type"), "application/json; charset=utf-8", path);
+      assert.equal(get.headers.get("x-render-origin-server"), null, path);
+      assert.equal(get.headers.get("rndr-id"), null, path);
+      assert.equal(await get.text(), JSON.stringify(HEALTH_BODY), path);
+
+      const head = await worker.fetch(new Request(`https://journeydeck.me${path}`, { method: "HEAD" }), env);
+      assert.equal(head.status, 200, `HEAD ${path}`);
+      assert.equal(head.headers.get("cache-control"), "no-store", `HEAD ${path}`);
+      assert.equal(head.headers.get("content-type"), "application/json; charset=utf-8", `HEAD ${path}`);
+      assert.equal(head.headers.get("x-render-origin-server"), null, `HEAD ${path}`);
+      assert.equal(await head.text(), "", `HEAD ${path}`);
+    }
+    for (const path of ["/healthz", "/readyz"]) {
+      for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
+        const denied = await worker.fetch(new Request(`https://journeydeck.me${path}`, {
+          method,
+          body: method === "OPTIONS" ? undefined : "{}"
+        }), env);
+        assert.equal(denied.status, 405, `${method} ${path}`);
+        assert.equal(denied.headers.get("allow"), "GET, HEAD", `${method} ${path}`);
+        assert.equal(denied.headers.get("cache-control"), "no-store", `${method} ${path}`);
+        assert.equal(denied.headers.get("content-type"), "application/json; charset=utf-8", `${method} ${path}`);
+        assert.deepEqual(await denied.json(), { error: "Method not allowed." }, `${method} ${path}`);
+      }
+      const nested = await worker.fetch(new Request(`https://journeydeck.me${path}/extra`), env);
+      assert.equal(nested.status, 404, `${path}/extra`);
+      await nested.arrayBuffer();
+    }
+    assert.deepEqual(calls, []);
+  } finally {
+    globalThis.fetch = previous;
   }
-
-  const health = await capture("https://journeydeck-site.example.workers.dev/healthz", {
-    host: "journeydeck-site.example.workers.dev",
-    "cf-connecting-ip": "203.0.113.8",
-    "cf-ray": "ray-id",
-    "cdn-loop": "cloudflare",
-    "x-real-ip": "198.51.100.9",
-    "x-forwarded-for": "192.0.2.1, 198.51.100.4"
-  });
-  assert.equal(health.get("host"), "driveos.onrender.com");
-  assert.equal(health.get("x-forwarded-proto"), "https");
-  assert.equal(health.get("x-forwarded-host"), "journeydeck-site.example.workers.dev");
-  // The append records the visitor. Cross-zone Cloudflare still rewrites
-  // CF-Connecting-IP to the Worker egress, and #302's one-hop rule selects
-  // that address. These headers must not be forwarded for the visitor to set.
-  assert.equal(health.get("cf-connecting-ip"), null);
-  assert.equal(health.get("cf-ray"), null);
-  assert.equal(health.get("cdn-loop"), null);
-  assert.equal(health.get("x-real-ip"), null);
-  assert.equal(health.get("x-forwarded-for"), "192.0.2.1, 198.51.100.4, 203.0.113.8");
-
-  const ready = await capture("https://journeydeck.me/readyz", {
-    host: "journeydeck.me",
-    "cf-connecting-ip": "203.0.113.8"
-  }, "POST");
-  assert.equal(ready.get("x-forwarded-for"), "203.0.113.8");
-  assert.equal(ready.get("x-forwarded-proto"), "https");
-  assert.equal(ready.get("x-forwarded-host"), "journeydeck.me");
-  assert.equal(ready.get("host"), "driveos.onrender.com");
-
-  const local = await capture("http://127.0.0.1:8787/readyz", { host: "127.0.0.1:8787" });
-  assert.equal(local.get("x-forwarded-proto"), "http");
-  assert.equal(local.get("x-forwarded-host"), "127.0.0.1:8787");
-  assert.equal(local.get("x-forwarded-for"), null);
-  assert.equal(local.get("cf-connecting-ip"), null);
-  assert.equal(local.get("host"), "driveos.onrender.com");
 });
 
-test("proxy never calls journeydeck.me", async () => {
-  let called = false;
-  const fetchImpl: typeof fetch = async () => { called = true; return new Response("no"); };
-  for (const origin of ["https://journeydeck.me", "https://www.journeydeck.me", "https://studio.journeydeck.me", "http://driveos.onrender.com", "https://example.com"]) {
-    const response = await proxyToRender(new Request("https://worker.example/readyz"), origin, fetchImpl);
-    assert.equal(response.status, 502, origin);
-    assert.equal(called, false, origin);
+test("no route fetches onrender", async () => {
+  const calls: string[] = [];
+  const previous = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    calls.push(url);
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  try {
+    const env = siteEnv();
+    for (const route of routes) {
+      if (route.worker_action === "none") continue;
+      const method = route.method === "ALL" ? "POST" : route.method;
+      const response = await worker.fetch(new Request(new URL(probePathFor(route), "https://journeydeck.me"), {
+        method,
+        body: method === "GET" || method === "HEAD" ? undefined : "{}"
+      }), env);
+      assert.equal(calls.length, 0, `${method} ${route.path}`);
+      await response.arrayBuffer();
+    }
+    assert.deepEqual(calls.filter(url => url.toLowerCase().includes("onrender")), []);
+    assert.equal(calls.length, 0);
+    assert.equal(routes.some(route => route.phase1_owner === "passthrough" || route.target === "RENDER_ORIGIN"), false);
+    const siteRoot = join(import.meta.dirname, "..");
+    for (const file of ["src/index.ts", "src/env.ts", "src/health.ts", "wrangler.jsonc"]) {
+      assert.equal(readFileSync(join(siteRoot, file), "utf8").toLowerCase().includes("onrender"), false, file);
+    }
+  } finally {
+    globalThis.fetch = previous;
   }
-  const local = await proxyToRender(new Request("https://worker.example/readyz"), "http://127.0.0.1:9", async input => {
-    called = true;
-    assert.equal(String(input), "http://127.0.0.1:9/readyz");
-    return new Response("ok", { status: 200 });
-  });
-  assert.equal(local.status, 200);
-  assert.equal(called, true);
 });

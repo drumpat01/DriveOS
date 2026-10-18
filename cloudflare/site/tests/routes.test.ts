@@ -21,10 +21,11 @@ function matched(method: string, path: string) {
 }
 
 test("route list has the phase-one shape", () => {
-  assert.equal(routes.length, 435);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 426);
-  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 2);
-  assert.equal(routes.filter(route => route.worker_action === "proxy").length, 2);
+  assert.equal(routes.length, 437);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 430);
+  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 0);
+  assert.equal(routes.filter(route => route.worker_action === "health").length, 4);
+  assert.equal(routes.filter(route => route.target === "RENDER_ORIGIN").length, 0);
   assert.equal(routes.filter(route => route.worker_action === "gone").length, 101);
   assert.equal(routes.filter(route => route.worker_action === "retired_page").length, 7);
   assert.equal(routes.filter(route => route.worker_action === "native").length, 4);
@@ -101,14 +102,21 @@ test("retention stays native and retired routes do not proxy", () => {
   assert.equal(matched("GET", "/retention-messaging-api/")?.worker_action, "native");
   assert.equal(matched("POST", "/retention-messaging-api")?.route_id, "R029");
   assert.equal(matched("GET", "/retention-messaging-api")?.route_id, "R030");
-  assert.equal(routes.filter(route => route.worker_action === "proxy" && route.path.includes("retention-messaging")).length, 0);
+  assert.equal(routes.filter(route => route.path.includes("retention-messaging") && route.worker_action !== "native").length, 0);
   assert.equal(matched("GET", "/api/auth/session")?.worker_action, "gone");
   assert.equal(matched("POST", "/api/auth/login")?.worker_action, "gone");
   assert.equal(matched("PUT", "/api/anything")?.worker_action, "gone");
   assert.equal(matched("GET", "/api/atlas/journeys")?.worker_action, "gone");
   assert.equal(matched("GET", "/api-docs")?.worker_action, "asset");
-  assert.equal(matched("GET", "/readyz")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/healthz")?.worker_action, "proxy");
+  assert.equal(matched("GET", "/readyz")?.worker_action, "health");
+  assert.equal(matched("HEAD", "/readyz")?.method, "GET");
+  assert.equal(matched("GET", "/healthz")?.worker_action, "health");
+  assert.equal(matched("HEAD", "/healthz")?.route_id, "R040");
+  assert.equal(matched("POST", "/healthz")?.route_id, "R436");
+  assert.equal(matched("POST", "/healthz")?.expected_status, "405");
+  assert.equal(matched("PUT", "/readyz")?.expected_status, "405");
+  assert.equal(matched("GET", "/healthz")?.cache_control, "no-store");
+  assert.equal(matched("GET", "/healthz/extra")?.worker_action, "not_found_page");
   assert.equal(matched("GET", "/app")?.worker_action, "retired_page");
   assert.equal(matched("POST", "/app/library")?.worker_action, "retired_page");
   assert.equal(matched("GET", "/login")?.worker_action, "retired_page");
@@ -125,12 +133,19 @@ test("retention stays native and retired routes do not proxy", () => {
   assert.equal(matched("GET", "/google8e611381b21882a8.html")?.cache_control, "");
 });
 
-test("only the unretired shells still proxy to Render", () => {
-  const proxied = routes.filter(route => route.worker_action === "proxy").map(route => `${route.method} ${route.path}`).sort();
-  assert.deepEqual(proxied, [
-    "GET /healthz",
-    "GET /readyz"
+test("no route proxies to Render", () => {
+  const health = routes.filter(route => (route.path === "/healthz" || route.path === "/readyz") && route.worker_action !== "none").map(route => `${route.method} ${route.path} ${route.worker_action} ${route.expected_status}`).sort();
+  assert.deepEqual(health, [
+    "ALL /healthz health 405",
+    "ALL /readyz health 405",
+    "GET /healthz health 200",
+    "GET /readyz health 200"
   ]);
+  const legacyHealth = routes.find(route => route.route_id === "R084");
+  assert.equal(legacyHealth?.path, "/healthz");
+  assert.equal(legacyHealth?.worker_action, "none");
+  assert.equal(legacyHealth?.phase1_owner, "n/a");
+  assert.equal(routes.some(route => route.phase1_owner === "passthrough" || route.target === "RENDER_ORIGIN"), false);
   for (const path of ["/login", "/app", "/wife"]) {
     const route = routes.find(row => row.path === path);
     assert.equal(route?.worker_action, "retired_page", path);
@@ -159,7 +174,7 @@ test("only the unretired shells still proxy to Render", () => {
 test("every web file is in the route map", () => {
   const named = new Set<string>();
   for (const route of routes) {
-    if (route.target && !route.target.startsWith("http") && route.target !== "403" && route.target !== "retention" && route.target !== "RENDER_ORIGIN" && route.target !== "gone" && route.target !== "retired") named.add(route.target);
+    if (route.target && !route.target.startsWith("http") && route.target !== "403" && route.target !== "retention" && route.target !== "RENDER_ORIGIN" && route.target !== "gone" && route.target !== "retired" && route.target !== "health") named.add(route.target);
     if (route.path.startsWith("/") && !route.path.includes("*") && !route.path.includes("?")) named.add(route.path.slice(1));
   }
   const missing = walk(join(root, "web"))
@@ -183,5 +198,7 @@ test("a new app.ts route that is not in the map fails this test", () => {
 
 test("worker responses do not duplicate a content security policy", () => {
   const owned = routes.filter((route): route is RouteRow => route.phase1_owner === "worker" && route.worker_action !== "none");
-  assert.equal(owned.some(route => route.worker_action === "proxy"), false);
+  assert.equal(owned.some(route => route.target === "RENDER_ORIGIN"), false);
+  assert.equal(routes.some(route => route.phase1_owner === "passthrough"), false);
+  assert.equal(owned.some(route => route.worker_action === "health"), true);
 });
