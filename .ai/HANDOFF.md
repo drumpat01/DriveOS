@@ -11,9 +11,9 @@ Revise the post-first-trip Plus card copy and accessibility. Keep the draft pull
 
 ## Material changes
 
-- Trial body: Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a StoreKit day-count free trial whenever you're ready.
+- Trial body: Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a StoreKit day-count free trial whenever you’re ready.
 - No-trial body: Your first 3 trips get everything in Plus, this one included. Plus keeps the Atlas, complete history and Ask JourneyDeck going after that.
-- Title: Nice drive. That one's saved.
+- Title: Nice drive. That one’s saved.
 - The close control is labeled Close. The backdrop is hidden from accessibility. Not now stays on the text button. The title caps text growth at 1.4.
 - Who sees the card, the button order, and the paywall are unchanged. The flag still defaults off.
 
@@ -32,4 +32,5 @@ Revise the post-first-trip Plus card copy and accessibility. Keep the draft pull
 ## Next steps
 
 1. Leave the draft pull request open until the owner merges it.
-2. To try it on TestFlight, set `JOURNEYDECK_POST_FIRST_TRIP_PROMPT=on` on that build profile only.
+2. Before turning the flag on, capture the next TestFlight build on iPhone: dark and light at 375 and 320, large text, and the no-trial version.
+3. To try it on TestFlight, set `JOURNEYDECK_POST_FIRST_TRIP_PROMPT=on` on that build profile only.

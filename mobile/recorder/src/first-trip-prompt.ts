@@ -58,10 +58,10 @@ export function firstTripPromptCopy(introTrialDays: number | null): FirstTripPro
     : null;
   return {
     kicker: 'FIRST TRIP SAVED',
-    title: "Nice drive. That one's saved.",
+    title: "Nice drive. That one’s saved.",
     body: days == null
       ? 'Your first 3 trips get everything in Plus, this one included. Plus keeps the Atlas, complete history and Ask JourneyDeck going after that.'
-      : `Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a ${days}-day free trial whenever you're ready.`,
+      : `Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a ${days}-day free trial whenever you’re ready.`,
     primary: 'See Plus',
     secondary: 'Not now',
   };

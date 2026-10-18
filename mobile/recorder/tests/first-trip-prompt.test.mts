@@ -72,11 +72,15 @@ test('the prompt waits until recording, saving, the completion moment, and other
 test('trial copy uses StoreKit intro days and skips the trial when the user is not eligible', () => {
   const trial = firstTripPromptCopy(7);
   assert.equal(trial.kicker, 'FIRST TRIP SAVED');
-  assert.equal(trial.title, "Nice drive. That one's saved.");
-  assert.equal(trial.body, "Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a 7-day free trial whenever you're ready.");
+  assert.equal(trial.title, "Nice drive. That one’s saved.");
+  assert.equal(trial.body, "Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a 7-day free trial whenever you’re ready.");
+  assert.equal(trial.title.includes('\u2019'), true);
+  assert.equal(trial.body.includes('\u2019'), true);
+  assert.equal(trial.title.includes("'"), false);
+  assert.equal(trial.body.includes("'"), false);
   assert.equal(trial.primary, 'See Plus');
   assert.equal(trial.secondary, 'Not now');
-  assert.equal(firstTripPromptCopy(1).body, "Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a 1-day free trial whenever you're ready.");
+  assert.equal(firstTripPromptCopy(1).body, "Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a 1-day free trial whenever you’re ready.");
   const ineligible = firstTripPromptCopy(null);
   assert.equal(ineligible.title, trial.title);
   assert.equal(ineligible.body, 'Your first 3 trips get everything in Plus, this one included. Plus keeps the Atlas, complete history and Ask JourneyDeck going after that.');
