@@ -18,7 +18,7 @@ import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from 
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
-import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED, V4_CONNECTOR_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
+import { POST_FIRST_TRIP_PLUS_PROMPT_ENABLED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED, V3_ASK_JOURNEYDECK_ENABLED, V4_CONNECTOR_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
 import { MemoriesLibraryScreen } from './memories-library';
 import { TodayScreen } from './today-screen';
 import { AtlasTabV4 } from './atlas-tab-v4';
@@ -142,6 +142,9 @@ import { completeWelcomeIntro, hasCompletedWelcomeIntro } from './welcome-intro'
 import { lastPromptedShareJourneyId, markShareJourneyPrompted } from './share-prompt';
 import { applyFreeCompletedDriveAccess, membershipCanAccessDate, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { shouldShowTripSummaryPaywall } from './completed-drive-count';
+import { eligibleIntroTrialDays, shouldShowFirstTripPrompt } from './first-trip-prompt';
+import { FirstTripPlusPrompt } from './first-trip-prompt-card';
+import { firstTripPromptWasShown, markFirstTripPromptShown } from './first-trip-prompt-store';
 import { freeDriveWindowOpen, useCompletedDriveCount } from './completed-drive-store';
 import { setFreeDriveAccess } from '../modules/journeydeck-membership';
 import { useJourneyDeckMembership } from './membership-store';
@@ -341,6 +344,7 @@ type RecorderComponent = ComponentType<{
   onProgressChange?: (progress: ActiveJourneyProgress | null) => void;
   onLeaveSample?: () => Promise<void>;
   onCompletedDrive?: (completedCount: number) => void;
+  onRecorderIdle?: (idle: boolean) => void;
 }>;
 
 export function JourneyDeckShell({ recorder, children }: { recorder: RecorderComponent; children: ReactNode }) {
@@ -399,6 +403,11 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const [moreDestination, setMoreDestination] = useState<MoreDestination>('menu');
   const utilityVisible = usePathname() === '/tools';
   const [membershipPaywallVisible, setMembershipPaywallVisible] = useState(false);
+  const [recorderIdle, setRecorderIdle] = useState(true);
+  const [firstTripQueued, setFirstTripQueued] = useState(false);
+  const [firstTripVisible, setFirstTripVisible] = useState(false);
+  const [trialLookupSettled, setTrialLookupSettled] = useState(false);
+  const firstTripPresented = useRef(false);
   const preferenceSyncAttempt = useRef('');
   const musicRefreshGeneration = useRef(0);
 
@@ -962,8 +971,56 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
 
   const handleCompletedDrive = useCallback((completedCount: number) => {
     if (isDemoProfile()) return;
-    if (shouldShowTripSummaryPaywall(completedCount, membershipStore.state.status.tier === 'paid')) setMembershipPaywallVisible(true);
+    // StoreKit status.tier is the payment authority. A free trial is paid. Free drives widen entitlements only.
+    const tier = membershipStore.state.status.tier;
+    if (shouldShowTripSummaryPaywall(completedCount, tier === 'paid')) setMembershipPaywallVisible(true);
+    try {
+      if (shouldShowFirstTripPrompt({
+        enabled: POST_FIRST_TRIP_PLUS_PROMPT_ENABLED,
+        previousCount: completedCount - 1,
+        nextCount: completedCount,
+        counted: true,
+        tier,
+        plusUnlocked: TESTFLIGHT_PLUS_UNLOCKED,
+        alreadyShown: firstTripPromptWasShown(),
+        demo: isDemoProfile(),
+      })) setFirstTripQueued(true);
+    } catch { /* a missed 0 to 1 transition is not replayed on a later drive */ }
   }, [membershipStore.state.status.tier]);
+  const dismissFirstTripPrompt = useCallback(() => {
+    observeJourneyDeckEvent('paywall.first_trip_prompt_dismissed');
+    firstTripPresented.current = false;
+    setFirstTripVisible(false);
+    setFirstTripQueued(false);
+  }, []);
+  const openPlusFromFirstTrip = useCallback(() => {
+    observeJourneyDeckEvent('paywall.first_trip_prompt_tapped');
+    firstTripPresented.current = false;
+    setFirstTripVisible(false);
+    setFirstTripQueued(false);
+    setMembershipPaywallVisible(true);
+  }, []);
+  useEffect(() => {
+    if (!firstTripQueued) {
+      setTrialLookupSettled(false);
+      return;
+    }
+    if (membershipStore.state.products.length > 0) {
+      setTrialLookupSettled(true);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => { if (!cancelled) setTrialLookupSettled(true); }, 1600);
+    void membershipStore.loadProducts().finally(() => { if (!cancelled) setTrialLookupSettled(true); });
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [firstTripQueued, membershipStore.loadProducts, membershipStore.state.products.length]);
+  useEffect(() => {
+    if (!firstTripVisible) return;
+    if (membershipStore.state.status.tier !== 'paid' && !membershipPaywallVisible) return;
+    firstTripPresented.current = false;
+    setFirstTripVisible(false);
+    setFirstTripQueued(false);
+  }, [firstTripVisible, membershipPaywallVisible, membershipStore.state.status.tier]);
   const openAtlas = () => {
     if (!membership.atlasAccess) {
       setMembershipPaywallVisible(true);
@@ -989,6 +1046,36 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     : null;
   const firstRunRecordingMode: RecordingMode = 'manual';
   const appVisible = appReady && !firstRunStage;
+  useEffect(() => {
+    if (!firstTripQueued || firstTripVisible || firstTripPresented.current || !trialLookupSettled) return;
+    const otherSheet = !appVisible || membershipPaywallVisible || firstRunStage != null || editingProvider || editingRecordingMode;
+    if (!recorderIdle || otherSheet) return;
+    let show = false;
+    try {
+      show = shouldShowFirstTripPrompt({
+        enabled: POST_FIRST_TRIP_PLUS_PROMPT_ENABLED,
+        previousCount: 0,
+        nextCount: 1,
+        counted: true,
+        tier: membershipStore.state.status.tier,
+        plusUnlocked: TESTFLIGHT_PLUS_UNLOCKED,
+        alreadyShown: firstTripPromptWasShown(),
+        demo: isDemoProfile(),
+      });
+    } catch { return; }
+    if (!show) {
+      setFirstTripQueued(false);
+      return;
+    }
+    firstTripPresented.current = true;
+    try { markFirstTripPromptShown(); }
+    catch {
+      firstTripPresented.current = false;
+      return;
+    }
+    observeJourneyDeckEvent('paywall.first_trip_prompt_shown');
+    setFirstTripVisible(true);
+  }, [appVisible, editingProvider, editingRecordingMode, firstRunStage, firstTripQueued, firstTripVisible, membershipPaywallVisible, membershipStore.state.status.tier, recorderIdle, trialLookupSettled]);
   useUpdateRestart({ ready: appVisible && dashboard.status === 'ready', recorderState: dashboard.data.recorder.state, recorderBusy: homeRecorderActive });
   const enteredApp = useRef(false);
   if (appVisible) enteredApp.current = true;
@@ -1058,7 +1145,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   />;
 
   const accessoryRecorder = REDESIGN_PHONE && canRecordDrives() && supportsTabAccessory(Platform.OS, Platform.Version);
-  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} onLeaveSample={leaveSampleToRecord} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} /> : null;
+  const redesignRecorder = REDESIGN_PHONE && canRecordDrives() ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} onLeaveSample={leaveSampleToRecord} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} onRecorderIdle={setRecorderIdle} /> : null;
   const loadTodayProfile = useCallback(() => {
     const appearance = loadProfileAppearance(currentUser);
     return { initials: profileInitialsFor(appearance.displayName), avatarUri: appearance.avatarDataUri ?? null };
@@ -1075,7 +1162,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         journeyProgress={homeJourneyProgress} vehicles={primarySections.data?.vehicle.vehicles ?? []} vehicleLoading={primarySections.status === 'loading' && !primarySections.data} vehicleError={primarySections.status === 'error'}
         onMemory={openMemory} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined}
         loading={primarySections.status === 'loading' || musicDashboard.status === 'loading'} error={primarySections.status === 'error' ? 'Your saved library is temporarily unavailable.' : undefined}
-        recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} />} />,
+        recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} onRecorderIdle={setRecorderIdle} />} />,
     } : {
       music: <MusicScreen redesign={REDESIGN_PHONE} state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => REDESIGN_PHONE || membershipCanAccessDate(membership, journey.startedAt)) }} isLocked={REDESIGN_PHONE ? startedAt => !membershipCanAccessDate(membership, startedAt) : undefined} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
@@ -1087,7 +1174,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         }}
         loadProfile={loadTodayProfile} onJourney={openJourney} onMemory={openMemory} onMemories={() => openTab('journeys')} onWeek={() => openTab('statistics')}
         onProfile={() => { router.push('/preferences'); }} onSync={isIpad() ? () => void syncPrivateCloud(true) : undefined} sampleActive={isDemoProfile(currentUser)} onExitSample={toggleSampleData} onRefresh={() => refreshPrimarySections(true)} />
-        : <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} />} />,
+        : <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} onCompletedDrive={handleCompletedDrive} onRecorderIdle={setRecorderIdle} />} />,
       statistics: REDESIGN_PHONE
         ? <AtlasTabV4 key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />
         : <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
@@ -1263,6 +1350,12 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           if (firstRunStage === 'membership') { sampleAfterSetup.current = REDESIGN_PHONE; advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : ROADS_STEP_ENABLED ? 'photos' : 'instructions'); return; }
           setMembershipPaywallVisible(false);
         }}
+      />
+      <FirstTripPlusPrompt
+        visible={firstTripVisible && !membershipPaywallVisible}
+        trialDays={eligibleIntroTrialDays(membershipStore.state.products)}
+        onSeePlus={openPlusFromFirstTrip}
+        onDismiss={dismissFirstTripPrompt}
       />
     </View></NativeNavigationContext.Provider></IphoneRequiredProvider>
   );
