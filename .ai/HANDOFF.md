@@ -7,6 +7,7 @@ Make `verify:live` expect the retired web app to return HTTP 410. Do not merge. 
 ## Checkout
 
 - Branch `cursor/verify-live-retired-410-dd91`, based on main `48178cb` (#312).
+- PR: https://github.com/drumpat01/DriveOS/pull/313. Do not merge.
 - Live `GET https://journeydeck.me/login` is HTTP 410, `text/html; charset=utf-8`, `Cache-Control: no-store`, `X-Robots-Tag: noindex`. The body is the retirement notice and has no Umami tag.
 
 ## Material changes
