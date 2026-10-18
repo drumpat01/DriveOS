@@ -6,8 +6,9 @@ Keep `/wife.html` behind the same login as `/wife`, including case and trailing-
 
 ## Checkout
 
-- Branch `cursor/wife-html-auth-460d`.
+- Branch `cursor/wife-html-auth-460d`, rebased onto main `2c190bf` (PR #298).
 - Pull request: https://github.com/drumpat01/DriveOS/pull/301. Do not merge it.
+- The rebase conflict was only `.ai/HANDOFF.md`. PR #298's first-trip Plus card stayed.
 - CI on `74cc114` failed because Windows served `/Wife.html` as 200. The wife gate now folds case and a trailing slash before the `/wife` and `/wife.html` comparison.
 
 ## Material changes
