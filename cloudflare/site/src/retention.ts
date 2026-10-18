@@ -1,7 +1,5 @@
-import type { VerificationStatus } from "@apple/app-store-server-library";
-import { createHash } from "node:crypto";
-import { Buffer } from "node:buffer";
 import type { SiteEnv } from "./env.ts";
+import { certificateSignedBy, loadCertificate, RetentionVerifyError, verifyRetentionJws } from "./retention-jws.ts";
 
 /**
  * Apple Root CA - G3, pinned from Apple PKI.
@@ -19,9 +17,7 @@ export type RetentionEnvironment = typeof retentionEnvironmentValues[number];
 const messageIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const compactJwsPattern = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const jsonContentType = /^application\/json(?:\s*;|$)/i;
-
-type AppleLibrary = typeof import("@apple/app-store-server-library");
-type SignedDataVerifier = InstanceType<AppleLibrary["SignedDataVerifier"]>;
+const pinPromises = new WeakMap<Uint8Array, Promise<string>>();
 
 export interface RetentionSettings {
   bundleId: string;
@@ -30,9 +26,6 @@ export interface RetentionSettings {
   environments: readonly RetentionEnvironment[];
   rootCertificates: Uint8Array[];
 }
-
-let appleLibraryPromise: Promise<AppleLibrary> | undefined;
-const verifierCache = new Map<string, Map<RetentionEnvironment, SignedDataVerifier>>();
 
 function isRetentionEnvironment(value: string): value is RetentionEnvironment {
   return retentionEnvironmentValues.some(environment => environment === value);
@@ -50,10 +43,30 @@ export function parseRetentionEnvironments(raw: string | undefined) {
   return unique;
 }
 
-export function assertAppleRootPin(bytes: Uint8Array) {
-  const fingerprint = createHash("sha256").update(bytes).digest("hex");
+function hex(bytes: Uint8Array) {
+  let text = "";
+  for (const byte of bytes) text += byte.toString(16).padStart(2, "0");
+  return text;
+}
+
+async function digestPin(bytes: Uint8Array) {
+  const pinned = new Uint8Array(bytes.byteLength);
+  pinned.set(bytes);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", pinned.buffer));
+  const fingerprint = hex(digest);
   if (fingerprint !== APPLE_ROOT_CA_G3_SHA256) throw new Error("Pinned Apple Root CA - G3 fingerprint does not match.");
   return fingerprint;
+}
+
+export function assertAppleRootPin(bytes: Uint8Array) {
+  const cached = pinPromises.get(bytes);
+  if (cached) return cached;
+  const pending = digestPin(bytes);
+  pinPromises.set(bytes, pending);
+  pending.catch(() => {
+    if (pinPromises.get(bytes) === pending) pinPromises.delete(bytes);
+  });
+  return pending;
 }
 
 function isLocalRetentionHost(requestHost: string | undefined) {
@@ -67,8 +80,15 @@ function isLocalRetentionHost(requestHost: string | undefined) {
   }
 }
 
-export function retentionSettingsFromEnv(env: SiteEnv, appleRoot: Uint8Array, requestHost?: string): RetentionSettings {
-  assertAppleRootPin(appleRoot);
+function bytesFromBase64(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+export async function retentionSettingsFromEnv(env: SiteEnv, appleRoot: Uint8Array, requestHost?: string): Promise<RetentionSettings> {
+  await assertAppleRootPin(appleRoot);
   const messageId = env.JOURNEYDECK_RETENTION_MESSAGE_ID || DEFAULT_RETENTION_MESSAGE_ID;
   if (!messageIdPattern.test(messageId)) throw new Error("JOURNEYDECK_RETENTION_MESSAGE_ID must be a UUID.");
   const environments = parseRetentionEnvironments(env.JOURNEYDECK_RETENTION_ENVIRONMENTS);
@@ -76,84 +96,47 @@ export function retentionSettingsFromEnv(env: SiteEnv, appleRoot: Uint8Array, re
   // the pinned Apple root even when the env var is set.
   if (env.ALLOW_RETENTION_TEST_ROOT === "true" && isLocalRetentionHost(requestHost)) {
     if (!env.RETENTION_TEST_ROOT_BASE64) throw new Error("Retention test root was allowed but not provided.");
-    return { bundleId: RETENTION_BUNDLE_ID, appAppleId: RETENTION_APP_APPLE_ID, messageId, environments, rootCertificates: [Buffer.from(env.RETENTION_TEST_ROOT_BASE64, "base64")] };
+    return { bundleId: RETENTION_BUNDLE_ID, appAppleId: RETENTION_APP_APPLE_ID, messageId, environments, rootCertificates: [bytesFromBase64(env.RETENTION_TEST_ROOT_BASE64)] };
   }
   return { bundleId: RETENTION_BUNDLE_ID, appAppleId: RETENTION_APP_APPLE_ID, messageId, environments, rootCertificates: [appleRoot] };
 }
 
-// jsrsasign calls crypto during module init. A top-level import crashes workerd
-// ("Disallowed operation called within global scope"), so the library is loaded
-// on the request path and cached for the isolate.
-function loadAppleLibrary() {
-  appleLibraryPromise ??= import("@apple/app-store-server-library");
-  return appleLibraryPromise;
-}
-
-function appleEnvironment(environment: RetentionEnvironment, library: AppleLibrary) {
-  switch (environment) {
-    case "Production":
-      return library.Environment.PRODUCTION;
-    case "Sandbox":
-      return library.Environment.SANDBOX;
-    default: {
-      const exhaustive: never = environment;
-      return exhaustive;
-    }
-  }
-}
-
-function rejectionFor(status: VerificationStatus, library: AppleLibrary) {
-  switch (status) {
-    case library.VerificationStatus.INVALID_APP_IDENTIFIER:
-      return { statusCode: 403 as const, reason: "app_mismatch" };
-    case library.VerificationStatus.INVALID_ENVIRONMENT:
-      return { statusCode: 403 as const, reason: "environment_mismatch" };
-    case library.VerificationStatus.INVALID_CHAIN_LENGTH:
-      return { statusCode: 401 as const, reason: "invalid_chain" };
-    case library.VerificationStatus.INVALID_CERTIFICATE:
-      return { statusCode: 401 as const, reason: "invalid_certificate" };
-    case library.VerificationStatus.OK:
-    case library.VerificationStatus.VERIFICATION_FAILURE:
-    case library.VerificationStatus.RETRYABLE_VERIFICATION_FAILURE:
-    case library.VerificationStatus.FAILURE:
-      return { statusCode: 401 as const, reason: "invalid_signature" };
-    default: {
-      const exhaustive: never = status;
-      return exhaustive;
-    }
-  }
-}
-
-function claimedEnvironment(signedPayload: string) {
-  try {
-    const encoded = signedPayload.split(".")[1];
-    if (!encoded) return undefined;
-    const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as { environment?: unknown };
-    return typeof parsed.environment === "string" ? parsed.environment : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function verifiersFor(settings: RetentionSettings) {
-  const library = await loadAppleLibrary();
-  const fingerprint = createHash("sha256").update(Buffer.concat(settings.rootCertificates.map(bytes => Buffer.from(bytes)))).digest("hex");
-  const key = `${fingerprint}:${settings.environments.join(",")}:${settings.bundleId}:${settings.appAppleId}`;
-  const cached = verifierCache.get(key);
-  if (cached) return { library, verifiers: cached };
-  if (settings.environments.length === 0) throw new Error("At least one retention messaging environment is required.");
-  const verifiers = new Map<RetentionEnvironment, SignedDataVerifier>();
-  const roots = settings.rootCertificates.map(bytes => Buffer.from(bytes));
-  for (const environment of settings.environments) {
-    verifiers.set(environment, new library.SignedDataVerifier(roots, false, appleEnvironment(environment, library), settings.bundleId, settings.appAppleId));
-  }
-  verifierCache.set(key, verifiers);
-  return { library, verifiers };
+export async function warmupRetention(appleRoot: Uint8Array) {
+  const root = await loadCertificate(appleRoot);
+  if (!await certificateSignedBy(root, root)) throw new Error("Pinned Apple Root CA - G3 signature does not verify.");
 }
 
 function jsonBody(status: number, body: unknown, extra?: Record<string, string>) {
   const headers = new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra });
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+function timingProbe(request: Request) {
+  if (request.headers.get("x-journeydeck-retention-timing") !== "1") return false;
+  try {
+    return isLocalRetentionHost(new URL(request.url).host);
+  } catch {
+    return false;
+  }
+}
+
+function cpuUsage() {
+  const candidate = globalThis as { process?: { cpuUsage?: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage } };
+  if (typeof candidate.process?.cpuUsage !== "function") return undefined;
+  try {
+    return candidate.process.cpuUsage();
+  } catch {
+    return undefined;
+  }
+}
+
+function stampTiming(request: Request, response: Response, wallMs: number, cpuMs: number | undefined) {
+  if (!timingProbe(request)) return response;
+  const headers = new Headers(response.headers);
+  const metrics = [`retention;dur=${wallMs.toFixed(3)}`];
+  if (cpuMs !== undefined) metrics.push(`cpu;dur=${cpuMs.toFixed(3)}`);
+  headers.set("server-timing", metrics.join(", "));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 async function readLimitedBody(request: Request) {
@@ -175,11 +158,32 @@ async function readLimitedBody(request: Request) {
   }
   const merged = new Uint8Array(total);
   let offset = 0;
-  for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
   return { ok: true as const, text: new TextDecoder().decode(merged) };
 }
 
-export async function handleRetention(request: Request, settings: RetentionSettings) {
+function claimedEnvironment(signedPayload: string) {
+  try {
+    const encoded = signedPayload.split(".")[1];
+    if (!encoded) return undefined;
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((encoded.length + 3) % 4);
+    const parsed = JSON.parse(atob(padded)) as { environment?: unknown };
+    return typeof parsed.environment === "string" ? parsed.environment : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function rejectionMessage(error: RetentionVerifyError) {
+  return error.statusCode === 403
+    ? "The retention message request does not match this app."
+    : "The signed payload could not be verified.";
+}
+
+async function respond(request: Request, settings: RetentionSettings) {
   if (request.method.toUpperCase() !== "POST") return jsonBody(405, { error: "Method not allowed." }, { allow: "POST" });
   const contentType = request.headers.get("content-type") || "";
   if (!jsonContentType.test(contentType)) return jsonBody(415, { error: "Content-Type must be application/json." });
@@ -191,25 +195,26 @@ export async function handleRetention(request: Request, settings: RetentionSetti
     return jsonBody(400, { statusCode: 400, code: "FST_ERR_CTP_EMPTY_JSON_BODY", error: "Bad Request", message: "Body cannot be empty when content-type is set to 'application/json'" });
   }
   let parsed: unknown;
-  try { parsed = JSON.parse(limited.text); }
-  catch {
+  try {
+    parsed = JSON.parse(limited.text);
+  } catch {
     return jsonBody(400, { statusCode: 400, code: "FST_ERR_CTP_INVALID_JSON_BODY", error: "Bad Request", message: "Body is not valid JSON but content-type is set to 'application/json'" });
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return jsonBody(400, { error: "A signed RealtimeRequestBody is required." });
   const signedPayload = (parsed as { signedPayload?: unknown }).signedPayload;
   if (typeof signedPayload !== "string" || !compactJwsPattern.test(signedPayload)) return jsonBody(400, { error: "A signed RealtimeRequestBody is required." });
+  if (settings.environments.length === 0) throw new Error("At least one retention messaging environment is required.");
+  const claimed = claimedEnvironment(signedPayload);
+  const selected = claimed && isRetentionEnvironment(claimed) && settings.environments.some(environment => environment === claimed)
+    ? claimed
+    : settings.environments[0];
+  if (!selected) throw new RetentionVerifyError("environment_mismatch");
   try {
-    const { library, verifiers } = await verifiersFor(settings);
-    const claimed = claimedEnvironment(signedPayload);
-    const selected = claimed && isRetentionEnvironment(claimed) && settings.environments.some(environment => environment === claimed)
-      ? verifiers.get(claimed)
-      : verifiers.values().next().value;
-    if (!selected) throw new library.VerificationException(library.VerificationStatus.INVALID_ENVIRONMENT);
-    const decoded = await selected.verifyAndDecodeRealtimeRequest(signedPayload) as { appAppleId?: unknown; bundleId?: unknown; environment?: unknown; requestIdentifier?: unknown; productId?: unknown; userLocale?: unknown };
-    if (decoded.appAppleId !== settings.appAppleId) throw new library.VerificationException(library.VerificationStatus.INVALID_APP_IDENTIFIER);
-    if (decoded.bundleId !== undefined && decoded.bundleId !== settings.bundleId) throw new library.VerificationException(library.VerificationStatus.INVALID_APP_IDENTIFIER);
-    if (typeof decoded.environment !== "string" || !isRetentionEnvironment(decoded.environment) || !settings.environments.some(environment => environment === decoded.environment)) {
-      throw new library.VerificationException(library.VerificationStatus.INVALID_ENVIRONMENT);
+    const decoded = await verifyRetentionJws(signedPayload, settings.rootCertificates, selected);
+    if (decoded.appAppleId !== settings.appAppleId) throw new RetentionVerifyError("app_mismatch");
+    if (decoded.bundleId !== undefined && decoded.bundleId !== settings.bundleId) throw new RetentionVerifyError("app_mismatch");
+    if (!isRetentionEnvironment(decoded.environment) || !settings.environments.some(environment => environment === decoded.environment)) {
+      throw new RetentionVerifyError("environment_mismatch");
     }
     console.info(JSON.stringify({
       event: "retention_message",
@@ -220,16 +225,28 @@ export async function handleRetention(request: Request, settings: RetentionSetti
     }));
     return jsonBody(200, { message: { messageIdentifier: settings.messageId } });
   } catch (error) {
-    const library = await loadAppleLibrary();
-    if (error instanceof library.VerificationException) {
-      const rejection = rejectionFor(error.status, library);
-      console.warn(JSON.stringify({ event: "retention_message_rejected", reason: rejection.reason }));
-      const message = rejection.statusCode === 403
-        ? "The retention message request does not match this app."
-        : "The signed payload could not be verified.";
-      return jsonBody(rejection.statusCode, { error: message });
+    if (error instanceof RetentionVerifyError) {
+      console.warn(JSON.stringify({ event: "retention_message_rejected", reason: error.reason }));
+      return jsonBody(error.statusCode, { error: rejectionMessage(error) });
     }
     console.warn(JSON.stringify({ event: "retention_message_rejected", reason: "unexpected" }));
     return jsonBody(500, { error: "The retention message request could not be handled." });
   }
+}
+
+export async function handleRetention(request: Request, settings: RetentionSettings) {
+  const wallStart = performance.now();
+  const cpuStart = cpuUsage();
+  const response = await respond(request, settings);
+  const wallMs = performance.now() - wallStart;
+  let cpuMs: number | undefined;
+  if (cpuStart && typeof (globalThis as { process?: { cpuUsage?: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage } }).process?.cpuUsage === "function") {
+    try {
+      const delta = (globalThis as { process: { cpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage } }).process.cpuUsage(cpuStart);
+      cpuMs = (delta.user + delta.system) / 1000;
+    } catch {
+      cpuMs = undefined;
+    }
+  }
+  return stampTiming(request, response, wallMs, cpuMs);
 }

@@ -23,10 +23,12 @@ export interface TestChain {
   cleanup: () => void;
 }
 
-export function createTestChain(): TestChain {
+export function createTestChain(options: { leafOid?: boolean; intermediateOid?: boolean } = {}): TestChain {
   const directory = mkdtempSync(join(tmpdir(), "retention-chain-"));
   const ext = join(directory, "ext.cnf");
-  writeFileSync(ext, extensionConfig);
+  const leafOid = options.leafOid === false ? "" : "1.2.840.113635.100.6.11.1 = ASN1:NULL\n";
+  const intermediateOid = options.intermediateOid === false ? "" : "1.2.840.113635.100.6.2.1 = ASN1:NULL\n";
+  writeFileSync(ext, extensionConfig.replace("1.2.840.113635.100.6.2.1 = ASN1:NULL\n", intermediateOid).replace("1.2.840.113635.100.6.11.1 = ASN1:NULL\n", leafOid));
   const openssl = (args: string[]) => execFileSync("openssl", args, { stdio: "pipe" });
   openssl(["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", join(directory, "root.key")]);
   openssl(["req", "-new", "-x509", "-key", join(directory, "root.key"), "-sha256", "-days", "3650", "-subj", "/CN=Test Apple Root CA G3", "-out", join(directory, "root.crt")]);
@@ -47,8 +49,8 @@ export function createTestChain(): TestChain {
   };
 }
 
-export function signRealtimeRequest(chain: TestChain, payload: Record<string, unknown>) {
-  const header = Buffer.from(JSON.stringify({ alg: "ES256", x5c: chain.x5c })).toString("base64url");
+export function signRealtimeRequest(chain: TestChain, payload: Record<string, unknown>, x5c = chain.x5c) {
+  const header = Buffer.from(JSON.stringify({ alg: "ES256", x5c })).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const input = `${header}.${body}`;
   const signature = sign("SHA256", Buffer.from(input), { key: createPrivateKey(chain.leafKeyPem), dsaEncoding: "ieee-p1363" });

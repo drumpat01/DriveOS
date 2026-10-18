@@ -22,9 +22,10 @@ function matched(method: string, path: string) {
 
 test("route list has the phase-one shape", () => {
   assert.equal(routes.length, 435);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 314);
-  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 114);
-  assert.equal(routes.filter(route => route.worker_action === "proxy").length, 114);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 318);
+  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 110);
+  assert.equal(routes.filter(route => route.worker_action === "proxy").length, 110);
+  assert.equal(routes.filter(route => route.worker_action === "native").length, 4);
   assert.equal(routes.filter(route => route.worker_action === "none").length, 7);
 });
 
@@ -76,17 +77,19 @@ test("redirects, retired landings, directory 403, and unknown GET", () => {
   assert.equal(matched("POST", "/parity-check-not-a-page"), undefined);
 });
 
-test("retention and api paths are proxied", () => {
+test("retention is native and other api paths stay proxied", () => {
   for (const routeId of ["R029", "R030", "R031", "R032"]) {
     const route = routes.find(row => row.route_id === routeId);
-    assert.equal(route?.worker_action, "proxy", routeId);
-    assert.equal(route?.phase1_owner, "passthrough", routeId);
-    assert.equal(route?.target, "RENDER_ORIGIN", routeId);
+    assert.equal(route?.worker_action, "native", routeId);
+    assert.equal(route?.phase1_owner, "worker", routeId);
+    assert.equal(route?.target, "retention", routeId);
+    assert.equal(route?.handler_file, "cloudflare/site/src/retention.ts", routeId);
   }
-  assert.equal(matched("POST", "/retention-messaging-api")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/retention-messaging-api/")?.worker_action, "proxy");
+  assert.equal(matched("POST", "/retention-messaging-api")?.worker_action, "native");
+  assert.equal(matched("GET", "/retention-messaging-api/")?.worker_action, "native");
   assert.equal(matched("POST", "/retention-messaging-api")?.route_id, "R029");
   assert.equal(matched("GET", "/retention-messaging-api")?.route_id, "R030");
+  assert.equal(routes.filter(route => route.worker_action === "proxy" && route.path.includes("retention-messaging")).length, 0);
   assert.equal(matched("GET", "/api/auth/session")?.worker_action, "proxy");
   assert.equal(matched("GET", "/api/atlas/journeys")?.worker_action, "proxy");
   assert.equal(matched("GET", "/readyz")?.worker_action, "proxy");

@@ -12,6 +12,7 @@ import {
   handleRetention,
   retentionSettingsFromEnv
 } from "../src/retention.ts";
+import { certificateSignedBy, loadCertificate } from "../src/retention-jws.ts";
 import { breakSignature, createTestChain, requestBody, signRealtimeRequest } from "./chain.ts";
 
 const appleRoot = new Uint8Array(readFileSync(join(import.meta.dirname, "..", "..", "..", "server", "certs", "AppleRootCA-G3.cer")));
@@ -31,27 +32,34 @@ function post(body: BodyInit, headers: Record<string, string> = { "content-type"
   return new Request("https://journeydeck.me/retention-messaging-api", { method: "POST", headers, body });
 }
 
-test("pinned Apple Root CA - G3 matches the published fingerprint", () => {
-  assert.equal(assertAppleRootPin(appleRoot), APPLE_ROOT_CA_G3_SHA256);
+test("pinned Apple Root CA - G3 matches the published fingerprint", async () => {
+  assert.equal(await assertAppleRootPin(appleRoot), APPLE_ROOT_CA_G3_SHA256);
   const certificate = new X509Certificate(appleRoot);
   assert.match(certificate.subject, /Apple Root CA - G3/);
   assert.equal(certificate.issuer, certificate.subject);
-  assert.throws(() => assertAppleRootPin(new Uint8Array([1, 2, 3])), /fingerprint/);
+  const parsed = await loadCertificate(appleRoot);
+  assert.equal(parsed.subject, certificate.subject);
+  assert.equal(parsed.issuer, certificate.issuer);
+  assert.equal(parsed.curve, "P-384");
+  assert.equal(parsed.signatureHash, "SHA-384");
+  assert.equal(parsed.isCa, true);
+  assert.equal(await certificateSignedBy(parsed, parsed), true);
+  await assert.rejects(() => assertAppleRootPin(new Uint8Array([1, 2, 3])), /fingerprint/);
 });
 
-test("retention settings stay on vars and the wrangler config has no test root", () => {
+test("retention settings stay on vars and the wrangler config has no test root", async () => {
   const source = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
   assert.equal(source.includes("ALLOW_RETENTION_TEST_ROOT"), false);
   assert.equal(source.includes("RETENTION_TEST_ROOT_BASE64"), false);
   assert.equal(source.includes("secret"), false);
-  assert.throws(() => retentionSettingsFromEnv({
+  await assert.rejects(() => retentionSettingsFromEnv({
     ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
     RENDER_ORIGIN: "https://driveos.onrender.com",
     ALLOW_RETENTION_TEST_ROOT: "true"
   }, appleRoot, "127.0.0.1"), /test root/);
 });
 
-test("retention test root is honored only on local hosts", () => {
+test("retention test root is honored only on local hosts", async () => {
   const root = Buffer.from("local-retention-test-root");
   const env = {
     ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
@@ -60,11 +68,11 @@ test("retention test root is honored only on local hosts", () => {
     RETENTION_TEST_ROOT_BASE64: root.toString("base64")
   } satisfies SiteEnv;
   for (const host of ["127.0.0.1", "127.0.0.1:8787", "localhost", "localhost:8787", "[::1]", "[::1]:8787"]) {
-    const configured = retentionSettingsFromEnv(env, appleRoot, host);
+    const configured = await retentionSettingsFromEnv(env, appleRoot, host);
     assert.equal(Buffer.from(configured.rootCertificates[0]).equals(root), true, host);
   }
   for (const host of ["journeydeck.me", "www.journeydeck.me", "journeydeck-site.example.workers.dev", undefined]) {
-    const configured = retentionSettingsFromEnv(env, appleRoot, host);
+    const configured = await retentionSettingsFromEnv(env, appleRoot, host);
     assert.equal(Buffer.from(configured.rootCertificates[0]).equals(Buffer.from(appleRoot)), true, String(host));
   }
 });
@@ -78,13 +86,24 @@ test("Get Retention Message accepts a verified request and rejects invalid ones"
   console.info = (...args: unknown[]) => { lines.push(args.map(String).join(" ")); };
   console.warn = (...args: unknown[]) => { lines.push(args.map(String).join(" ")); };
   try {
-    const configured = settings(chain.rootDer);
+    const configured = await settings(chain.rootDer);
     const productionPayload = signRealtimeRequest(chain, requestBody());
     const started = Date.now();
-    const accepted = await handleRetention(post(JSON.stringify({ signedPayload: productionPayload })), configured);
+    const accepted = await handleRetention(new Request("http://127.0.0.1/retention-messaging-api", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-journeydeck-retention-timing": "1" },
+      body: JSON.stringify({ signedPayload: productionPayload })
+    }), configured);
     const acceptedBody = await accepted.text();
     assert.equal(accepted.status, 200, acceptedBody);
     assert.equal(Date.now() - started < 700, true);
+    const coldTiming = accepted.headers.get("server-timing") || "";
+    const coldMs = Number(/retention;dur=([0-9.]+)/.exec(coldTiming)?.[1]);
+    const coldCpu = Number(/cpu;dur=([0-9.]+)/.exec(coldTiming)?.[1]);
+    assert.equal(Number.isFinite(coldMs), true);
+    assert.equal(coldMs < 10, true, `cold handler wall ${coldMs} ms`);
+    if (Number.isFinite(coldCpu)) assert.equal(coldCpu < 10, true, `cold handler cpu ${coldCpu} ms`);
+    console.log(`retention cold handler wall ${coldMs.toFixed(3)} ms${Number.isFinite(coldCpu) ? ` cpu ${coldCpu.toFixed(3)} ms` : ""}`);
     assert.equal(accepted.headers.get("cache-control"), "no-store");
     assert.match(accepted.headers.get("content-type") || "", /application\/json/);
     assert.deepEqual(JSON.parse(acceptedBody), { message: { messageIdentifier: DEFAULT_RETENTION_MESSAGE_ID } });
@@ -118,7 +137,7 @@ test("Get Retention Message accepts a verified request and rejects invalid ones"
     const wrongEnvironment = await handleRetention(post(JSON.stringify({ signedPayload: signRealtimeRequest(chain, requestBody({ environment: "Xcode" })) })), configured);
     assert.equal(wrongEnvironment.status, 403, await wrongEnvironment.text());
 
-    const sandboxOnly = settings(chain.rootDer, "Sandbox", "11111111-2222-4333-8444-555555555555");
+    const sandboxOnly = await settings(chain.rootDer, "Sandbox", "11111111-2222-4333-8444-555555555555");
     const sandboxDefault = await handleRetention(post(JSON.stringify({ signedPayload: signRealtimeRequest(chain, requestBody({ environment: "Sandbox" })) })), sandboxOnly);
     const sandboxBody = await sandboxDefault.text();
     assert.equal(sandboxDefault.status, 200, sandboxBody);
@@ -154,6 +173,51 @@ test("Get Retention Message accepts a verified request and rejects invalid ones"
 
     const wrongMethodSlashed = await handleRetention(new Request("https://journeydeck.me/retention-messaging-api/", { method: "PUT" }), configured);
     assert.equal(wrongMethodSlashed.status, 405);
+
+    const header = Buffer.from(JSON.stringify({ alg: "none", x5c: chain.x5c })).toString("base64url");
+    const body = Buffer.from(JSON.stringify(requestBody())).toString("base64url");
+    const unsigned = await handleRetention(post(JSON.stringify({ signedPayload: `${header}.${body}.e30` })), configured);
+    assert.equal(unsigned.status, 401, await unsigned.text());
+
+    const shortChain = await handleRetention(post(JSON.stringify({ signedPayload: signRealtimeRequest(chain, requestBody(), chain.x5c.slice(0, 2)) })), configured);
+    assert.equal(shortChain.status, 401, await shortChain.text());
+
+    const stale = await handleRetention(post(JSON.stringify({ signedPayload: signRealtimeRequest(chain, requestBody({ signedDate: 0 })) })), configured);
+    assert.equal(stale.status, 401, await stale.text());
+
+    const missingOid = createTestChain({ leafOid: false });
+    try {
+      const withoutReceiptOid = await handleRetention(post(JSON.stringify({ signedPayload: signRealtimeRequest(missingOid, requestBody()) })), configured);
+      assert.equal(withoutReceiptOid.status, 401, await withoutReceiptOid.text());
+    } finally {
+      missingOid.cleanup();
+    }
+
+    const fetches: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      fetches.push(url);
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const timed = await handleRetention(new Request("http://127.0.0.1/retention-messaging-api", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-journeydeck-retention-timing": "1" },
+        body: JSON.stringify({ signedPayload: productionPayload })
+      }), configured);
+      assert.equal(fetches.some(url => url.includes("onrender.com")), false);
+      assert.equal(fetches.length, 0);
+      const warmTiming = timed.headers.get("server-timing") || "";
+      const dur = Number(/retention;dur=([0-9.]+)/.exec(warmTiming)?.[1]);
+      const warmCpu = Number(/cpu;dur=([0-9.]+)/.exec(warmTiming)?.[1]);
+      assert.equal(Number.isFinite(dur), true);
+      assert.equal(dur < 10, true, `warm handler wall ${dur} ms`);
+      if (Number.isFinite(warmCpu)) assert.equal(warmCpu < 10, true, `warm handler cpu ${warmCpu} ms`);
+      console.log(`retention warm handler wall ${dur.toFixed(3)} ms${Number.isFinite(warmCpu) ? ` cpu ${warmCpu.toFixed(3)} ms` : ""}`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
 
     const logged = lines.join("\n");
     assert.equal(logged.includes("1000000000000001"), false);
