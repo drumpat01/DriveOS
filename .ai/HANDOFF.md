@@ -18,15 +18,14 @@ Add a JourneyDeck Studio digital products section to `web/terms.html`. Do not me
 
 ## Verification
 
-- Node 24.22.0: `check:server`, `lint:server`, `test:server` (68/68 on rerun; first run failed only the known flaky retention bad-signature assertion, 200 vs 401), `test:e2e` (18/18), local `verify:live --base http://127.0.0.1:8795` (pass, including `page:/terms snippets`).
+- Node 24.22.0 after merging main: `check:server`, `lint:server`, `test:server` (69/69), `test:e2e` (18/18, before the merge), local `verify:live --base http://127.0.0.1:8795` (pass, including `page:/terms snippets`).
 - Screenshots: `/opt/cursor/artifacts/terms-studio-products-390.png` and `terms-studio-products-1280.png`.
+- GitHub CI `validate` passed on `40c8932`: https://github.com/drumpat01/DriveOS/actions/runs/39091581636
 
 ## Unresolved
 
 - Do not merge and do not deploy. Render was not changed.
-- GitHub CI on https://github.com/drumpat01/DriveOS/pull/306 was still pending when this note was written.
 
 ## Next steps
 
-1. Leave the pull request open until the owner merges it.
-2. If GitHub CI fails only on the retention bad-signature test, rerun that job once.
+1. Leave pull request 306 open until the owner merges it.
