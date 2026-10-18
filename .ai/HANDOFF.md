@@ -7,7 +7,7 @@ Draft the one-time post-first-trip Plus card. Do not merge, build, submit, or de
 ## Checkout
 
 - Branch `cursor/post-first-trip-plus-prompt-1783`, based on main `ec46402`.
-- Draft PR URL is recorded after the pull request is opened.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/298
 
 ## Material changes
 
