@@ -38,21 +38,31 @@ function applyRouteHeaders(request: Request, response: Response, route: RouteRow
   });
 }
 
-async function fetchAsset(request: Request, env: SiteEnv, route: RouteRow) {
+function assetRequest(request: Request, pathname: string) {
   const url = new URL(request.url);
-  url.pathname = `/${route.target.replace(/^\/+/, "")}`;
+  url.pathname = pathname;
   url.search = "";
-  const asset = await env.ASSETS.fetch(new Request(url, { method: "GET" }));
+  const headers = new Headers();
+  const validator = request.headers.get("if-none-match");
+  if (validator) headers.set("if-none-match", validator);
+  return new Request(url, { method: "GET", headers });
+}
+
+function assetBody(request: Request, asset: Response, status: number) {
+  if (request.method === "HEAD" || status === 304) return null;
+  return asset.body;
+}
+
+async function fetchAsset(request: Request, env: SiteEnv, route: RouteRow) {
+  const asset = await env.ASSETS.fetch(assetRequest(request, `/${route.target.replace(/^\/+/, "")}`));
   if (asset.status === 404) return asset;
-  return new Response(request.method === "HEAD" ? null : asset.body, { status: asset.status, headers: asset.headers });
+  return new Response(assetBody(request, asset, asset.status), { status: asset.status, headers: asset.headers });
 }
 
 async function fetchNotFound(request: Request, env: SiteEnv) {
-  const url = new URL(request.url);
-  url.pathname = "/404.html";
-  url.search = "";
-  const asset = await env.ASSETS.fetch(new Request(url, { method: "GET" }));
-  return new Response(request.method === "HEAD" ? null : asset.body, { status: 404, headers: asset.headers });
+  const asset = await env.ASSETS.fetch(assetRequest(request, "/404.html"));
+  const status = asset.status === 304 ? 304 : 404;
+  return new Response(assetBody(request, asset, status), { status, headers: asset.headers });
 }
 
 function redirect(route: RouteRow) {
@@ -84,7 +94,7 @@ export default {
         case "status_only":
           return applyRouteHeaders(request, statusOnly(route), route);
         case "native":
-          return applyRouteHeaders(request, await handleRetention(request, retentionSettingsFromEnv(env, appleRoot)), route);
+          return applyRouteHeaders(request, await handleRetention(request, retentionSettingsFromEnv(env, appleRoot, request.headers.get("host") || url.host)), route);
         case "proxy":
           return proxyToRender(request, env.RENDER_ORIGIN || "https://driveos.onrender.com");
         case "none":

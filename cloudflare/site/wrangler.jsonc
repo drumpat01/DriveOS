@@ -7,6 +7,7 @@
   // workers.dev only. Do not add routes, route, custom_domain, or zone entries.
   // The apex stays on Render until a separate cutover approval.
   "workers_dev": true,
+  "preview_urls": false,
   "assets": {
     "directory": "../../web",
     "binding": "ASSETS",
@@ -21,10 +22,14 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
+    // Invocation logs include the request URL. Leave them off, and redact
+    // query strings on traces, so /spotify-callback?code= is never written.
+    // CPU for the retention gate is still measurable.
+    "redact_query_string": true,
     "logs": {
       "enabled": true,
       "head_sampling_rate": 1,
-      "invocation_logs": true
+      "invocation_logs": false
     }
   },
   "vars": {

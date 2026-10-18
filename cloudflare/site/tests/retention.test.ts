@@ -24,7 +24,7 @@ function settings(rootDer: Buffer, environments = "Production,Sandbox", messageI
     JOURNEYDECK_RETENTION_ENVIRONMENTS: environments,
     ALLOW_RETENTION_TEST_ROOT: "true",
     RETENTION_TEST_ROOT_BASE64: rootDer.toString("base64")
-  } satisfies SiteEnv, appleRoot);
+  } satisfies SiteEnv, appleRoot, "127.0.0.1");
 }
 
 function post(body: BodyInit, headers: Record<string, string> = { "content-type": "application/json" }) {
@@ -48,7 +48,25 @@ test("retention settings stay on vars and the wrangler config has no test root",
     ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
     RENDER_ORIGIN: "https://driveos.onrender.com",
     ALLOW_RETENTION_TEST_ROOT: "true"
-  }, appleRoot), /test root/);
+  }, appleRoot, "127.0.0.1"), /test root/);
+});
+
+test("retention test root is honored only on local hosts", () => {
+  const root = Buffer.from("local-retention-test-root");
+  const env = {
+    ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+    RENDER_ORIGIN: "https://driveos.onrender.com",
+    ALLOW_RETENTION_TEST_ROOT: "true",
+    RETENTION_TEST_ROOT_BASE64: root.toString("base64")
+  } satisfies SiteEnv;
+  for (const host of ["127.0.0.1", "127.0.0.1:8787", "localhost", "localhost:8787", "[::1]", "[::1]:8787"]) {
+    const configured = retentionSettingsFromEnv(env, appleRoot, host);
+    assert.equal(Buffer.from(configured.rootCertificates[0]).equals(root), true, host);
+  }
+  for (const host of ["journeydeck.me", "www.journeydeck.me", "journeydeck-site.example.workers.dev", undefined]) {
+    const configured = retentionSettingsFromEnv(env, appleRoot, host);
+    assert.equal(Buffer.from(configured.rootCertificates[0]).equals(Buffer.from(appleRoot)), true, String(host));
+  }
 });
 
 test("Get Retention Message accepts a verified request and rejects invalid ones", async () => {

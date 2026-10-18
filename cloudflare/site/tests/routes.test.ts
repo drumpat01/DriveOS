@@ -9,6 +9,7 @@ const routes = parseRouteList(readFileSync(join(import.meta.dirname, "..", "rout
 
 function walk(directory: string): string[] {
   return readdirSync(directory).flatMap(name => {
+    if (name === ".assetsignore") return [];
     const path = join(directory, name);
     return statSync(path).isDirectory() ? walk(path) : [path];
   });

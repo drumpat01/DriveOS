@@ -29,11 +29,14 @@ export function proxyTarget(requestUrl: URL, origin: URL) {
   return target;
 }
 
+function isDroppedRequestHeader(lower: string) {
+  return HOP_BY_HOP.has(lower) || lower === "host" || STRIPPED_REQUEST_HEADERS.has(lower) || lower.startsWith("cf-") || lower === "cdn-loop" || lower === "x-real-ip";
+}
+
 export function forwardRequestHeaders(request: Request, target: URL) {
   const headers = new Headers();
   request.headers.forEach((value, name) => {
-    const lower = name.toLowerCase();
-    if (HOP_BY_HOP.has(lower) || lower === "host" || STRIPPED_REQUEST_HEADERS.has(lower)) return;
+    if (isDroppedRequestHeader(name.toLowerCase())) return;
     headers.append(name, value);
   });
   const incoming = new URL(request.url);
@@ -42,11 +45,16 @@ export function forwardRequestHeaders(request: Request, target: URL) {
   headers.set("host", target.host);
   headers.set("x-forwarded-proto", incoming.protocol.replace(":", ""));
   headers.set("x-forwarded-host", request.headers.get("host") || incoming.host);
-  // Cloudflare overwrites CF-Connecting-IP with the visitor address. Render
-  // trusts that header only when the TCP peer is a published Cloudflare address.
-  // Workers fetch egress may not be one of those addresses, and Render's
-  // default TRUST_PROXY of 1 then uses the right-most X-Forwarded-For entry.
-  // Appending the visitor address makes that entry the real client.
+  // driveos.onrender.com is behind Cloudflare, so this fetch is cross-zone.
+  // Cloudflare rewrites CF-Connecting-IP to the Worker egress address (for
+  // example 2a06:98c0:3600::103), and Render appends its own X-Forwarded-For
+  // hop. PR #302's one-hop rule therefore selects the Worker address, and
+  // logins likely share one throttle bucket. Spoofing stays blocked. Appending
+  // the inbound CF-Connecting-IP does not change which address that rule picks.
+  // Do not set TRUST_PROXY=2. A request sent straight to Render could then spoof
+  // its IP. The phase 2 fix is a signed header that #302 trusts, using a shared
+  // key (a Worker secret and a Render env var). It needs Patrick's yes and is
+  // not implemented here.
   const clientIp = request.headers.get("cf-connecting-ip");
   if (clientIp) {
     const prior = request.headers.get("x-forwarded-for");

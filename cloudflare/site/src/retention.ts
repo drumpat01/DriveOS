@@ -56,12 +56,25 @@ export function assertAppleRootPin(bytes: Uint8Array) {
   return fingerprint;
 }
 
-export function retentionSettingsFromEnv(env: SiteEnv, appleRoot: Uint8Array): RetentionSettings {
+function isLocalRetentionHost(requestHost: string | undefined) {
+  if (!requestHost) return false;
+  try {
+    let hostname = new URL(`http://${requestHost}`).hostname.toLowerCase();
+    if (hostname.startsWith("[") && hostname.endsWith("]")) hostname = hostname.slice(1, -1);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+export function retentionSettingsFromEnv(env: SiteEnv, appleRoot: Uint8Array, requestHost?: string): RetentionSettings {
   assertAppleRootPin(appleRoot);
   const messageId = env.JOURNEYDECK_RETENTION_MESSAGE_ID || DEFAULT_RETENTION_MESSAGE_ID;
   if (!messageIdPattern.test(messageId)) throw new Error("JOURNEYDECK_RETENTION_MESSAGE_ID must be a UUID.");
   const environments = parseRetentionEnvironments(env.JOURNEYDECK_RETENTION_ENVIRONMENTS);
-  if (env.ALLOW_RETENTION_TEST_ROOT === "true") {
+  // The fixture root is for tests and local wrangler dev. A public host keeps
+  // the pinned Apple root even when the env var is set.
+  if (env.ALLOW_RETENTION_TEST_ROOT === "true" && isLocalRetentionHost(requestHost)) {
     if (!env.RETENTION_TEST_ROOT_BASE64) throw new Error("Retention test root was allowed but not provided.");
     return { bundleId: RETENTION_BUNDLE_ID, appAppleId: RETENTION_APP_APPLE_ID, messageId, environments, rootCertificates: [Buffer.from(env.RETENTION_TEST_ROOT_BASE64, "base64")] };
   }

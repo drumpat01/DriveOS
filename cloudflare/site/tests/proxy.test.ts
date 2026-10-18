@@ -16,6 +16,10 @@ test("proxy strips tailscale and test-auth headers and keeps cookies", async () 
       referer: "https://journeydeck.me/app",
       host: "journeydeck-site.example.workers.dev",
       "cf-connecting-ip": "203.0.113.8",
+      "cf-ray": "ray-id",
+      "cf-visitor": "{\"scheme\":\"https\"}",
+      "cdn-loop": "cloudflare",
+      "x-real-ip": "198.51.100.9",
       "x-forwarded-for": "198.51.100.4",
       "tailscale-user-login": "patrick@example.com",
       "x-journeydeck-test-auth": "wife",
@@ -37,6 +41,11 @@ test("proxy strips tailscale and test-auth headers and keeps cookies", async () 
   assert.ok(forwarded);
   assert.equal(forwarded.get("tailscale-user-login"), null);
   assert.equal(forwarded.get("x-journeydeck-test-auth"), null);
+  assert.equal(forwarded.get("cf-connecting-ip"), null);
+  assert.equal(forwarded.get("cf-ray"), null);
+  assert.equal(forwarded.get("cf-visitor"), null);
+  assert.equal(forwarded.get("cdn-loop"), null);
+  assert.equal(forwarded.get("x-real-ip"), null);
   assert.equal(forwarded.get("cookie"), "DriveOSSession=abc");
   assert.equal(forwarded.get("authorization"), "Bearer recorder");
   assert.equal(forwarded.get("x-driveos-sync-token"), "sync-token");
@@ -56,7 +65,7 @@ test("proxy strips tailscale and test-auth headers and keeps cookies", async () 
   assert.equal(response.headers.get("content-security-policy"), "default-src 'self'");
 });
 
-test("pass-through forwarding gives Render the visitor address", async () => {
+test("forwarding appends the inbound address and drops Cloudflare request headers", async () => {
   async function capture(url: string, headers: Record<string, string>, method = "GET") {
     let sent: Headers | undefined;
     const response = await proxyToRender(new Request(url, { method, headers, body: method === "GET" ? undefined : "{}" }), RENDER_ORIGIN, async (_input, init) => {
@@ -71,14 +80,22 @@ test("pass-through forwarding gives Render the visitor address", async () => {
   const login = await capture("https://journeydeck-site.example.workers.dev/login", {
     host: "journeydeck-site.example.workers.dev",
     "cf-connecting-ip": "203.0.113.8",
+    "cf-ray": "ray-id",
+    "cdn-loop": "cloudflare",
+    "x-real-ip": "198.51.100.9",
     "x-forwarded-for": "192.0.2.1, 198.51.100.4"
   });
   assert.equal(login.get("host"), "driveos.onrender.com");
   assert.equal(login.get("x-forwarded-proto"), "https");
   assert.equal(login.get("x-forwarded-host"), "journeydeck-site.example.workers.dev");
-  assert.equal(login.get("cf-connecting-ip"), "203.0.113.8");
+  // The append records the visitor. Cross-zone Cloudflare still rewrites
+  // CF-Connecting-IP to the Worker egress, and #302's one-hop rule selects
+  // that address. These headers must not be forwarded for the visitor to set.
+  assert.equal(login.get("cf-connecting-ip"), null);
+  assert.equal(login.get("cf-ray"), null);
+  assert.equal(login.get("cdn-loop"), null);
+  assert.equal(login.get("x-real-ip"), null);
   assert.equal(login.get("x-forwarded-for"), "192.0.2.1, 198.51.100.4, 203.0.113.8");
-  assert.equal(login.get("x-forwarded-for")?.split(",").at(-1)?.trim(), "203.0.113.8");
 
   const apiLogin = await capture("https://journeydeck.me/api/auth/login", {
     host: "journeydeck.me",

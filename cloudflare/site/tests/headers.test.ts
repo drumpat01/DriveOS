@@ -48,6 +48,9 @@ test("wrangler config is workers.dev only", () => {
   const source = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   const withoutComments = source.replace(/^\s*\/\/.*$/gm, "");
   assert.match(withoutComments, /"workers_dev":\s*true/);
+  assert.match(withoutComments, /"preview_urls":\s*false/);
+  assert.match(withoutComments, /"invocation_logs":\s*false/);
+  assert.match(withoutComments, /"redact_query_string":\s*true/);
   assert.match(withoutComments, /"html_handling":\s*"none"/);
   assert.match(withoutComments, /"not_found_handling":\s*"none"/);
   assert.match(withoutComments, /"run_worker_first":\s*true/);

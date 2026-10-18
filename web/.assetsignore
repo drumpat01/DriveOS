@@ -1,0 +1,6 @@
+# Backstop for run_worker_first. These files exist in web/ but the route map
+# proxies them. Keep them out of the asset bundle so a missed Worker match
+# cannot serve the app shell, the login page, or the wife dashboard.
+wife.html
+index.html
+login.html

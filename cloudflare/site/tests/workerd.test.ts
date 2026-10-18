@@ -64,6 +64,12 @@ test("workerd serves phase-one assets and measures retention time", async () => 
     assert.equal(terms.status, 200);
     assert.equal(terms.headers.get("cache-control"), "public, max-age=0");
     assert.equal(terms.headers.get("content-type"), "text/html; charset=utf-8");
+    const etag = terms.headers.get("etag");
+    assert.ok(etag);
+    await terms.arrayBuffer();
+    const revalidated = await worker.fetch("https://journeydeck.me/terms", { headers: { "if-none-match": etag } });
+    assert.equal(revalidated.status, 304);
+    assert.equal(await revalidated.text(), "");
 
     const script = await worker.fetch("https://journeydeck.me/app.js");
     assert.equal(script.status, 200);
@@ -88,18 +94,24 @@ test("workerd serves phase-one assets and measures retention time", async () => 
     const startedMs = Date.now();
     for (let index = 0; index < 5; index += 1) {
       const signed = index === 0 ? payload : signRealtimeRequest(chain, requestBody({ requestIdentifier: `warm-${index}` }));
-      const response = await worker.fetch("https://journeydeck.me/retention-messaging-api", {
+      const response = await worker.fetch("http://127.0.0.1/retention-messaging-api", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", host: "127.0.0.1" },
         body: JSON.stringify({ signedPayload: signed })
       });
       assert.equal(response.status, 200, await response.text());
     }
     await new Promise(resolve => setTimeout(resolve, 200));
     const durations = await traceDurations(worker, startedMs);
-    const rejected = await worker.fetch("https://journeydeck.me/retention-messaging-api", {
+    const publicHost = await worker.fetch("https://journeydeck.me/retention-messaging-api", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      body: JSON.stringify({ signedPayload: payload })
+    });
+    assert.equal(publicHost.status, 401, await publicHost.text());
+    const rejected = await worker.fetch("http://127.0.0.1/retention-messaging-api", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1" },
       body: JSON.stringify({ signedPayload: breakSignature(payload) })
     });
     assert.equal(rejected.status, 401, await rejected.text());
@@ -108,10 +120,9 @@ test("workerd serves phase-one assets and measures retention time", async () => 
     const coldMs = durations[0] ?? 0;
     const warmMs = durations.slice(1);
     const warmP95 = percentile(warmMs, 95);
-    // Local workerd traces store span duration, not tail cpuTime. Verification is
-    // CPU-bound, so duration is an upper bound on the CPU time for that request.
+    // Local workerd traces store span wall duration, not CPU and not tail cpuTime.
     const report = {
-      unit: "workerd span duration_ms (upper bound on CPU)",
+      unit: "workerd span duration_ms (wall time, not CPU)",
       coldMs,
       warmMs,
       warmP95Ms: warmP95,
