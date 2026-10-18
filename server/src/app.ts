@@ -81,8 +81,24 @@ function publicCacheControl(cacheClass: PublicCacheClass) {
   }
 }
 
+const webSessionPaths = new Set(["/app", "/wife", "/spotify-callback"]);
+
+function decodeRequestPath(url: string) {
+  const pathname = url.split("?")[0] || "/";
+  try { return decodeURI(pathname); } catch { return pathname; }
+}
+
+function requiresWebSession(requestPath: string) {
+  if (webSessionPaths.has(requestPath)) return true;
+  // @fastify/static decodes the URL before it serves wife.html, and the router does the same for /wife.
+  const decoded = decodeRequestPath(requestPath);
+  return decoded === "/wife" || decoded === "/wife.html";
+}
+
 function shouldSendRobotsTag(pathname: string, mode: string) {
   if (pathname === "/login" || pathname === "/login.html") return true;
+  const decoded = decodeRequestPath(pathname);
+  if (decoded === "/wife" || decoded === "/wife.html") return true;
   return mode === "web" && (pathname === "/index.html" || pathname === "/app" || pathname === "/spotify-callback");
 }
 
@@ -183,7 +199,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     if (isRetentionMessagingPath(requestPath)) return;
     if (requestPath === "/" && cfg.mode === "web") return;
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
-    if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/") && !["/app", "/wife", "/spotify-callback"].includes(requestPath)) return;
+    if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/") && !requiresWebSession(requestPath)) return;
     if (requestPath === scheduledSyncPath) {
       if (!authenticateScheduledSync(req, cfg.scheduledSyncSecret)) return reply.code(401).send({ error: "Scheduled sync authentication failed." });
       return;

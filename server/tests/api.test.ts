@@ -355,6 +355,9 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(googleRobotsAllowed(robots.body, "/app"), false);
     assert.equal(googleRobotsAllowed(robots.body, "/app/x"), false);
     assert.equal(googleRobotsAllowed(robots.body, "/api/x"), false);
+    assert.equal(googleRobotsAllowed(robots.body, "/wife"), false);
+    assert.equal(googleRobotsAllowed(robots.body, "/wife.html"), false);
+    assert.equal(googleRobotsAllowed(robots.body, "/wife/extra"), false);
     const catalog = await runtime.app.inject({ method: "GET", url: "/.well-known/api-catalog" });
     assert.equal(catalog.statusCode, 200, catalog.body);
     assert.match(String(catalog.headers["content-type"]), /^application\/linkset\+json/i);
@@ -383,6 +386,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/tesla-drive-journal<\/loc>/i);
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
     assert.doesNotMatch(sitemap.body, /google8e611381b21882a8/i);
+    assert.doesNotMatch(sitemap.body, /wife/i);
     const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
     assert.equal(googleVerification.statusCode, 200, googleVerification.body);
     assert.equal(googleVerification.body.replace(/\r?\n$/, ""), "google-site-verification: google8e611381b21882a8.html");
@@ -559,6 +563,48 @@ test("hosted root serves the Grand Touring launch page while private routes stay
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
+test("wife.html uses the same session gate and robots tag as /wife", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
+  const wifePageUrls = ["/wife.html", "/wife%2ehtml", "/wife%2Ehtml", "/%77ife.html", "/%77ife", "/wife.html?v=1"];
+  const untouchedUrls = ["/Wife.html", "/WIFE.HTML", "/wife.html/", "/wife/"];
+  try {
+    const wife = await runtime.app.inject({ method: "GET", url: "/wife" });
+    assert.equal(wife.statusCode, 302, wife.body);
+    assert.equal(wife.headers.location, "/login");
+    assert.equal(wife.headers["x-robots-tag"], "noindex, nofollow");
+    for (const url of wifePageUrls) {
+      for (const method of ["GET", "HEAD"] as const) {
+        const response = await runtime.app.inject({ method, url });
+        const baseline = await runtime.app.inject({ method, url: "/wife" });
+        assert.equal(response.statusCode, baseline.statusCode, `${method} ${url}`);
+        assert.equal(response.headers.location, baseline.headers.location, `${method} ${url}`);
+        assert.equal(response.headers["x-robots-tag"], baseline.headers["x-robots-tag"], `${method} ${url}`);
+        assert.equal(response.body.includes("Wife Mode"), false, `${method} ${url}`);
+      }
+    }
+    for (const url of untouchedUrls) {
+      const response = await runtime.app.inject({ method: "GET", url });
+      assert.notEqual(response.statusCode, 200, url);
+      assert.equal(response.body.includes("Wife Mode"), false, url);
+    }
+    const authenticatedWife = await runtime.app.inject({ method: "GET", url: "/wife", headers: auth });
+    const authenticatedHtml = await runtime.app.inject({ method: "GET", url: "/wife.html", headers: auth });
+    const authenticatedEncoded = await runtime.app.inject({ method: "GET", url: "/wife%2ehtml", headers: auth });
+    const authenticatedWifeRole = await runtime.app.inject({ method: "GET", url: "/wife.html", headers: { "x-journeydeck-test-auth": "wife" } });
+    assert.equal(authenticatedWife.statusCode, 200, authenticatedWife.body);
+    assert.equal(authenticatedHtml.statusCode, 200, authenticatedHtml.body);
+    assert.equal(authenticatedHtml.body, authenticatedWife.body);
+    assert.equal(authenticatedEncoded.statusCode, 200, authenticatedEncoded.body);
+    assert.equal(authenticatedEncoded.body, authenticatedWife.body);
+    assert.equal(authenticatedWifeRole.statusCode, 200, authenticatedWifeRole.body);
+    assert.match(authenticatedHtml.body, /<title>Wife Mode · JourneyDeck<\/title>/);
+    assert.match(String(authenticatedHtml.headers["content-type"]), /text\/html/);
+    assert.equal(authenticatedHtml.headers["x-robots-tag"], "noindex, nofollow");
+    assert.equal(authenticatedWife.headers["x-robots-tag"], "noindex, nofollow");
+    assert.equal(authenticatedEncoded.headers["x-robots-tag"], "noindex, nofollow");
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
 test("public marketing pages expose one title, description, canonical, Open Graph tags, and valid JSON-LD", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   const pages = [
@@ -681,6 +727,14 @@ test("desktop root continues to serve only the authenticated private app", async
     const authenticated = await runtime.app.inject({ method: "GET", url: "/", headers: auth });
     assert.equal(authenticated.statusCode, 200, authenticated.body);
     assert.match(authenticated.body, /JourneyDeck/i);
+    const wife = await runtime.app.inject({ method: "GET", url: "/wife" });
+    const wifeHtml = await runtime.app.inject({ method: "GET", url: "/wife.html" });
+    assert.equal(wife.statusCode, 302);
+    assert.equal(wife.headers.location, "/login");
+    assert.equal(wifeHtml.statusCode, wife.statusCode);
+    assert.equal(wifeHtml.headers.location, wife.headers.location);
+    assert.equal(wife.headers["x-robots-tag"], "noindex, nofollow");
+    assert.equal(wifeHtml.headers["x-robots-tag"], "noindex, nofollow");
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 

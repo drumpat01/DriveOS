@@ -11,6 +11,7 @@ import {
   evaluateLoginUmami,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
+  evaluateUnauthenticatedPage,
   evaluateRedirect,
   extractAppStoreHrefs,
   formatHumanReport,
@@ -320,6 +321,15 @@ async function run() {
       for (const check of evaluateNotFoundAppStore(missing.text, expectations, missing.status)) {
         recordCheck(check);
       }
+    }
+
+    for (const page of expectations.unauthenticatedPages) {
+      const response = await fetchResource(page.path);
+      if (response.error) {
+        recordCheck(makeCheck(`unauthenticated:${page.path}`, false, { error: response.error, status: response.status, location: response.location }));
+        continue;
+      }
+      recordCheck(evaluateUnauthenticatedPage(response.status, response.location, page));
     }
 
     for (const redirect of expectations.redirects) {

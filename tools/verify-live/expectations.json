@@ -16,6 +16,13 @@
     "/privacy",
     "/terms"
   ],
+  "unauthenticatedPages": [
+    {
+      "path": "/wife.html",
+      "status": 302,
+      "location": "/login"
+    }
+  ],
   "redirects": [
     {
       "path": "/homeworld",

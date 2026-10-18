@@ -2,34 +2,37 @@
 
 ## Current objective
 
-Rebase the approved first-trip Plus card onto main after the Tessie settings copy merged. Mark the pull request ready for review. Do not build, submit, or deploy.
+Put `/wife.html` behind the same login that already protects `/wife`. Open a draft pull request. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/post-first-trip-plus-prompt-1783`, rebased onto main `b9c4031`.
-- PR: https://github.com/drumpat01/DriveOS/pull/298. Ready for review.
+- Branch `cursor/wife-html-auth-460d`, based on main `102a13b`.
+- Draft pull request is created at the end of this change. Do not merge it.
 
 ## Material changes
 
-- Onboarding still says Settings › Music & Connections, from #300.
-- Title: Nice drive. That one’s saved.
-- Trial body uses the StoreKit day count and a curly apostrophe in you’re.
-- No-trial body: Your first 3 trips get everything in Plus, this one included. Plus keeps the Atlas, complete history and Ask JourneyDeck going after that.
-- Close is labeled Close. The backdrop is hidden from accessibility. The title caps text growth at 1.4.
-- The flag still defaults off.
+- In web mode, the existing session hook now treats a decoded `/wife` or `/wife.html` path the same as literal `/wife`. That covers `/wife.html` and percent-encoded aliases such as `/wife%2ehtml`, `/%77ife.html`, and `/%77ife`.
+- Literal `/wife` still returns 302 to `/login` when unauthenticated. Wife page responses, including that redirect, now send `X-Robots-Tag: noindex, nofollow`.
+- `web/robots.txt` already disallows `/wife`, which covers `/wife.html`. `web/sitemap.xml` does not list the page.
+- `tools/verify-live/expectations.json` asserts unauthenticated `/wife.html` is 302 to `/login`.
 
 ## Verification
 
-- `npm run typecheck` in `mobile/recorder` passed.
-- `tests/first-trip-prompt.test.mts`: 8 passed.
-- Full `npm test`: 1054 passed, 2 failed, 1 skipped. The failures are the Atlas Evening/Night timezone case and the missing `Migration 3 -- Phase 3.5` string. The skip is the absent shader golden frames.
+- Node `v24.22.0`.
+- `npm run check:server` passed.
+- `npm run lint:server` passed.
+- `npm run test:server`: 69 passed.
+- `npm run test:e2e`: 18 passed.
+- Local web server on `http://127.0.0.1:8795`. Unauthenticated `curl` of `/wife.html` and `/wife` both returned `302`, `location: /login`, and `x-robots-tag: noindex, nofollow`.
+- `npm run verify:live -- --base http://127.0.0.1:8795` passed, including `unauthenticated:/wife.html`.
 
 ## Unresolved
 
-- No EAS build, submit, OTA, App Store Connect, or RevenueCat change.
-- The flag stays off until a build profile sets `JOURNEYDECK_POST_FIRST_TRIP_PROMPT=on`.
+- Do not merge and do not deploy. Render and Cloudflare were not changed.
+- Production `npm run verify:live` will fail `unauthenticated:/wife.html` until this commit is deployed.
+- Other public `.html` bypasses were found and left unchanged. See the pull request body.
 
 ## Next steps
 
-1. Merge https://github.com/drumpat01/DriveOS/pull/298 when GitHub shows it mergeable.
-2. Before turning the flag on, capture the next TestFlight build on iPhone: dark and light at 375 and 320, large text, and the no-trial version.
+1. Leave the draft pull request open until the owner merges it.
+2. After deploy, `curl -sI https://journeydeck.me/wife.html` should match `curl -sI https://journeydeck.me/wife`: `302` and `location: /login`.
