@@ -74,6 +74,13 @@ export function loadExpectations(filePath = DEFAULT_EXPECTATIONS_PATH) {
 export function validateExpectations(raw) {
   if (!raw || typeof raw !== "object") throw new Error("expectations.json must be an object");
   if (!Array.isArray(raw.publicPages) || raw.publicPages.length === 0) throw new Error("expectations.publicPages must be a non-empty array");
+  if (!Array.isArray(raw.unauthenticatedPages)) throw new Error("expectations.unauthenticatedPages must be an array");
+  for (const page of raw.unauthenticatedPages) {
+    if (!page || typeof page !== "object") throw new Error("expectations.unauthenticatedPages entries must be objects");
+    if (typeof page.path !== "string" || !page.path.startsWith("/")) throw new Error("expectations.unauthenticatedPages path must start with /");
+    if (page.status !== 302) throw new Error("expectations.unauthenticatedPages status must be 302");
+    if (typeof page.location !== "string" || !page.location.startsWith("/")) throw new Error("expectations.unauthenticatedPages location must be a path");
+  }
   if (!Array.isArray(raw.redirects)) throw new Error("expectations.redirects must be an array");
   for (const redirect of raw.redirects) {
     if (!redirect || typeof redirect !== "object") throw new Error("expectations.redirects entries must be objects");
@@ -446,6 +453,15 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
   }
   return checks;
+}
+
+export function evaluateUnauthenticatedPage(statusCode, location, page) {
+  return makeCheck(`unauthenticated:${page.path}`, statusCode === page.status && location === page.location, {
+    status: statusCode,
+    location,
+    expectedStatus: page.status,
+    expectedLocation: page.location
+  });
 }
 
 export function evaluateRedirect(statusCode, location, redirect) {

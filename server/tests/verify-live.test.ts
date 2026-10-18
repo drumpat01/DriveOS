@@ -15,6 +15,7 @@ import {
   evaluateLoginUmami,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
+  evaluateUnauthenticatedPage,
   evaluateRedirect,
   evaluateUmamiScripts,
   extractAppStoreHrefs,
@@ -72,6 +73,12 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/privacy",
     "/terms"
   ]);
+  assert.deepEqual(expectations.unauthenticatedPages, [
+    { path: "/wife.html", status: 302, location: "/login" }
+  ]);
+  assert.equal(evaluateUnauthenticatedPage(302, "/login", expectations.unauthenticatedPages[0]).pass, true);
+  assert.equal(evaluateUnauthenticatedPage(200, null, expectations.unauthenticatedPages[0]).pass, false);
+  assert.throws(() => validateExpectations({ ...expectations, unauthenticatedPages: [{ path: "/wife.html", status: 200, location: "/login" }] }), /unauthenticatedPages status/);
   assert.deepEqual(expectations.redirects, [
     { path: "/homeworld", status: 301, location: "https://studio.journeydeck.me/homeworld" },
     { path: "/homeworld/", status: 301, location: "https://studio.journeydeck.me/homeworld" }
@@ -335,6 +342,11 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
     const missing = await runtime.app.inject({ method: "GET", url: expectations.appStore.notFoundPath });
     const missingChecks = evaluateNotFoundAppStore(missing.body, expectations, missing.statusCode);
     assert.ok(missingChecks.every((check) => check.pass), missingChecks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; "));
+    for (const page of expectations.unauthenticatedPages) {
+      const response = await runtime.app.inject({ method: "GET", url: page.path });
+      const check = evaluateUnauthenticatedPage(response.statusCode, response.headers.location ?? null, page);
+      assert.equal(check.pass, true, `${page.path} ${JSON.stringify(check.observed)}`);
+    }
     const login = await runtime.app.inject({ method: "GET", url: expectations.loginPath });
     const loginChecks = evaluateLoginUmami(login.body, expectations, login.statusCode);
     assert.ok(loginChecks.every((check) => check.pass), loginChecks.filter((check) => !check.pass).map((check) => check.name).join(","));

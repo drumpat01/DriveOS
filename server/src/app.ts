@@ -81,8 +81,29 @@ function publicCacheControl(cacheClass: PublicCacheClass) {
   }
 }
 
+const webSessionPaths = new Set(["/app", "/wife", "/spotify-callback"]);
+
+function decodeRequestPath(url: string) {
+  const pathname = url.split("?")[0] || "/";
+  try { return decodeURI(pathname); } catch { return pathname; }
+}
+
+function isWifePagePath(url: string) {
+  const decoded = decodeRequestPath(url);
+  const stripped = decoded.length > 1 ? decoded.replace(/\/+$/, "") : decoded;
+  const normalized = stripped.toLowerCase();
+  return normalized === "/wife" || normalized === "/wife.html";
+}
+
+function requiresWebSession(requestPath: string) {
+  if (webSessionPaths.has(requestPath)) return true;
+  // @fastify/static decodes the URL, then a case-insensitive filesystem can serve wife.html for /Wife.html.
+  return isWifePagePath(requestPath);
+}
+
 function shouldSendRobotsTag(pathname: string, mode: string) {
   if (pathname === "/login" || pathname === "/login.html") return true;
+  if (isWifePagePath(pathname)) return true;
   return mode === "web" && (pathname === "/index.html" || pathname === "/app" || pathname === "/spotify-callback");
 }
 
@@ -183,7 +204,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     if (isRetentionMessagingPath(requestPath)) return;
     if (requestPath === "/" && cfg.mode === "web") return;
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
-    if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/") && !["/app", "/wife", "/spotify-callback"].includes(requestPath)) return;
+    if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/") && !requiresWebSession(requestPath)) return;
     if (requestPath === scheduledSyncPath) {
       if (!authenticateScheduledSync(req, cfg.scheduledSyncSecret)) return reply.code(401).send({ error: "Scheduled sync authentication failed." });
       return;

@@ -94,6 +94,13 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - `/homeworld` and `/homeworld/` return 301 to `https://studio.journeydeck.me/homeworld`.
 - Checks: `redirect:/homeworld`, `redirect:/homeworld/`.
 
+## Unauthenticated private pages
+
+- Owner: the web-mode session hook in `server/src/app.ts`. `GET /wife` already requires a session. The same hook now requires a session for `web/wife.html`, including a percent-encoded path that `@fastify/static` decodes to `/wife.html` or `/wife`.
+- An unauthenticated request uses the existing login redirect: HTTP 302 and `Location: /login`. The CLI reads `expectations.unauthenticatedPages` and fetches each path without following the redirect.
+- `web/robots.txt` already disallows `/wife`, which also covers `/wife.html`. `web/sitemap.xml` does not list the page.
+- Checks: `unauthenticated:/wife.html`.
+
 ## Readyz
 
 - Owner: `GET /readyz` in `server/src/app.ts`, snapshot fields from `AtlasStore.status()` in `server/src/atlas-store.ts`.
