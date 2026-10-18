@@ -6,7 +6,7 @@ Keep draft PR #299 open. The Tesla page layout stacks the replay text above the 
 
 ## Checkout
 
-- Branch `cursor/tesla-journal-landing-e036`, rebased onto main `74e897b` (#304).
+- Branch `cursor/tesla-journal-landing-e036`, rebased onto main `e490f0f` (#304 and #306).
 - Draft PR: https://github.com/drumpat01/DriveOS/pull/299
 
 ## Material changes
@@ -14,7 +14,7 @@ Keep draft PR #299 open. The Tesla page layout stacks the replay text above the 
 - `.soundtrack-proof--pair` is one column above 700px. The text is at most 560px wide. The phones stay side by side, each at most 300px, top-aligned, with a 32px row gap.
 - The line under the hero lede has class `tesla-aside` and 14px of top margin.
 - Mobile under 701px is unchanged.
-- Rebase conflicts were `.ai/HANDOFF.md`, `expectations.json`, and `lib.mjs`. Both the Tesla page checks and the removed Soundtrack image checks are kept. The Tesla page, CSS, and screenshots match the previous tip.
+- Rebase conflicts were `.ai/HANDOFF.md` and `expectations.json`. Tesla page checks stay next to the removed Soundtrack image checks and the Studio terms snippets. The Tesla page, CSS, and screenshots match the previous tip.
 
 ## Verification
 
@@ -22,7 +22,7 @@ Keep draft PR #299 open. The Tesla page layout stacks the replay text above the 
 - Text width is 560px from 701px up. At 390 it is 316px. At 360 it is 286px, which is the full card width, and the heading does not overflow.
 - `npm run check:server` and `npm run lint:server` passed.
 - `npm run test:server`: 69 passed. `npm run test:e2e`: 19 passed.
-- Local `verify:live` against `http://127.0.0.1:8792`: 220 checks, 0 failed, including the removed Soundtrack URLs, `unauthenticated:/wife.html`, `redirect:/homeworld`, and the Tesla page.
+- Local `verify:live` against `http://127.0.0.1:8792`: 221 checks, 0 failed, including the Studio terms snippets, the removed Soundtrack URLs, `unauthenticated:/wife.html`, `redirect:/homeworld`, and the Tesla page.
 - Lighthouse mobile, from the layout pass: performance 99, LCP 2.0 s, accessibility 100, best practices 100, SEO 92.
 
 ## Unresolved
