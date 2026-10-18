@@ -7,7 +7,7 @@ The journeydeck-site Worker answers `/healthz` and `/readyz` itself so they do n
 ## Checkout
 
 - Branch `cursor/site-worker-health-e458`, based on main `1e6a219` (#311).
-- Draft PR: open this branch. Do not merge.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/312. Do not merge.
 
 ## Material changes
 
@@ -30,6 +30,6 @@ The journeydeck-site Worker answers `/healthz` and `/readyz` itself so they do n
 
 ## Next steps
 
-1. Review the draft PR for this branch. Do not merge it as a deploy.
+1. Review https://github.com/drumpat01/DriveOS/pull/312. Do not merge it as a deploy.
 2. After approval, from a machine with permission: `npm run predeploy:site`, then `npx wrangler deploy --config cloudflare/site/wrangler.jsonc`.
 3. Curl the workers.dev origin: `/healthz` and `/readyz` are 200 JSON with no Render headers; `/` `/privacy` `/support` are 200; one #311 route is still 410.
