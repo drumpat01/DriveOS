@@ -33,7 +33,6 @@
     }
   },
   "vars": {
-    "RENDER_ORIGIN": "https://driveos.onrender.com",
     "JOURNEYDECK_RETENTION_MESSAGE_ID": "7f3c1a92-4e58-4b0d-8c6a-1d2e3f4a5b6c",
     "JOURNEYDECK_RETENTION_ENVIRONMENTS": "Production,Sandbox"
   }

@@ -4,7 +4,6 @@ export interface AssetsBinding {
 
 export interface SiteEnv {
   ASSETS: AssetsBinding;
-  RENDER_ORIGIN: string;
   JOURNEYDECK_RETENTION_MESSAGE_ID?: string;
   JOURNEYDECK_RETENTION_ENVIRONMENTS?: string;
   // Local fixture runs only (localhost, 127.0.0.1, ::1). Never set these in wrangler.jsonc.

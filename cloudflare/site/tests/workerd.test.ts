@@ -18,6 +18,7 @@ test("workerd serves phase-one assets", async () => {
     const homeHtml = await home.text();
     assert.equal(home.status, 200);
     assert.match(homeHtml, /JourneyDeck: Take the road\. Keep the story\./);
+    assert.match(homeHtml, /href="\/login"/);
     assert.equal(homeHtml.includes("<title>JourneyDeck</title>"), false);
     assert.equal(home.headers.get("cache-control"), "public, max-age=0");
     assert.equal(home.headers.get("cache-control")?.includes("must-revalidate"), false);
@@ -87,7 +88,6 @@ test("workerd retention answers without calling Render and stays inside the Appl
     logLevel: "error",
     inspectorPort: 0,
     vars: {
-      RENDER_ORIGIN: origin.url,
       JOURNEYDECK_RETENTION_MESSAGE_ID: DEFAULT_RETENTION_MESSAGE_ID,
       JOURNEYDECK_RETENTION_ENVIRONMENTS: "Production,Sandbox",
       ALLOW_RETENTION_TEST_ROOT: "true",
@@ -147,9 +147,19 @@ test("workerd retention answers without calling Render and stays inside the Appl
     assert.equal(wrongMethod.headers.get("allow"), "POST");
     assert.equal(hits.some(hit => hit.includes("retention-messaging")), false);
 
-    const proxied = await worker.fetch("http://127.0.0.1/readyz");
-    assert.equal(proxied.status, 200);
-    assert.equal(hits.some(hit => hit.startsWith("GET /readyz")), true);
+    const ready = await worker.fetch("http://127.0.0.1/readyz");
+    assert.equal(ready.status, 200);
+    assert.equal(ready.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await ready.json(), { ok: true, service: "journeydeck-site" });
+    const healthHead = await worker.fetch("http://127.0.0.1/healthz", { method: "HEAD" });
+    assert.equal(healthHead.status, 200);
+    assert.equal(healthHead.headers.get("cache-control"), "no-store");
+    assert.equal(await healthHead.text(), "");
+    const healthPost = await worker.fetch("http://127.0.0.1/healthz", { method: "POST", body: "{}" });
+    assert.equal(healthPost.status, 405);
+    assert.equal(healthPost.headers.get("allow"), "GET, HEAD");
+    await healthPost.arrayBuffer();
+    assert.equal(hits.some(hit => hit.includes("healthz") || hit.includes("readyz") || hit.includes("onrender")), false);
 
     const beforeRetired = hits.length;
     const api = await worker.fetch("http://127.0.0.1/api/anything", { method: "POST", body: "{}" });
