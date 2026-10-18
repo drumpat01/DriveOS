@@ -15,7 +15,7 @@ import {
   evaluateLoginUmami,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
-  evaluateUnauthenticatedPage,
+  evaluateRetiredPage,
   evaluateRedirect,
   evaluateRemovedPublicImages,
   evaluateSamplePublicImages,
@@ -38,6 +38,8 @@ import {
 } from "../../tools/verify-live/lib.mjs";
 
 const expectations = loadExpectations();
+const RETIRED_HTML = `<!doctype html><html><head><meta name="robots" content="noindex"><title>The old web app has been retired · JourneyDeck</title></head><body><h1>The old web app has been retired.</h1></body></html>`;
+const RETIRED_HEADERS = { robots: "noindex", cacheControl: "no-store" };
 const APP_STORE = expectations.appStore.baseUrl;
 const CAMPAIGN_QUERY = `pt=${expectations.appStore.providerToken}&ct=${expectations.campaign.expectedCt}&mt=${expectations.appStore.mediaType}`;
 
@@ -75,12 +77,19 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/privacy",
     "/terms"
   ]);
-  assert.deepEqual(expectations.unauthenticatedPages, [
-    { path: "/wife.html", status: 302, location: "/login" }
-  ]);
-  assert.equal(evaluateUnauthenticatedPage(302, "/login", expectations.unauthenticatedPages[0]).pass, true);
-  assert.equal(evaluateUnauthenticatedPage(200, null, expectations.unauthenticatedPages[0]).pass, false);
-  assert.throws(() => validateExpectations({ ...expectations, unauthenticatedPages: [{ path: "/wife.html", status: 200, location: "/login" }] }), /unauthenticatedPages status/);
+  assert.deepEqual(expectations.retiredPages, {
+    status: 410,
+    robots: "noindex",
+    cacheControl: "no-store",
+    phrase: "The old web app has been retired",
+    paths: ["/app", "/wife", "/wife.html", "/index.html", "/spotify-callback", "/login.html", "/login"]
+  });
+  assert.equal(evaluateRetiredPage(RETIRED_HTML, "/wife.html", expectations.retiredPages, 410, RETIRED_HEADERS).pass, true);
+  assert.equal(evaluateRetiredPage(RETIRED_HTML, "/wife.html", expectations.retiredPages, 302, RETIRED_HEADERS).pass, false);
+  assert.equal(evaluateRetiredPage(RETIRED_HTML, "/wife.html", expectations.retiredPages, 410, { robots: "noindex, nofollow", cacheControl: "no-store" }).pass, false);
+  assert.equal(evaluateRetiredPage("<html><head><meta name=\"robots\" content=\"noindex\"></head></html>", "/app", expectations.retiredPages, 410, RETIRED_HEADERS).pass, false);
+  assert.throws(() => validateExpectations({ ...expectations, retiredPages: { ...expectations.retiredPages, status: 302 } }), /retiredPages status/);
+  assert.throws(() => validateExpectations({ ...expectations, retiredPages: { ...expectations.retiredPages, paths: ["/"] } }), /public page/);
   assert.deepEqual(expectations.redirects, [
     { path: "/homeworld", status: 301, location: "https://studio.journeydeck.me/homeworld" },
     { path: "/homeworld/", status: 301, location: "https://studio.journeydeck.me/homeworld" }
@@ -361,10 +370,15 @@ test("Umami matching counts every cloud.umami.is script, not only exact src matc
   const umamiCheck = extra.find((check) => check.name === "page:/ umami");
   assert.equal(umamiCheck?.pass, false);
   assert.equal((umamiCheck?.observed as { count: number }).count, 2);
-  const loginWrong = evaluateLoginUmami(`<html><head>${wrongId}</head></html>`, expectations, 200);
+  const loginWrong = evaluateLoginUmami(`<html><head><meta name="robots" content="noindex">${wrongId}</head><body>The old web app has been retired.</body></html>`, expectations, 410, RETIRED_HEADERS);
   assert.equal(loginWrong.find((check) => check.name === "page:/login umami")?.pass, false);
-  const loginClean = evaluateLoginUmami("<html><head><title>Sign In</title></head></html>", expectations, 200);
+  const loginClean = evaluateLoginUmami(RETIRED_HTML, expectations, 410, RETIRED_HEADERS);
+  assert.equal(loginClean.find((check) => check.name === "page:/login status")?.pass, true);
+  assert.equal(loginClean.find((check) => check.name === "page:/login noindex")?.pass, true);
   assert.equal(loginClean.find((check) => check.name === "page:/login umami")?.pass, true);
+  const loginLoaded = evaluateLoginUmami(RETIRED_HTML, expectations, 200, RETIRED_HEADERS);
+  assert.equal(loginLoaded.find((check) => check.name === "page:/login status")?.pass, false);
+  assert.equal(loginLoaded.find((check) => check.name === "page:/login umami")?.pass, true);
 });
 
 test("check runner records thrown browser steps as FAIL and keeps running", async () => {
@@ -416,14 +430,6 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
     const missing = await runtime.app.inject({ method: "GET", url: expectations.appStore.notFoundPath });
     const missingChecks = evaluateNotFoundAppStore(missing.body, expectations, missing.statusCode);
     assert.ok(missingChecks.every((check) => check.pass), missingChecks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; "));
-    for (const page of expectations.unauthenticatedPages) {
-      const response = await runtime.app.inject({ method: "GET", url: page.path });
-      const check = evaluateUnauthenticatedPage(response.statusCode, response.headers.location ?? null, page);
-      assert.equal(check.pass, true, `${page.path} ${JSON.stringify(check.observed)}`);
-    }
-    const login = await runtime.app.inject({ method: "GET", url: expectations.loginPath });
-    const loginChecks = evaluateLoginUmami(login.body, expectations, login.statusCode);
-    assert.ok(loginChecks.every((check) => check.pass), loginChecks.filter((check) => !check.pass).map((check) => check.name).join(","));
     const ready = await runtime.app.inject({ method: "GET", url: "/readyz" });
     assert.equal(ready.statusCode, 200);
     const body = JSON.parse(ready.body) as { ok?: boolean; atlas?: { generatedAtUtc?: string | null } };

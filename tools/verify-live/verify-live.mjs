@@ -11,7 +11,7 @@ import {
   evaluateLoginUmami,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
-  evaluateUnauthenticatedPage,
+  evaluateRetiredPage,
   evaluateRedirect,
   evaluateRemovedPublicImages,
   evaluateSamplePublicImages,
@@ -62,6 +62,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       url,
       status: response.status,
       location: response.headers.get("location"),
+      robots: response.headers.get("x-robots-tag"),
       text,
       cacheControl: response.headers.get("cache-control"),
       contentType: response.headers.get("content-type"),
@@ -72,6 +73,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       url,
       status: 0,
       location: null,
+      robots: null,
       text: "",
       cacheControl: null,
       contentType: null,
@@ -359,13 +361,24 @@ async function run() {
       }
     }
 
-    for (const page of expectations.unauthenticatedPages) {
-      const response = await fetchResource(page.path);
-      if (response.error) {
-        recordCheck(makeCheck(`unauthenticated:${page.path}`, false, { error: response.error, status: response.status, location: response.location }));
+    for (const path of expectations.retiredPages.paths) {
+      const response = await fetchResource(path);
+      const headers = { robots: response.robots, cacheControl: response.cacheControl };
+      if (path === expectations.loginPath) {
+        if (response.error) {
+          recordCheck(makeCheck(`page:${path} status`, false, { error: response.error, status: response.status }));
+          continue;
+        }
+        for (const check of evaluateLoginUmami(response.text, expectations, response.status, headers)) {
+          recordCheck(check);
+        }
         continue;
       }
-      recordCheck(evaluateUnauthenticatedPage(response.status, response.location, page));
+      if (response.error) {
+        recordCheck(makeCheck(`retired:${path}`, false, { error: response.error, status: response.status }));
+        continue;
+      }
+      recordCheck(evaluateRetiredPage(response.text, path, expectations.retiredPages, response.status, headers));
     }
 
     for (const redirect of expectations.redirects) {
@@ -375,15 +388,6 @@ async function run() {
         continue;
       }
       recordCheck(evaluateRedirect(page.status, page.location, redirect));
-    }
-
-    const login = await fetchResource(expectations.loginPath);
-    if (login.error) {
-      recordCheck(makeCheck(`page:${expectations.loginPath} status`, false, { error: login.error, status: login.status }));
-    } else {
-      for (const check of evaluateLoginUmami(login.text, expectations, login.status)) {
-        recordCheck(check);
-      }
     }
 
     await runBrowserChecks(servedHomeHrefs);

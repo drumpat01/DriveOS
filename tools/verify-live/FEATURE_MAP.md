@@ -35,13 +35,13 @@ Public HTML is served by `server/src/app.ts` in web mode. The public route allow
 | `/support` | `web/support.html` | `page:/support status`, `page:/support title`, `page:/support meta-description`, `page:/support canonical`, `page:/support og:title`, `page:/support og:description`, `page:/support og:url`, `page:/support og:image`, `page:/support json-ld`, `page:/support umami`, `page:/support trial-wording`, `page:/support pricing` |
 | `/privacy` | `web/privacy.html` | `page:/privacy status`, `page:/privacy title`, `page:/privacy meta-description`, `page:/privacy canonical`, `page:/privacy og:title`, `page:/privacy og:description`, `page:/privacy og:url`, `page:/privacy og:image`, `page:/privacy json-ld`, `page:/privacy umami`, `page:/privacy trial-wording`, `page:/privacy pricing` |
 | `/terms` | `web/terms.html` | `page:/terms status`, `page:/terms title`, `page:/terms meta-description`, `page:/terms canonical`, `page:/terms og:title`, `page:/terms og:description`, `page:/terms og:url`, `page:/terms og:image`, `page:/terms json-ld`, `page:/terms umami`, `page:/terms trial-wording`, `page:/terms pricing`, `page:/terms snippets` |
-| `/login` | `web/login.html` | `page:/login status`, `page:/login umami` |
+| `/login` | `cloudflare/site/src/retired.ts` | `page:/login status`, `page:/login noindex`, `page:/login umami` |
 
 JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/private-driving-journal.html`, `web/road-trip-journal-app.html`, `web/road-trip-tracker-app.html`, `web/travel-journal-app-with-photos.html`, `web/driving-history-app.html`, `web/route-66-road-trip-journal.html`, `web/pacific-coast-highway-road-trip-journal.html`, `web/national-parks-road-trip-journal.html`, `web/texas-hill-country-road-trip-journal.html`, `web/tesla-drive-journal.html`, `web/support.html`, `web/privacy.html`, and `web/terms.html`. Every `application/ld+json` block that is present must parse. Plus pricing is an `Offer`.
 
 ## Umami tag
 
-- Owner: the public HTML files above. Login must stay untagged (`web/login.html`).
+- Owner: the public HTML files above. `/login` is the retired notice from `cloudflare/site/src/retired.ts`, and that page must stay untagged.
 - The CLI counts every `<script>` whose `src` host is `cloud.umami.is`, including query-string variants. It does not ignore a second tag just because the website id differs.
 - Public pages: exactly one such tag, and that tag must have website id `a5f66e11-ec7d-4133-8e1a-f8e6c08593af` and `data-domains="journeydeck.me"`.
 - `/login`: zero `cloud.umami.is` scripts of any kind.
@@ -115,12 +115,13 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - `/homeworld` and `/homeworld/` return 301 to `https://studio.journeydeck.me/homeworld`.
 - Checks: `redirect:/homeworld`, `redirect:/homeworld/`.
 
-## Unauthenticated private pages
+## Retired web app
 
-- Owner: the web-mode session hook in `server/src/app.ts`. `GET /wife` already requires a session. The same hook now requires a session for `web/wife.html`, including a percent-encoded path that `@fastify/static` decodes to `/wife.html` or `/wife`.
-- An unauthenticated request uses the existing login redirect: HTTP 302 and `Location: /login`. The CLI reads `expectations.unauthenticatedPages` and fetches each path without following the redirect.
-- `web/robots.txt` already disallows `/wife`, which also covers `/wife.html`. `web/sitemap.xml` does not list the page.
-- Checks: `unauthenticated:/wife.html`.
+- Owner: `cloudflare/site/src/retired.ts`. The site Worker answers these paths itself. Live `GET /login` is HTTP 410, `Content-Type: text/html; charset=utf-8`, `Cache-Control: no-store`, and `X-Robots-Tag: noindex`.
+- `expectations.retiredPages.paths` lists `/app`, `/wife`, `/wife.html`, `/index.html`, `/spotify-callback`, `/login.html`, and `/login`. Each response is the same HTML notice. `/` is the homepage and is not one of these paths.
+- Status is 410. `X-Robots-Tag` and the robots meta are `noindex`. `Cache-Control` is `no-store`. The body contains `The old web app has been retired`.
+- `/login` still serves that HTML page, so it must contain zero `cloud.umami.is` scripts. The other retired paths use one combined check.
+- Checks: `retired:<path>` for each retired path other than `/login`. `/login` checks are `page:/login status`, `page:/login noindex`, and `page:/login umami`.
 
 ## Readyz
 

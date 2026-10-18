@@ -16,13 +16,21 @@
     "/privacy",
     "/terms"
   ],
-  "unauthenticatedPages": [
-    {
-      "path": "/wife.html",
-      "status": 302,
-      "location": "/login"
-    }
-  ],
+  "retiredPages": {
+    "status": 410,
+    "robots": "noindex",
+    "cacheControl": "no-store",
+    "phrase": "The old web app has been retired",
+    "paths": [
+      "/app",
+      "/wife",
+      "/wife.html",
+      "/index.html",
+      "/spotify-callback",
+      "/login.html",
+      "/login"
+    ]
+  },
   "redirects": [
     {
       "path": "/homeworld",

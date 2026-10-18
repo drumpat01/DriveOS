@@ -74,12 +74,19 @@ export function loadExpectations(filePath = DEFAULT_EXPECTATIONS_PATH) {
 export function validateExpectations(raw) {
   if (!raw || typeof raw !== "object") throw new Error("expectations.json must be an object");
   if (!Array.isArray(raw.publicPages) || raw.publicPages.length === 0) throw new Error("expectations.publicPages must be a non-empty array");
-  if (!Array.isArray(raw.unauthenticatedPages)) throw new Error("expectations.unauthenticatedPages must be an array");
-  for (const page of raw.unauthenticatedPages) {
-    if (!page || typeof page !== "object") throw new Error("expectations.unauthenticatedPages entries must be objects");
-    if (typeof page.path !== "string" || !page.path.startsWith("/")) throw new Error("expectations.unauthenticatedPages path must start with /");
-    if (page.status !== 302) throw new Error("expectations.unauthenticatedPages status must be 302");
-    if (typeof page.location !== "string" || !page.location.startsWith("/")) throw new Error("expectations.unauthenticatedPages location must be a path");
+  const retired = raw.retiredPages;
+  if (!retired || typeof retired !== "object" || Array.isArray(retired)) throw new Error("expectations.retiredPages must be an object");
+  if (retired.status !== 410) throw new Error("expectations.retiredPages status must be 410");
+  if (retired.robots !== "noindex") throw new Error("expectations.retiredPages robots must be noindex");
+  if (retired.cacheControl !== "no-store") throw new Error("expectations.retiredPages cacheControl must be no-store");
+  if (typeof retired.phrase !== "string" || !retired.phrase.trim()) throw new Error("expectations.retiredPages phrase is required");
+  if (!Array.isArray(retired.paths) || retired.paths.length === 0) throw new Error("expectations.retiredPages.paths must be a non-empty array");
+  const retiredPaths = new Set();
+  for (const path of retired.paths) {
+    if (typeof path !== "string" || !path.startsWith("/")) throw new Error("expectations.retiredPages.paths entries must start with /");
+    if (retiredPaths.has(path)) throw new Error(`expectations.retiredPages.paths duplicates ${path}`);
+    retiredPaths.add(path);
+    if (raw.publicPages.includes(path)) throw new Error(`expectations.retiredPages path ${path} is a public page`);
   }
   if (!Array.isArray(raw.redirects)) throw new Error("expectations.redirects must be an array");
   for (const redirect of raw.redirects) {
@@ -89,6 +96,7 @@ export function validateExpectations(raw) {
     if (typeof redirect.location !== "string" || !/^https:\/\/[^/\s]+\/.+/.test(redirect.location)) throw new Error("expectations.redirects location must be an https URL");
   }
   if (typeof raw.loginPath !== "string" || !raw.loginPath.startsWith("/")) throw new Error("expectations.loginPath must be a path");
+  if (!retiredPaths.has(raw.loginPath)) throw new Error("expectations.retiredPages.paths must include loginPath");
   if (typeof raw.canonicalOrigin !== "string") throw new Error("expectations.canonicalOrigin is required");
   if (!raw.umami?.scriptSrc || !raw.umami?.websiteId || !raw.umami?.dataDomains) throw new Error("expectations.umami is incomplete");
   if (!Array.isArray(raw.forbiddenTrialPhrases) || raw.forbiddenTrialPhrases.length === 0) throw new Error("expectations.forbiddenTrialPhrases must be a non-empty array");
@@ -564,13 +572,38 @@ export function evaluateSamplePublicImages(expectations, pages, assets) {
   return checks;
 }
 
-export function evaluateUnauthenticatedPage(statusCode, location, page) {
-  return makeCheck(`unauthenticated:${page.path}`, statusCode === page.status && location === page.location, {
-    status: statusCode,
-    location,
-    expectedStatus: page.status,
-    expectedLocation: page.location
-  });
+export function inspectRetiredPage(html, spec, statusCode, headers = {}) {
+  const robots = headers.robots == null ? null : String(headers.robots);
+  const cacheControl = headers.cacheControl == null ? null : String(headers.cacheControl);
+  const meta = extractNamedMetas(String(html || ""), "robots");
+  const metaRobots = meta.value;
+  const expectedRobots = String(spec.robots).toLowerCase();
+  const headerNoindex = robots != null && robots.trim().toLowerCase() === expectedRobots;
+  const metaNoindex = meta.count === 1 && String(metaRobots || "").trim().toLowerCase() === expectedRobots;
+  const cacheOk = cacheControl != null && cacheControl.trim().toLowerCase() === String(spec.cacheControl).toLowerCase();
+  const phraseOk = String(html || "").includes(spec.phrase);
+  const statusOk = statusCode === spec.status;
+  return {
+    statusOk,
+    noindex: headerNoindex && metaNoindex,
+    cacheOk,
+    phraseOk,
+    pass: statusOk && headerNoindex && metaNoindex && cacheOk && phraseOk,
+    observed: {
+      status: statusCode,
+      expectedStatus: spec.status,
+      robots,
+      metaRobots,
+      cacheControl,
+      expectedCacheControl: spec.cacheControl,
+      phrase: phraseOk
+    }
+  };
+}
+
+export function evaluateRetiredPage(html, path, spec, statusCode, headers = {}) {
+  const inspected = inspectRetiredPage(html, spec, statusCode, headers);
+  return makeCheck(`retired:${path}`, inspected.pass, inspected.observed);
 }
 
 export function evaluateRedirect(statusCode, location, redirect) {
@@ -593,10 +626,12 @@ export function evaluateNotFoundAppStore(html, expectations, statusCode) {
   ];
 }
 
-export function evaluateLoginUmami(html, expectations, statusCode) {
+export function evaluateLoginUmami(html, expectations, statusCode, headers = {}) {
+  const inspected = inspectRetiredPage(html, expectations.retiredPages, statusCode, headers);
   const umami = evaluateUmamiScripts(findUmamiScripts(html, expectations), expectations, { requireOne: false });
   return [
-    makeCheck(`page:${expectations.loginPath} status`, statusCode === 200, statusCode),
+    makeCheck(`page:${expectations.loginPath} status`, inspected.statusOk, statusCode),
+    makeCheck(`page:${expectations.loginPath} noindex`, inspected.noindex && inspected.cacheOk && inspected.phraseOk, inspected.observed),
     makeCheck(`page:${expectations.loginPath} umami`, umami.pass, umami.observed)
   ];
 }

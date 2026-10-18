@@ -2,34 +2,29 @@
 
 ## Current objective
 
-The journeydeck-site Worker answers `/healthz` and `/readyz` itself so they do not 5xx when Render is suspended. Draft PR only. Do not deploy, do not merge, and do not run wrangler against the real account.
+Make `verify:live` expect the retired web app to return HTTP 410. Do not merge. Do not change site or Worker code.
 
 ## Checkout
 
-- Branch `cursor/site-worker-health-e458`, based on main `1e6a219` (#311).
-- Draft PR: https://github.com/drumpat01/DriveOS/pull/312. Do not merge.
+- Branch `cursor/verify-live-retired-410-dd91`, based on main `48178cb` (#312).
+- Live `GET https://journeydeck.me/login` is HTTP 410, `text/html; charset=utf-8`, `Cache-Control: no-store`, `X-Robots-Tag: noindex`. The body is the retirement notice and has no Umami tag.
 
 ## Material changes
 
-- GET and HEAD `/healthz` and `/readyz`: 200 JSON `{"ok":true,"service":"journeydeck-site"}`, `Cache-Control: no-store`. No fetch to Render. HEAD has an empty body.
-- Other methods on those two paths: 405 JSON `{"error":"Method not allowed."}`, `Allow: GET, HEAD`, `Cache-Control: no-store`.
-- `proxy.ts` and `RENDER_ORIGIN` are removed. No route proxies to Render. Legacy `R084` `GET /healthz` stays `worker_action` `none` and does not match.
-- `/`, static pages, `/retention-messaging-api`, the #311 410 routes, and the footer `/login` link are unchanged.
-- `wrangler.jsonc` is still `workers_dev` only. No routes, DNS, or secrets.
+- `expectations.retiredPages` covers `/app`, `/wife`, `/wife.html`, `/index.html`, `/spotify-callback`, `/login.html`, and `/login`.
+- Each path must be 410, with `X-Robots-Tag: noindex`, a robots meta of `noindex`, `Cache-Control: no-store`, and the phrase `The old web app has been retired`.
+- `/login` keeps `page:/login status`, `page:/login noindex`, and `page:/login umami` (zero `cloud.umami.is` scripts).
+- Public-page, pricing, redirect, image, CSP, and `/readyz` checks are unchanged. Live `/readyz` is `{"ok":true,"service":"journeydeck-site"}`; the existing check still requires HTTP 200 and `ok: true`.
 
 ## Verification
 
-- `npm run check:site` passed.
-- `npm run test:site`: 26 passed, including the health routes, the no-onrender sweep, and the workerd retention test.
-- Local Node was v22.14.0 (`npm ci` warned the package wants Node >= 24). CI runs Node 24. `npm test` does not run `test:site`.
+- `npm run test:server`: 79 passed, 0 failed.
+- `npm run verify:live -- --base https://journeydeck.me`: 232 passed, 0 failed. Exit 0.
 
 ## Unresolved
 
-- No deploy. The apex stays on Render until a separate cutover.
-- `verify:live` still reads the Node server's `/readyz` (`generatedAtUtc`) and expects `/login` to be HTTP 200. Those checks are the server, not this Worker.
+- Do not merge this PR.
 
 ## Next steps
 
-1. Review https://github.com/drumpat01/DriveOS/pull/312. Do not merge it as a deploy.
-2. After approval, from a machine with permission: `npm run predeploy:site`, then `npx wrangler deploy --config cloudflare/site/wrangler.jsonc`.
-3. Curl the workers.dev origin: `/healthz` and `/readyz` are 200 JSON with no Render headers; `/` `/privacy` `/support` are 200; one #311 route is still 410.
+1. Wait for CI on the verify:live PR. Rebase onto main if it moves. Do not merge.
