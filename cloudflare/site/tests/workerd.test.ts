@@ -1,44 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import { unstable_dev, type Unstable_DevWorker } from "wrangler";
-import { breakSignature, createTestChain, requestBody, signRealtimeRequest } from "./chain.ts";
+import { unstable_dev } from "wrangler";
 
-const freeCpuLimitMs = 10;
-
-function percentile(values: number[], p: number) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
-  return sorted[index] ?? 0;
-}
-
-async function traceDurations(worker: Unstable_DevWorker, startedMs: number) {
-  const response = await fetch(`http://${worker.address}:${worker.port}/cdn-cgi/local/explorer/api/local/observability/query`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      sql: `SELECT duration_ms, start_ms FROM spans WHERE service = 'journeydeck-site' AND name = 'POST' AND parent_id IS NULL AND start_ms >= ${startedMs} ORDER BY start_ms ASC`
-    })
-  });
-  const body = await response.json() as { result?: { rows?: unknown[][] } };
-  return (body.result?.rows ?? []).map(row => Number(row[0])).filter(value => Number.isFinite(value));
-}
-
-test("workerd serves phase-one assets and measures retention time", async () => {
-  const chain = createTestChain();
-  const persistTo = mkdtempSync(join(tmpdir(), "journeydeck-site-dev-"));
+test("workerd serves phase-one assets", async () => {
   const worker = await unstable_dev(new URL("../src/index.ts", import.meta.url).pathname, {
     config: new URL("../wrangler.jsonc", import.meta.url).pathname,
     local: true,
     logLevel: "error",
     inspectorPort: 0,
-    persistTo,
-    vars: {
-      ALLOW_RETENTION_TEST_ROOT: "true",
-      RETENTION_TEST_ROOT_BASE64: chain.rootDer.toString("base64")
-    },
     experimental: { disableExperimentalWarning: true, disableDevRegistry: true }
   });
   try {
@@ -89,53 +58,7 @@ test("workerd serves phase-one assets and measures retention time", async () => 
     assert.equal(journal.status, 301);
     assert.equal(journal.headers.get("location"), "/private-driving-journal");
     assert.equal(journal.headers.get("content-type"), null);
-
-    const payload = signRealtimeRequest(chain, requestBody());
-    const startedMs = Date.now();
-    for (let index = 0; index < 5; index += 1) {
-      const signed = index === 0 ? payload : signRealtimeRequest(chain, requestBody({ requestIdentifier: `warm-${index}` }));
-      const response = await worker.fetch("http://127.0.0.1/retention-messaging-api", {
-        method: "POST",
-        headers: { "content-type": "application/json", host: "127.0.0.1" },
-        body: JSON.stringify({ signedPayload: signed })
-      });
-      assert.equal(response.status, 200, await response.text());
-    }
-    await new Promise(resolve => setTimeout(resolve, 200));
-    const durations = await traceDurations(worker, startedMs);
-    const publicHost = await worker.fetch("https://journeydeck.me/retention-messaging-api", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ signedPayload: payload })
-    });
-    assert.equal(publicHost.status, 401, await publicHost.text());
-    const rejected = await worker.fetch("http://127.0.0.1/retention-messaging-api", {
-      method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1" },
-      body: JSON.stringify({ signedPayload: breakSignature(payload) })
-    });
-    assert.equal(rejected.status, 401, await rejected.text());
-
-    assert.ok(durations.length >= 2, `expected retention span durations, saw ${JSON.stringify(durations)}`);
-    const coldMs = durations[0] ?? 0;
-    const warmMs = durations.slice(1);
-    const warmP95 = percentile(warmMs, 95);
-    // Local workerd traces store span wall duration, not CPU and not tail cpuTime.
-    const report = {
-      unit: "workerd span duration_ms (wall time, not CPU)",
-      coldMs,
-      warmMs,
-      warmP95Ms: warmP95,
-      freeLimitMs: freeCpuLimitMs,
-      coldExceedsFree: coldMs > freeCpuLimitMs,
-      warmP95ExceedsFree: warmP95 > freeCpuLimitMs,
-      sampleCount: durations.length
-    };
-    console.log(`PHASE0_CPU ${JSON.stringify(report)}`);
-    assert.equal(Number.isFinite(coldMs), true);
   } finally {
     await worker.stop();
-    chain.cleanup();
-    rmSync(persistTo, { recursive: true, force: true });
   }
 });

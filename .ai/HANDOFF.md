@@ -2,7 +2,7 @@
 
 ## Current objective
 
-Phase-one `journeydeck-site` Worker: serve public files from `web/`, answer retention natively, and proxy everything else to Render. Draft PR only. Do not deploy.
+Phase-one `journeydeck-site` Worker: serve public files from `web/` and proxy everything else, including Apple retention, to Render. Draft PR only. Do not deploy.
 
 ## Checkout
 
@@ -20,20 +20,19 @@ Phase-one `journeydeck-site` Worker: serve public files from `web/`, answer rete
 - `ALLOW_RETENTION_TEST_ROOT` is honored only for `localhost`, `127.0.0.1`, and `::1`.
 - `.gitattributes` forces LF. `npm run predeploy:site` fails if a deleted `web/` file would be published or a text asset contains CR. `web/index.html` and `web/service-worker.js` were stored with CRLF and are LF now.
 - `/wife.html` is a 302 to `/login` without a session (#301).
+- R029–R032 proxy `/retention-messaging-api` to Render. The Apple library cold start uses about 70 ms of CPU, over the Workers Free 10 ms limit.
 
 ## Verification
 
 - `npx tsc -p cloudflare/site/tsconfig.json --noEmit` passed.
-- `npm run test:site`: 24 passed. `npm run predeploy:site` passed.
-- Retention workerd span `duration_ms` is wall time, not CPU. This run: cold 26 ms, warm 3/4/3/4 ms, warm p95 4 ms.
-- Route rows versus the pre-rebase map: removed `GET /assets/v2/soundtrack.jpg`, `GET /assets/v2/soundtrack.webp`, and `GET /assets/v4/05-soundtrack.webp`. `GET /wife.html` is now 302 with `noindex`. Totals are 429 rows (312 worker, 110 passthrough, 7 dead, 369 probes).
+- `npm run test:site`: 24 passed. `npm run predeploy:site` passed on the previous commit.
+- Totals are 429 rows (308 worker, 114 passthrough, 7 dead, 369 probes). R029–R032 are `proxy`.
 
 ## Unresolved
 
 - No deploy. Login and passkeys stay known-fail on `workers.dev` (origin check and WebAuthn RP ID).
 - Cutover blocker: Render logs the real visitor IP for /login through the Worker.
 - Phase 2 fix for that blocker, not implemented: a signed header that #302 trusts, using a shared key. That needs a Worker secret, a Render env var, and Patrick's yes. Do not use `TRUST_PROXY=2`.
-- Retention rows R029–R032: before cutover, measure CPU in workers.dev observability. If it is over 10 ms, either move to Workers Paid (spending, so Patrick decides) or set those rows to proxy.
 - Phase 2 cutover needs a separate yes. www stays on Render until the apex is stable.
 - A real Apple-signed retention payload is still untested. The test root is not in `wrangler.jsonc`.
 
@@ -41,4 +40,4 @@ Phase-one `journeydeck-site` Worker: serve public files from `web/`, answer rete
 
 1. Review the draft PR. Do not merge it as a deploy.
 2. From a machine with approval: `npm run predeploy:site`, then `npx wrangler deploy --config cloudflare/site/wrangler.jsonc`.
-3. Re-run parity against the workers.dev URL. Confirm the login IP blocker and the retention CPU gate before any route cutover.
+3. Re-run parity against the workers.dev URL. Confirm the login IP blocker before any route cutover.
