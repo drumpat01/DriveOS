@@ -72,19 +72,22 @@ test('the prompt waits until recording, saving, the completion moment, and other
 test('trial copy uses StoreKit intro days and skips the trial when the user is not eligible', () => {
   const trial = firstTripPromptCopy(7);
   assert.equal(trial.kicker, 'FIRST TRIP SAVED');
-  assert.equal(trial.title, 'Nice drive. Your first journey is in.');
-  assert.equal(trial.body, 'Plus is unlocked for your first 3 trips. Start a 7-day free trial to keep the Atlas, full history and Ask JourneyDeck after that.');
+  assert.equal(trial.title, "Nice drive. That one's saved.");
+  assert.equal(trial.body, "Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a 7-day free trial whenever you're ready.");
   assert.equal(trial.primary, 'See Plus');
   assert.equal(trial.secondary, 'Not now');
-  assert.equal(firstTripPromptCopy(1).body, 'Plus is unlocked for your first 3 trips. Start a 1-day free trial to keep the Atlas, full history and Ask JourneyDeck after that.');
+  assert.equal(firstTripPromptCopy(1).body, "Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a 1-day free trial whenever you're ready.");
   const ineligible = firstTripPromptCopy(null);
-  assert.equal(ineligible.body, 'Keep Plus after your first 3 trips.');
+  assert.equal(ineligible.title, trial.title);
+  assert.equal(ineligible.body, 'Your first 3 trips get everything in Plus, this one included. Plus keeps the Atlas, complete history and Ask JourneyDeck going after that.');
   assert.equal(firstTripPromptCopy(0).body, ineligible.body);
   assert.doesNotMatch(ineligible.body, /trial/i);
   for (const copy of [trial, firstTripPromptCopy(1), ineligible]) {
     for (const value of Object.values(copy)) {
       assert.equal(value.includes('\u2013'), false);
       assert.equal(value.includes('\u2014'), false);
+      assert.equal(/unlock/i.test(value), false);
+      assert.equal(value.includes('$'), false);
     }
   }
 });
@@ -184,5 +187,9 @@ test('the shell shows the card once, opens the existing paywall, and the recorde
   assert.match(shell, /onRecorderIdle=\{setRecorderIdle\}/);
   assert.match(app, /firstTripPromptReadyToPresent/);
   assert.match(card, /copy\.primary/);
+  assert.match(card, /accessibilityLabel="Close"/);
+  assert.match(card, /accessible=\{false\}/);
+  assert.match(card, /maxFontSizeMultiplier=\{1\.4\}/);
+  assert.doesNotMatch(card, /accessibilityLabel="Not now"/);
   assert.doesNotMatch(`${card}\n${prompt}\n${store}`, /\u2013|\u2014/);
 });

@@ -2,7 +2,7 @@
 
 ## Current objective
 
-Draft the one-time post-first-trip Plus card. Do not merge, build, submit, or deploy.
+Revise the post-first-trip Plus card copy and accessibility. Keep the draft pull request open. Do not merge, build, submit, or deploy.
 
 ## Checkout
 
@@ -11,19 +11,18 @@ Draft the one-time post-first-trip Plus card. Do not merge, build, submit, or de
 
 ## Material changes
 
-- Flag `postFirstTripPlusPrompt` is on only when `JOURNEYDECK_POST_FIRST_TRIP_PROMPT=on`. It defaults off in every variant.
-- `shouldShowFirstTripPrompt` allows the card only for a counted 0 to 1 drive, with the flag on, tier free, Plus not unlocked, not already shown, and not the demo profile.
-- The card waits until recording, finishing, saving, the saved-journey moment, and other sheets are gone.
-- See Plus opens the existing StoreKit paywall. Not now dismisses it. A private preference records that it was shown.
-- Trial copy uses StoreKit `introTrialDays`. If Apple reports no eligible trial, the body does not mention a trial.
-- Drives 1 to 3 stay free. The trip-summary paywall still starts after drive 3.
+- Trial body: Your first 3 trips get everything in Plus, this one included. Want to keep the Atlas, complete history and Ask JourneyDeck after that? Plus starts with a StoreKit day-count free trial whenever you're ready.
+- No-trial body: Your first 3 trips get everything in Plus, this one included. Plus keeps the Atlas, complete history and Ask JourneyDeck going after that.
+- Title: Nice drive. That one's saved.
+- The close control is labeled Close. The backdrop is hidden from accessibility. Not now stays on the text button. The title caps text growth at 1.4.
+- Who sees the card, the button order, and the paywall are unchanged. The flag still defaults off.
 
 ## Verification
 
 - `npm run typecheck` in `mobile/recorder` passed.
 - `tests/first-trip-prompt.test.mts`: 8 passed.
-- Full `npm test`: 1055 passed, 2 failed outside this change. Atlas insights expect Evening while this environment reads the `-05:00` fixture as Night. `private-content` looks for `Migration 3 -- Phase 3.5` in `local-store.ts`, which is not in this tree.
-- No iOS simulator here. Light and dark web renders of the card are attached to the PR.
+- Full `npm test`: 1054 passed, 2 failed, 1 skipped. The failures are the existing Atlas Evening/Night timezone case and the missing `Migration 3 -- Phase 3.5` string. The skip is the absent shader golden frames.
+- No iOS simulator. Dark and light web renders at 375pt and 320pt are on the pull request.
 
 ## Unresolved
 

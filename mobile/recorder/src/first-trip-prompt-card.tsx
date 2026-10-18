@@ -26,7 +26,7 @@ export function FirstTripPlusPrompt({ visible, trialDays, onSeePlus, onDismiss }
 
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss} statusBarTranslucent>
     <View style={[styles.overlay, wide && styles.overlayWide, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 12) }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={onDismiss} style={styles.backdrop} />
+      <Pressable accessible={false} importantForAccessibility="no" onPress={onDismiss} style={styles.backdrop} />
       <View
         accessibilityViewIsModal
         testID="first-trip-plus-prompt"
@@ -39,9 +39,9 @@ export function FirstTripPlusPrompt({ visible, trialDays, onSeePlus, onDismiss }
         <View style={styles.header}>
           <View style={styles.heading}>
             <Text style={[styles.kicker, { color: colors.textSecondary }]}>{copy.kicker}</Text>
-            <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{copy.title}</Text>
+            <Text accessibilityRole="header" maxFontSizeMultiplier={1.4} style={[styles.title, { color: colors.text }]}>{copy.title}</Text>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Not now" hitSlop={8} onPress={onDismiss} style={styles.close}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} onPress={onDismiss} style={styles.close}>
             <SymbolView name="xmark" tintColor={colors.text} size={18} weight="semibold" />
           </Pressable>
         </View>
