@@ -119,6 +119,13 @@ test('Studio nav link is gold until the existing hover and focus styles apply', 
   }
 });
 
+test('public footers omit the login link', async ({ page }) => {
+  for (const path of ['/beta.html', '/support.html', '/privacy.html', '/terms.html', '/tesla-drive-journal.html', '/apple-music-soundtrack.html', '/road-trip-journal-app.html', '/landing.html', '/404.html']) {
+    await page.goto(path);
+    await expect(page.locator('footer a[href="/login"]'), path).toHaveCount(0);
+  }
+});
+
 test('homepage footer centers the Launch Llama badge at 390 and 1280', async ({ page }) => {
   for (const { width, height } of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize({ width, height });
@@ -134,8 +141,7 @@ test('homepage footer centers the Launch Llama badge at 390 and 1280', async ({ 
     await expect(studioTemplates).toHaveCount(1);
     await expect(studioTemplates).toHaveAttribute('href', 'https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink');
     await expect(studioTemplates).not.toHaveAttribute('target', /.+/);
-    await expect(page.locator('footer a[href="/login"]')).toHaveCount(1);
-    await expect(page.locator('footer a[href="/login"]')).toHaveText('Sign in');
+    await expect(page.locator('footer a[href="/login"]')).toHaveCount(0);
   }
 });
 

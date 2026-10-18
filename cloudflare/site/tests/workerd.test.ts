@@ -18,7 +18,8 @@ test("workerd serves phase-one assets", async () => {
     const homeHtml = await home.text();
     assert.equal(home.status, 200);
     assert.match(homeHtml, /JourneyDeck: Take the road\. Keep the story\./);
-    assert.match(homeHtml, /href="\/login"/);
+    assert.match(homeHtml, /href="https:\/\/studio\.journeydeck\.me\/\?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink"/);
+    assert.equal(homeHtml.includes('href="/login"'), false);
     assert.equal(homeHtml.includes("<title>JourneyDeck</title>"), false);
     assert.equal(home.headers.get("cache-control"), "public, max-age=0");
     assert.equal(home.headers.get("cache-control")?.includes("must-revalidate"), false);

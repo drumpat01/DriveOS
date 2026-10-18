@@ -458,11 +458,11 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /width="200" height="52"/);
     assert.match(landing.body, /href="https:\/\/launchmcp\.co\/\?utm_source=badge&utm_medium=referral"/);
     assert.match(landing.body, />Launch MCP<\/a>/);
-    assert.match(landing.body, /<a href="\/login">Sign in<\/a>/);
+    assert.doesNotMatch(landing.body, /<a href="\/login">Sign in<\/a>/);
     assert.match(landing.body, /<a href="https:\/\/studio\.journeydeck\.me\/\?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">From the studio: Road Trip templates<\/a>/);
     assert.match(landing.body, /rel="canonical" href="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /property="og:url" content="https:\/\/journeydeck\.me\/"/);
-    assert.match(landing.body, /href="\/login"/i);
+    assert.doesNotMatch(landing.body, /href="\/login"/i);
     assert.match(landing.body, /href="#medallions"/);
     assert.match(landing.body, /href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /class="feature-cta" href="\/apple-music-soundtrack"/);

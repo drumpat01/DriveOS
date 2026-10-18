@@ -186,6 +186,19 @@ export function validateExpectations(raw) {
   if (!termsSnippets.includes('id="studio-products"') || !termsSnippets.some((snippet) => snippet.includes("7 days of purchase"))) {
     throw new Error('expectations.pageSnippets./terms must include id="studio-products" and the 7-day refund line');
   }
+  const footerLinks = raw.footerLinks;
+  if (
+    !footerLinks
+    || typeof footerLinks !== "object"
+    || Array.isArray(footerLinks)
+    || footerLinks.forbiddenHref !== "/login"
+    || typeof footerLinks.homeStudioHref !== "string"
+    || !footerLinks.homeStudioHref.startsWith("https://studio.journeydeck.me/")
+    || typeof footerLinks.homeStudioText !== "string"
+    || !footerLinks.homeStudioText.trim()
+  ) {
+    throw new Error("expectations.footerLinks is incomplete");
+  }
   return raw;
 }
 
@@ -492,6 +505,30 @@ export function classifyConsoleError(text, blockedUrls = []) {
   return { fail: false, label: "ignored" };
 }
 
+export function footerHtml(html) {
+  return html.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/i)?.[0] ?? "";
+}
+
+export function evaluateFooterLinks(html, pathname, expectations) {
+  const footer = footerHtml(html);
+  const spec = expectations.footerLinks;
+  const forbidden = new RegExp(`href\\s*=\\s*["']${escapeRegExp(spec.forbiddenHref)}["']`, "i");
+  const loginPresent = forbidden.test(footer);
+  const checks = [
+    makeCheck(`page:${pathname} no-footer-login`, !loginPresent, { present: loginPresent })
+  ];
+  if (pathname === "/") {
+    const anchor = `<a href="${spec.homeStudioHref}">${spec.homeStudioText}</a>`;
+    const present = footer.includes(anchor);
+    checks.push(makeCheck(`page:${pathname} studio-link`, present, {
+      href: spec.homeStudioHref,
+      text: spec.homeStudioText,
+      present
+    }));
+  }
+  return checks;
+}
+
 export function evaluateLaunchBadge(html, expectations) {
   const badge = expectations.launchBadge;
   const footer = html.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/i)?.[0] ?? "";
@@ -557,6 +594,7 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     const badge = evaluateLaunchBadge(html, expectations);
     checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
   }
+  checks.push(...evaluateFooterLinks(html, pathname, expectations));
   if (pageCopy?.headline) {
     const headline = extractFirstHeading(html);
     checks.push(makeCheck(
