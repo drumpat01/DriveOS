@@ -73,7 +73,7 @@
       "/pacific-coast-highway-road-trip-journal": "journal",
       "/national-parks-road-trip-journal": "journal",
       "/texas-hill-country-road-trip-journal": "journal",
-      "/tesla-drive-journal": "tesla",
+      "/tesla-drive-journal": "tesla_page",
       "/support": "site",
       "/privacy": "site",
       "/terms": "site",
@@ -133,6 +133,39 @@
       "id=\"studio-products\"",
       "within 7 days of purchase and I’ll refund you."
     ]
+  },
+  "pages": {
+    "/tesla-drive-journal": {
+      "headline": "The trip, later",
+      "requiredPricingPhrases": [
+        "JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers"
+      ],
+      "requiredPhrases": [
+        "automatic drive and charging history with Tessie, a Plus feature",
+        "for new subscribers",
+        "last 30 days",
+        "One tap or Siri",
+        "Music &amp; Connections",
+        "Generate Access Token",
+        "Tessie access token",
+        "A trip replay in JourneyDeck"
+      ],
+      "forbiddenPhrases": [
+        "3-day",
+        "0.99",
+        "2.99",
+        "24.99",
+        "per week",
+        "weekly",
+        "monthly",
+        "$39.99/year",
+        "CarPlay",
+        "Bluetooth",
+        "motion trigger",
+        "the car records",
+        "navigation app"
+      ]
+    }
   },
   "launchBadge": {
     "productHref": "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral",

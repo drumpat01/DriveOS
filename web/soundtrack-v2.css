@@ -4,6 +4,7 @@
 .soundtrack-proof figure { margin:0; text-align:center; }
 .soundtrack-proof img { display:block; width:min(100%,300px); height:auto; margin:auto; border:1px solid #d4b15a55; border-radius:10px; box-shadow:0 22px 55px #0007; }
 .soundtrack-proof figcaption { margin-top:12px; color:#aeb9c7; font-size:12px; }
+.soundtrack-shots { display:grid; gap:28px; justify-items:center; }
 .soundtrack-steps { grid-column:1/-1; }
 .soundtrack-step-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px; }
 .soundtrack-step-grid span { color:#d4b15a; font-size:13px; font-weight:700; letter-spacing:.12em; }

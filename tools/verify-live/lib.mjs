@@ -112,6 +112,22 @@ export function validateExpectations(raw) {
   if (!removed || !Array.isArray(removed.urls) || removed.urls.length === 0) throw new Error("expectations.removedPublicImages.urls is required");
   if (!Array.isArray(removed.pages) || removed.pages.length === 0) throw new Error("expectations.removedPublicImages.pages is required");
   if (!Array.isArray(removed.forbidden) || removed.forbidden.length === 0) throw new Error("expectations.removedPublicImages.forbidden is required");
+  if (raw.pages != null) {
+    if (typeof raw.pages !== "object" || Array.isArray(raw.pages)) throw new Error("expectations.pages must be an object");
+    for (const [pathname, page] of Object.entries(raw.pages)) {
+      if (!raw.publicPages.includes(pathname)) throw new Error(`expectations.pages[${pathname}] is not a public page`);
+      if (!page || typeof page !== "object") throw new Error(`expectations.pages[${pathname}] must be an object`);
+      if (page.headline != null && (typeof page.headline !== "string" || !page.headline.trim())) {
+        throw new Error(`expectations.pages[${pathname}].headline must be text`);
+      }
+      for (const key of ["requiredPricingPhrases", "requiredPhrases", "forbiddenPhrases"]) {
+        if (page[key] == null) continue;
+        if (!Array.isArray(page[key]) || page[key].some((phrase) => typeof phrase !== "string" || !phrase.trim())) {
+          throw new Error(`expectations.pages[${pathname}].${key} must be an array of phrases`);
+        }
+      }
+    }
+  }
   if (
     !raw.launchBadge?.productHref
     || !raw.launchBadge?.imageSrc
@@ -380,7 +396,17 @@ export function headlineMatches(text, headline) {
 }
 
 export function normalizeHeadline(text) {
-  return String(text || "").replace(/\s+/g, " ").trim();
+  return String(text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function extractFirstHeading(html) {
+  const match = String(html || "").match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+  return normalizeHeadline(match?.[1] || "");
+}
+
+export function pageCopyFor(expectations, pathname) {
+  const page = expectations.pages?.[pathname];
+  return page && typeof page === "object" ? page : null;
 }
 
 export function compareGeneratedAtSince(generatedAtUtc, sinceIso) {
@@ -436,9 +462,13 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   const ogImage = extractPropertyMetas(html, "og:image");
   const jsonLd = parseJsonLdBlocks(extractJsonLdBlocks(html));
   const umami = evaluateUmamiScripts(findUmamiScripts(html, expectations), expectations, { requireOne: true });
+  const pageCopy = pageCopyFor(expectations, pathname);
+  const pricingPhrases = pageCopy?.requiredPricingPhrases?.length
+    ? pageCopy.requiredPricingPhrases
+    : expectations.requiredPricingPhrases;
   const trialHits = findForbiddenTrialPhrases(html, expectations.forbiddenTrialPhrases);
   const priceHits = findForbiddenTrialPhrases(html, expectations.forbiddenPricePhrases);
-  const missingPricing = findMissingRequiredPhrases(html, expectations.requiredPricingPhrases);
+  const missingPricing = findMissingRequiredPhrases(html, pricingPhrases);
   const checks = [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
     makeCheck(`page:${pathname} title`, title.count === 1 && Boolean(title.value), title),
@@ -467,6 +497,19 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   if (pathname === "/") {
     const badge = evaluateLaunchBadge(html, expectations);
     checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
+  }
+  if (pageCopy?.headline) {
+    const headline = extractFirstHeading(html);
+    checks.push(makeCheck(
+      `page:${pathname} headline`,
+      headline === normalizeHeadline(pageCopy.headline),
+      { headline, expected: pageCopy.headline }
+    ));
+  }
+  if (pageCopy?.requiredPhrases || pageCopy?.forbiddenPhrases) {
+    const forbidden = findForbiddenTrialPhrases(html, pageCopy.forbiddenPhrases || []);
+    const missing = findMissingRequiredPhrases(html, pageCopy.requiredPhrases || []);
+    checks.push(makeCheck(`page:${pathname} copy`, forbidden.length === 0 && missing.length === 0, { forbidden, missing }));
   }
   return checks;
 }

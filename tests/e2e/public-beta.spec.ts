@@ -26,11 +26,16 @@ test('homepage and Tesla page show annual Plus pricing', async ({ page }) => {
     await expect(page.locator('.membership-card:not(.membership-card-plus) h3 + p')).toHaveText('Free to record. No account required.');
     await page.goto('/tesla-drive-journal.html');
     const plusCard = page.locator('article.card').filter({ has: page.getByRole('heading', { level: 2, name: 'Plus' }) });
-    await expect(plusCard).toContainText('Plus unlocks your full history. Tesla owners can connect Tessie so drives and charging record automatically.');
-    await expect(plusCard).not.toContainText('$39.99/year');
-    await expect(page.locator('main')).toContainText('Free to record. Plus is $39.99/year, with a 7-day free trial.');
+    await expect(plusCard).toContainText('JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.');
+    await expect(plusCard).toContainText('automatic drive and charging history with Tessie, a Plus feature');
+    await expect(page.locator('h1')).toHaveText('The trip, later');
+    await expect(page.locator('main')).not.toContainText('$39.99/year');
     await expect(page.locator('main')).not.toContainText('0.99');
+    await expect(page.locator('main')).not.toContainText('2.99');
     await expect(page.locator('main')).not.toContainText('3-day');
+    await expect(page.locator('main')).not.toContainText('monthly');
+    await expect(page.locator('figcaption').first()).toHaveText('A trip replay in JourneyDeck');
+    await expect(page.locator('figure img').first()).toHaveAttribute('loading', 'lazy');
   }
 });
 
@@ -192,6 +197,35 @@ test('X bio traffic rewrites App Store ct to xbio without dropping pt', async ({
       source: 'x',
       campaign: 'bio',
       href: 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=xbio&mt=8'
+    }
+  }]);
+});
+
+test('tesla page keeps utm_campaign=tesla on App Store clicks', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__umami = [];
+    window.umami = {
+      track(name, detail) {
+        window.__umami.push({ name, detail });
+      }
+    };
+  });
+  await page.goto('/tesla-drive-journal.html?utm_campaign=tesla');
+  const header = page.locator('.header-actions .button');
+  await expect(header).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla&mt=8');
+  await page.goto('/tesla-drive-journal.html?utm_source=x&utm_campaign=tesla');
+  await expect(header).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=x-tesla&mt=8');
+  await page.goto('/tesla-drive-journal.html?utm_source=reddit&utm_campaign=tesla');
+  await expect(header).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=reddit-tesla&mt=8');
+  await header.evaluate((anchor) => anchor.addEventListener('click', (event) => event.preventDefault()));
+  await header.click();
+  await expect.poll(() => page.evaluate(() => window.__umami)).toEqual([{
+    name: 'appstore_click',
+    detail: {
+      page: '/tesla-drive-journal.html',
+      source: 'reddit',
+      campaign: 'tesla',
+      href: 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=reddit-tesla&mt=8'
     }
   }]);
 });

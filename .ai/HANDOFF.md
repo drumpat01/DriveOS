@@ -2,30 +2,35 @@
 
 ## Current objective
 
-Revise the JourneyDeck Studio terms card and keep pull request 306 open. Do not merge and do not deploy.
+Keep draft PR #299 open. The Tesla landing page is rebased onto main `102a13b`, which already redirects `/homeworld`. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/terms-studio-digital-products-b41d`, rebased onto `origin/main` `74e897b` (#304). Pull request: https://github.com/drumpat01/DriveOS/pull/306
-- Terms use an effective date, not a last-updated line. Effective date stays September 13, 2026.
+- Branch `cursor/tesla-journal-landing-e036`.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/299
 
 ## Material changes
 
-- `#studio-products` is three paragraphs: what is sold, the 7-day refund plus 90 days of free updates, and the personal license.
-- `support@journeydeck.me` is named once in that card. The Contact card on `/terms` uses the same address. Privacy was not changed.
-- `npm run verify:live` checks `page:/terms snippets` for `id="studio-products"` and `within 7 days of purchase and I’ll refund you.`
+- `web/tesla-drive-journal.html` keeps the URL, canonical, Umami script, and CSP. Headline is "The trip, later".
+- Price line is exactly `JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers`.
+- Automatic recording is `automatic drive and charging history with Tessie, a Plus feature`. It needs Plus and Tessie. iPhone only.
+- Without Tessie: one tap or Siri, the Start Journey and Stop Journey shortcuts.
+- Tessie setup is the three owner steps through Music & Connections.
+- Screenshot caption says the captures are not from a Tesla.
+- `tools/verify-live` keeps both the Tesla page checks and the `/homeworld` 301 checks from main.
 
 ## Verification
 
-- Node 24.22.0: `check:server`, `lint:server`, `test:server` (69/69), `test:e2e` (18/18), local `verify:live --base http://127.0.0.1:8795` (pass, including `page:/terms snippets`).
-- Screenshots: `/opt/cursor/artifacts/terms-studio-products-390.png` and `terms-studio-products-1280.png`.
+- `npm run check:server` and `npm run lint:server` passed.
+- `npm run test:server`: 68 passed. `npm run test:e2e`: 19 passed.
+- `node tools/verify-live/verify-live.mjs --base http://127.0.0.1:8792`: 214 checks, 0 failed. Tesla headline, pricing, and copy passed. `redirect:/homeworld` and `redirect:/homeworld/` passed.
 
 ## Unresolved
 
-- Do not merge and do not deploy. Render was not changed.
-- GitHub CI on the rebased head is still pending.
+- Do not merge and do not deploy.
+- `mobile/recorder/src/first-run-v4.tsx` still says Settings, Recording. The public page follows Music & Connections. The app was not changed.
 
 ## Next steps
 
-1. Leave pull request 306 open until the owner merges it.
-2. If CI fails only on the retention bad-signature test, rerun that job once.
+1. Leave the draft pull request open until the owner merges it.
+2. After merge, deploy is a separate decision.

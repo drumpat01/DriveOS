@@ -96,7 +96,15 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.appStore.mediaType, "8");
   assert.equal(expectations.appStore.notFoundPath, "/not-a-published-page");
   assert.equal(expectations.appStore.pageCampaigns["/"], "home");
-  assert.equal(expectations.appStore.pageCampaigns["/tesla-drive-journal"], "tesla");
+  assert.equal(expectations.appStore.pageCampaigns["/tesla-drive-journal"], "tesla_page");
+  assert.equal(expectations.pages["/tesla-drive-journal"].headline, "The trip, later");
+  assert.deepEqual(expectations.pages["/tesla-drive-journal"].requiredPricingPhrases, [
+    "JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers"
+  ]);
+  assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("2.99"));
+  assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("monthly"));
+  assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("$39.99/year"));
+  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("automatic drive and charging history with Tessie, a Plus feature"));
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
   assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "journal");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-tracker-app"], "journal");
