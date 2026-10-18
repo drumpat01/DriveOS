@@ -93,7 +93,7 @@ shell("/wife", "302", "wife dashboard shell (wife.html); Location /login when si
 shell("/login", "200", "sign-in page (login.html). Kept on Render so the auth surface stays together", { auth: "none", content_type: "text/html; charset=utf-8", cache_control: "public, max-age=0", x_robots_tag: "noindex, nofollow" });
 shell("/login.html", "200", "same file as /login, served by the static wildcard", { auth: "none", content_type: "text/html; charset=utf-8", cache_control: "public, max-age=0", x_robots_tag: "noindex, nofollow", handler_file: STATIC });
 shell("/index.html", "200", "SURPRISE: app shell HTML is publicly fetchable (web-mode GET rule); data still needs auth", { auth: "none", content_type: "text/html; charset=utf-8", cache_control: "public, max-age=0", x_robots_tag: "noindex, nofollow", handler_file: STATIC });
-shell("/wife.html", "200", "SURPRISE: /wife is auth-gated but /wife.html is publicly served by the static wildcard, with no noindex header", { auth: "none", content_type: "text/html; charset=utf-8", cache_control: "public, max-age=0", handler_file: STATIC });
+shell("/wife.html", "302", "#301 requires the existing session for /wife.html, including decoded and case-variant paths. Unauthenticated requests redirect to /login. web/.assetsignore keeps the file out of the asset bundle", { x_robots_tag: "noindex, nofollow" });
 add({ path: "/healthz", type: "health", phase1_owner: "passthrough", worker_action: "proxy", target: "RENDER_ORIGIN", content_type: "application/json; charset=utf-8", other_headers: SEC, probe_compare: "status+headers", notes: "static JSON about the Node process; keep on Render so it describes Render" });
 add({ path: "/readyz", type: "health", phase1_owner: "passthrough", worker_action: "proxy", target: "RENDER_ORIGIN", content_type: "application/json; charset=utf-8", other_headers: SEC, probe_compare: "status+headers", notes: "Render healthCheckPath; body is dynamic (atlas, snapshotStale). The verify-live routine reads generatedAtUtc here" });
 
@@ -176,7 +176,11 @@ add({ method: "GET", path: "/api/spotify/artwork/:trackId", match: "pattern", ty
 
 // ---------- Worker: static files in web/ ----------
 const explicitFiles = new Set(["beta.html", "landing.html", "index.html", "login.html", "wife.html", "google8e611381b21882a8.html"]);
-const walk = d => readdirSync(d).flatMap(n => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p]; });
+const walk = d => readdirSync(d).flatMap(n => {
+  if (n === ".assetsignore") return [];
+  const p = join(d, n);
+  return statSync(p).isDirectory() ? walk(p) : [p];
+});
 const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".mjs": "application/javascript; charset=utf-8", ".json": "application/json; charset=utf-8",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/vnd.microsoft.icon", ".gif": "image/gif", ".avif": "image/avif",
   ".woff2": "font/woff2", ".woff": "font/woff", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml", ".md": "text/markdown; charset=utf-8", ".webmanifest": "application/manifest+json", ".mp4": "video/mp4" };

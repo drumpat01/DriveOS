@@ -27,6 +27,7 @@
     "test:site": "node --test --import tsx --test-timeout 180000 cloudflare/site/tests/*.test.ts",
     "check:site": "tsc -p cloudflare/site/tsconfig.json --noEmit",
     "parity:site": "node cloudflare/site/parity-check.mjs",
+    "predeploy:site": "node cloudflare/site/predeploy-check.mjs",
     "cloudflare:site:dev": "wrangler dev --config cloudflare/site/wrangler.jsonc --local"
   },
   "dependencies": {

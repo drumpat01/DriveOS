@@ -21,8 +21,8 @@ function matched(method: string, path: string) {
 }
 
 test("route list has the phase-one shape", () => {
-  assert.equal(routes.length, 432);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 315);
+  assert.equal(routes.length, 429);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 312);
   assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 110);
   assert.equal(routes.filter(route => route.worker_action === "proxy").length, 110);
   assert.equal(routes.filter(route => route.worker_action === "none").length, 7);
@@ -53,6 +53,11 @@ test("homepage, clean URLs, trailing slash, and app shell stay distinct", () => 
   assert.equal(matched("GET", "/index.html")?.worker_action, "proxy");
   assert.equal(matched("GET", "/login.html")?.worker_action, "proxy");
   assert.equal(matched("GET", "/wife.html")?.worker_action, "proxy");
+  assert.equal(matched("GET", "/wife.html")?.expected_status, "302");
+  assert.equal(matched("GET", "/wife.html")?.x_robots_tag, "noindex, nofollow");
+  for (const path of ["/assets/v2/soundtrack.jpg", "/assets/v2/soundtrack.webp", "/assets/v4/05-soundtrack.webp"]) {
+    assert.equal(routes.some(route => route.path === path), false, path);
+  }
   assert.notEqual(matched("GET", "/")?.target, "index.html");
 });
 

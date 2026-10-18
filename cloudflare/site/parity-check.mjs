@@ -10,12 +10,19 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { collectProblems } from "./predeploy-check.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.findIndex(a => a === `--${name}` || a.startsWith(`--${name}=`)); if (i < 0) return fallback; const a = args[i]; return a.includes("=") ? a.slice(a.indexOf("=") + 1) : args[i + 1]; };
 const flag = name => args.includes(`--${name}`);
 if (flag("help") || !opt("staging") || !opt("live")) { console.error("usage: node parity-check.mjs --staging <url> --live <url> [--routes csv] [--canonical https://journeydeck.me] [--no-rewrite-host] [--only regex] [--concurrency n] [--timeout ms] [--json file] [--snapshot file]"); process.exit(3); }
+const publishProblems = collectProblems(join(here, "..", ".."));
+if (publishProblems.length) {
+  console.error("predeploy check failed:");
+  for (const problem of publishProblems) console.error(`  ${problem}`);
+  process.exit(1);
+}
 const origin = u => { const x = new URL(u); if (!/^https?:$/.test(x.protocol)) throw new Error(`bad url ${u}`); return x.origin; };
 const STAGING = origin(opt("staging")), LIVE = origin(opt("live")), CANON = origin(opt("canonical", "https://journeydeck.me"));
 const REWRITE = !flag("no-rewrite-host");
