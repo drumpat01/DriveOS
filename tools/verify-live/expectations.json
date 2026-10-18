@@ -16,6 +16,18 @@
     "/privacy",
     "/terms"
   ],
+  "redirects": [
+    {
+      "path": "/homeworld",
+      "status": 301,
+      "location": "https://studio.journeydeck.me/homeworld"
+    },
+    {
+      "path": "/homeworld/",
+      "status": 301,
+      "location": "https://studio.journeydeck.me/homeworld"
+    }
+  ],
   "loginPath": "/login",
   "canonicalOrigin": "https://journeydeck.me",
   "umami": {

@@ -87,6 +87,13 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - The aborted gateway request is expected to appear as `net::ERR_FAILED`. That must not fail the run. It is listed as `blocked by verifier`.
 - Checks: `csp console` (no console errors that mention Content Security Policy, and no `securitypolicyviolation` events).
 
+## Permanent redirects
+
+- Owner: `GET /homeworld` and `GET /homeworld/` in `server/src/app.ts`. Both paths are in `publicPaths`, so anonymous requests are not sent to login.
+- The CLI reads `expectations.redirects` and fetches each path without following the redirect. Status and `Location` must match the entry. Query strings on the request are not part of the expected location.
+- `/homeworld` and `/homeworld/` return 301 to `https://studio.journeydeck.me/homeworld`.
+- Checks: `redirect:/homeworld`, `redirect:/homeworld/`.
+
 ## Readyz
 
 - Owner: `GET /readyz` in `server/src/app.ts`, snapshot fields from `AtlasStore.status()` in `server/src/atlas-store.ts`.

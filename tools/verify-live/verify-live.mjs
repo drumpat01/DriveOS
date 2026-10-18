@@ -11,6 +11,7 @@ import {
   evaluateLoginUmami,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
+  evaluateRedirect,
   extractAppStoreHrefs,
   formatHumanReport,
   headlineMatches,
@@ -57,6 +58,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
     return {
       url,
       status: response.status,
+      location: response.headers.get("location"),
       text,
       json: json ? safeJson(text) : null
     };
@@ -64,6 +66,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
     return {
       url,
       status: 0,
+      location: null,
       text: "",
       json: null,
       error: errorMessage(error)
@@ -317,6 +320,15 @@ async function run() {
       for (const check of evaluateNotFoundAppStore(missing.text, expectations, missing.status)) {
         recordCheck(check);
       }
+    }
+
+    for (const redirect of expectations.redirects) {
+      const page = await fetchResource(redirect.path);
+      if (page.error) {
+        recordCheck(makeCheck(`redirect:${redirect.path}`, false, { error: page.error, status: page.status, location: page.location }));
+        continue;
+      }
+      recordCheck(evaluateRedirect(page.status, page.location, redirect));
     }
 
     const login = await fetchResource(expectations.loginPath);
