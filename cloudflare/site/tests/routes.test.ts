@@ -22,11 +22,11 @@ function matched(method: string, path: string) {
 
 test("route list has the phase-one shape", () => {
   assert.equal(routes.length, 435);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 422);
-  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 6);
-  assert.equal(routes.filter(route => route.worker_action === "proxy").length, 6);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 426);
+  assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 2);
+  assert.equal(routes.filter(route => route.worker_action === "proxy").length, 2);
   assert.equal(routes.filter(route => route.worker_action === "gone").length, 101);
-  assert.equal(routes.filter(route => route.worker_action === "retired_page").length, 3);
+  assert.equal(routes.filter(route => route.worker_action === "retired_page").length, 7);
   assert.equal(routes.filter(route => route.worker_action === "native").length, 4);
   assert.equal(routes.filter(route => route.worker_action === "none").length, 7);
 });
@@ -48,16 +48,26 @@ test("every CSV row resolves to its action", () => {
 });
 
 test("homepage, clean URLs, trailing slash, and app shell stay distinct", () => {
-  assert.equal(matched("GET", "/")?.target, "beta.html");
+  const home = matched("GET", "/");
+  const indexFile = matched("GET", "/index.html");
+  assert.equal(home?.target, "beta.html");
+  assert.equal(home?.worker_action, "asset");
+  assert.equal(home?.expected_status, "200");
+  assert.equal(home?.match, "exact");
+  assert.equal(matched("POST", "/"), undefined);
+  assert.equal(indexFile?.worker_action, "retired_page");
+  assert.equal(indexFile?.match, "exact");
+  assert.notEqual(indexFile?.route_id, home?.route_id);
+  assert.equal(matched("GET", "/index.html/")?.worker_action, "not_found_page");
   assert.equal(matched("GET", "/privacy")?.target, "privacy.html");
   assert.equal(matched("GET", "/privacy.html")?.worker_action, "asset");
   assert.equal(matched("GET", "/privacy.html")?.expected_status, "200");
   assert.equal(matched("GET", "/privacy/")?.worker_action, "not_found_page");
-  assert.equal(matched("GET", "/index.html")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/login.html")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/wife.html")?.worker_action, "proxy");
-  assert.equal(matched("GET", "/wife.html")?.expected_status, "302");
-  assert.equal(matched("GET", "/wife.html")?.x_robots_tag, "noindex, nofollow");
+  assert.equal(matched("GET", "/login.html")?.worker_action, "retired_page");
+  assert.equal(matched("GET", "/login.html")?.match, "exact");
+  assert.equal(matched("POST", "/wife.html")?.worker_action, "retired_page");
+  assert.equal(matched("POST", "/spotify-callback")?.worker_action, "retired_page");
+  assert.equal(matched("GET", "/spotify-callback/extra")?.worker_action, "not_found_page");
   for (const path of ["/assets/v2/soundtrack.jpg", "/assets/v2/soundtrack.webp", "/assets/v4/05-soundtrack.webp"]) {
     assert.equal(routes.some(route => route.path === path), false, path);
   }
@@ -119,11 +129,7 @@ test("only the unretired shells still proxy to Render", () => {
   const proxied = routes.filter(route => route.worker_action === "proxy").map(route => `${route.method} ${route.path}`).sort();
   assert.deepEqual(proxied, [
     "GET /healthz",
-    "GET /index.html",
-    "GET /login.html",
-    "GET /readyz",
-    "GET /spotify-callback",
-    "GET /wife.html"
+    "GET /readyz"
   ]);
   for (const path of ["/login", "/app", "/wife"]) {
     const route = routes.find(row => row.path === path);
@@ -133,6 +139,14 @@ test("only the unretired shells still proxy to Render", () => {
     assert.equal(route?.expected_status, "410", path);
     assert.equal(route?.x_robots_tag, "noindex", path);
     assert.equal(route?.cache_control, "no-store", path);
+  }
+  for (const path of ["/login.html", "/index.html", "/wife.html", "/spotify-callback"]) {
+    const route = routes.find(row => row.path === path);
+    assert.equal(route?.worker_action, "retired_page", path);
+    assert.equal(route?.method, "ALL", path);
+    assert.equal(route?.match, "exact", path);
+    assert.equal(route?.expected_status, "410", path);
+    assert.equal(route?.x_robots_tag, "noindex", path);
   }
   for (const path of ["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify", "/api/auth/session"]) {
     const route = routes.find(row => row.path === path && row.worker_action !== "none");

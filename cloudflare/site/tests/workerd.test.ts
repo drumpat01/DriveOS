@@ -169,6 +169,16 @@ test("workerd retention answers without calling Render and stays inside the Appl
     assert.equal(wife.status, 410);
     await wife.arrayBuffer();
     await appPath.arrayBuffer();
+    for (const path of ["/index.html", "/login.html", "/wife.html", "/spotify-callback"]) {
+      const retiredFile = await worker.fetch(`http://127.0.0.1${path}`, { method: "POST", body: "{}" });
+      assert.equal(retiredFile.status, 410, path);
+      assert.match(await retiredFile.text(), /The old web app has been retired\./, path);
+    }
+    const home = await worker.fetch("http://127.0.0.1/");
+    assert.equal(home.status, 200);
+    const homeHtml = await home.text();
+    assert.match(homeHtml, /Take the road\. Keep the story\./);
+    assert.equal(homeHtml.includes("The old web app has been retired."), false);
     assert.equal(hits.length, beforeRetired);
   } finally {
     await worker.stop();

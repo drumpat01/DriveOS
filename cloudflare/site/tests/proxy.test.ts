@@ -5,7 +5,7 @@ import { proxyToRender, RENDER_ORIGIN } from "../src/proxy.ts";
 test("proxy strips tailscale and test-auth headers and keeps cookies", async () => {
   let forwarded: Headers | undefined;
   let target = "";
-  const response = await proxyToRender(new Request("https://journeydeck-site.example.workers.dev/spotify-callback?device=1", {
+  const response = await proxyToRender(new Request("https://journeydeck-site.example.workers.dev/healthz?device=1", {
     method: "POST",
     headers: {
       cookie: "DriveOSSession=abc",
@@ -37,7 +37,7 @@ test("proxy strips tailscale and test-auth headers and keeps cookies", async () 
     headers.append("set-cookie", "other=two; Path=/");
     return new Response("{\"error\":\"Authentication required.\"}", { status: 401, headers });
   });
-  assert.equal(target, "https://driveos.onrender.com/spotify-callback?device=1");
+  assert.equal(target, "https://driveos.onrender.com/healthz?device=1");
   assert.ok(forwarded);
   assert.equal(forwarded.get("tailscale-user-login"), null);
   assert.equal(forwarded.get("x-journeydeck-test-auth"), null);
@@ -97,14 +97,14 @@ test("forwarding appends the inbound address and drops Cloudflare request header
   assert.equal(health.get("x-real-ip"), null);
   assert.equal(health.get("x-forwarded-for"), "192.0.2.1, 198.51.100.4, 203.0.113.8");
 
-  const callback = await capture("https://journeydeck.me/spotify-callback", {
+  const ready = await capture("https://journeydeck.me/readyz", {
     host: "journeydeck.me",
     "cf-connecting-ip": "203.0.113.8"
   }, "POST");
-  assert.equal(callback.get("x-forwarded-for"), "203.0.113.8");
-  assert.equal(callback.get("x-forwarded-proto"), "https");
-  assert.equal(callback.get("x-forwarded-host"), "journeydeck.me");
-  assert.equal(callback.get("host"), "driveos.onrender.com");
+  assert.equal(ready.get("x-forwarded-for"), "203.0.113.8");
+  assert.equal(ready.get("x-forwarded-proto"), "https");
+  assert.equal(ready.get("x-forwarded-host"), "journeydeck.me");
+  assert.equal(ready.get("host"), "driveos.onrender.com");
 
   const local = await capture("http://127.0.0.1:8787/readyz", { host: "127.0.0.1:8787" });
   assert.equal(local.get("x-forwarded-proto"), "http");

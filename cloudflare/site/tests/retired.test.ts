@@ -51,10 +51,18 @@ test("retired routes return 410 and the remaining shells still reach Render", as
       ["GET", "/login", "html"],
       ["POST", "/login", "html"],
       ["HEAD", "/login/reset", "html"],
+      ["GET", "/login.html", "html"],
+      ["POST", "/login.html", "html"],
       ["GET", "/app", "html"],
       ["GET", "/app/library", "html"],
       ["DELETE", "/wife", "html"],
-      ["GET", "/wife/home", "html"]
+      ["GET", "/wife/home", "html"],
+      ["GET", "/wife.html", "html"],
+      ["PUT", "/wife.html", "html"],
+      ["GET", "/index.html", "html"],
+      ["POST", "/index.html", "html"],
+      ["GET", "/spotify-callback", "html"],
+      ["POST", "/spotify-callback", "html"]
     ];
     for (const [method, path, kind] of retired) {
       const before = calls.length;
@@ -78,7 +86,7 @@ test("retired routes return 410 and the remaining shells still reach Render", as
       }
     }
 
-    const stillProxied = ["/healthz", "/readyz", "/spotify-callback", "/login.html", "/index.html", "/wife.html"];
+    const stillProxied = ["/healthz", "/readyz"];
     for (const path of stillProxied) {
       const response = await worker.fetch(new Request(`https://journeydeck.me${path}`), env);
       assert.equal(response.status, 200, path);
@@ -88,7 +96,9 @@ test("retired routes return 410 and the remaining shells still reach Render", as
 
     const home = await worker.fetch(new Request("https://journeydeck.me/"), env);
     assert.equal(home.status, 200);
-    assert.equal(await home.text(), "/beta.html");
+    const homeBody = await home.text();
+    assert.equal(homeBody, "/beta.html");
+    assert.equal(homeBody.includes("The old web app has been retired."), false);
     const privacy = await worker.fetch(new Request("https://journeydeck.me/privacy"), env);
     assert.equal(privacy.status, 200);
     assert.equal(await privacy.text(), "/privacy.html");
