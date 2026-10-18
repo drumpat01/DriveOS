@@ -44,6 +44,28 @@
     }
   ],
   "loginPath": "/login",
+  "health": {
+    "status": 200,
+    "cacheControl": "no-store",
+    "contentType": "application/json",
+    "body": {
+      "ok": true,
+      "service": "journeydeck-site"
+    },
+    "paths": [
+      "/healthz",
+      "/readyz"
+    ],
+    "absentHeaders": [
+      "rndr-id"
+    ],
+    "absentFields": [
+      "atlas",
+      "generatedAtUtc",
+      "legacyCompatibilityReachable",
+      "snapshotStale"
+    ]
+  },
   "canonicalOrigin": "https://journeydeck.me",
   "umami": {
     "scriptSrc": "https://cloud.umami.is/script.js",

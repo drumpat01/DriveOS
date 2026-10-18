@@ -2,25 +2,25 @@
 
 ## Current objective
 
-Make `verify:live` expect the retired web app to return HTTP 410. Do not merge. Do not change site or Worker code.
+Keep `verify:live` aligned with the site Worker on https://journeydeck.me. Do not merge. Do not change site or Worker code.
 
 ## Checkout
 
 - Branch `cursor/verify-live-retired-410-dd91`, based on main `48178cb` (#312).
 - PR: https://github.com/drumpat01/DriveOS/pull/313. Do not merge.
-- Live `GET https://journeydeck.me/login` is HTTP 410, `text/html; charset=utf-8`, `Cache-Control: no-store`, `X-Robots-Tag: noindex`. The body is the retirement notice and has no Umami tag.
+- Render (`driveos.onrender.com`) is suspended. The apex is the Cloudflare Worker. Nothing proxies to Render.
 
 ## Material changes
 
-- `expectations.retiredPages` covers `/app`, `/wife`, `/wife.html`, `/index.html`, `/spotify-callback`, `/login.html`, and `/login`.
-- Each path must be 410, with `X-Robots-Tag: noindex`, a robots meta of `noindex`, `Cache-Control: no-store`, and the phrase `The old web app has been retired`.
-- `/login` keeps `page:/login status`, `page:/login noindex`, and `page:/login umami` (zero `cloud.umami.is` scripts).
-- Public-page, pricing, redirect, image, CSP, and `/readyz` checks are unchanged. Live `/readyz` is `{"ok":true,"service":"journeydeck-site"}`; the existing check still requires HTTP 200 and `ok: true`.
+- Retired HTML paths expect HTTP 410, `noindex`, `no-store`, and `The old web app has been retired`. `/login` stays Umami-free.
+- `/healthz` and `/readyz` expect HTTP 200 and `{"ok":true,"service":"journeydeck-site"}`, with `Cache-Control: no-store` and no `rndr-id`.
+- The body must not include `atlas`, `generatedAtUtc`, `legacyCompatibilityReachable`, or `snapshotStale`.
+- `--since` is still accepted and does not read a snapshot time.
 
 ## Verification
 
 - `npm run test:server`: 79 passed, 0 failed.
-- `npm run verify:live -- --base https://journeydeck.me`: 232 passed, 0 failed. Exit 0.
+- `npm run verify:live -- --base https://journeydeck.me`: 233 passed, 0 failed. Exit 0.
 
 ## Unresolved
 
@@ -28,4 +28,4 @@ Make `verify:live` expect the retired web app to return HTTP 410. Do not merge. 
 
 ## Next steps
 
-1. Wait for CI on the verify:live PR. Rebase onto main if it moves. Do not merge.
+1. Wait for CI on https://github.com/drumpat01/DriveOS/pull/313. Rebase onto main if it moves. Do not merge.

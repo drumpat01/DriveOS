@@ -2,14 +2,13 @@
 
 This map ties each public journeydeck.me feature to `npm run verify:live` check names and the source files that own the behavior. The CLI reads expected values from `tools/verify-live/expectations.json`. It does not hard-code them.
 
-`/readyz` `generatedAtUtc` is the Atlas snapshot time (service restart / snapshot time), not deploy time. It changes when the service restarts. On 2026-10-11 it moved to 20:31:30Z with no new commit on main since the 12:55Z deploy, so it proves a restart after the given time, not that a specific commit is live.
+`/healthz` and `/readyz` are answered by the site Worker in `cloudflare/site/src/health.ts`. Both return `{"ok":true,"service":"journeydeck-site"}`.
 
 ## How to run
 
 ```bash
 npm run verify:live
 npm run verify:live -- --base https://journeydeck.me --json
-npm run verify:live -- --base http://127.0.0.1:8795 --since 2026-10-11T12:55:00Z
 ```
 
 Exit code 0 means every check passed. Exit code 1 means at least one check failed. `npm test` does not hit journeydeck.me.
@@ -123,8 +122,10 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - `/login` still serves that HTML page, so it must contain zero `cloud.umami.is` scripts. The other retired paths use one combined check.
 - Checks: `retired:<path>` for each retired path other than `/login`. `/login` checks are `page:/login status`, `page:/login noindex`, and `page:/login umami`.
 
-## Readyz
+## Health
 
-- Owner: `GET /readyz` in `server/src/app.ts`, snapshot fields from `AtlasStore.status()` in `server/src/atlas-store.ts`.
-- Checks: `readyz` (HTTP 200 and `ok: true`, reports `atlas.generatedAtUtc`) and, when `--since` is set, `readyz since` (fail if `generatedAtUtc` is older than the given time).
-- Label the timestamp as service restart / snapshot time, not deploy time. This PR does not add a commit SHA to `/readyz`.
+- Owner: `GET /healthz` and `GET /readyz` in `cloudflare/site/src/health.ts`. The site Worker answers both itself.
+- Each response is HTTP 200, `Content-Type: application/json`, `Cache-Control: no-store`, and the JSON body `{"ok":true,"service":"journeydeck-site"}`.
+- `rndr-id` is absent. The body does not include `atlas`, `generatedAtUtc`, `legacyCompatibilityReachable`, or `snapshotStale`.
+- `--since` is still accepted and does not read a snapshot time from these responses.
+- Checks: `healthz`, `readyz`.

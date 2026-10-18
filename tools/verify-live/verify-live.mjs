@@ -2,16 +2,15 @@
 import { chromium } from "@playwright/test";
 import {
   DEFAULT_BASE_URL,
-  READYZ_CAVEAT,
   assertCampaignAppStoreHrefs,
   assertDefaultAppStoreHrefs,
   classifyConsoleError,
-  compareGeneratedAtSince,
   errorMessage,
   evaluateLoginUmami,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
   evaluateRetiredPage,
+  evaluateSiteHealth,
   evaluateRedirect,
   evaluateRemovedPublicImages,
   evaluateSamplePublicImages,
@@ -63,6 +62,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       status: response.status,
       location: response.headers.get("location"),
       robots: response.headers.get("x-robots-tag"),
+      rndrId: response.headers.get("rndr-id"),
       text,
       cacheControl: response.headers.get("cache-control"),
       contentType: response.headers.get("content-type"),
@@ -74,6 +74,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       status: 0,
       location: null,
       robots: null,
+      rndrId: null,
       text: "",
       cacheControl: null,
       contentType: null,
@@ -301,12 +302,7 @@ function writeReport(readyz) {
 async function run() {
   let readyz = {
     status: null,
-    ok: null,
-    generatedAtUtc: null,
-    atlas: null,
-    since: args.since,
-    label: "service restart / snapshot time",
-    caveat: READYZ_CAVEAT
+    body: null
   };
   try {
     let servedHomeHrefs = [];
@@ -393,29 +389,19 @@ async function run() {
     await runBrowserChecks(servedHomeHrefs);
     evaluateCspCheck();
 
-    const ready = await fetchResource("/readyz", { json: true });
-    const body = ready.json && typeof ready.json === "object" ? ready.json : {};
-    const generatedAtUtc = body.atlas?.generatedAtUtc ?? null;
-    const readyzOk = !ready.error && ready.status === 200 && body.ok === true;
-    readyz = {
-      status: ready.status,
-      ok: body.ok ?? null,
-      generatedAtUtc,
-      atlas: body.atlas ?? null,
-      since: args.since,
-      label: "service restart / snapshot time",
-      caveat: READYZ_CAVEAT,
-      ...(ready.error ? { error: ready.error } : {})
-    };
-    recordCheck(makeCheck("readyz", readyzOk, readyz));
-    if (args.since) {
-      const comparison = compareGeneratedAtSince(generatedAtUtc, args.since);
-      recordCheck(makeCheck("readyz since", comparison.pass, {
-        generatedAtUtc,
-        since: args.since,
-        reason: comparison.reason,
-        label: "service restart / snapshot time"
-      }));
+    for (const path of expectations.health.paths) {
+      const response = await fetchResource(path, { json: true });
+      if (response.error) {
+        recordCheck(makeCheck(path.replace(/^\//, ""), false, { error: response.error, status: response.status }));
+        continue;
+      }
+      const check = evaluateSiteHealth(path, expectations.health, response.status, response.json, {
+        cacheControl: response.cacheControl,
+        contentType: response.contentType,
+        rndrId: response.rndrId
+      });
+      recordCheck(check);
+      if (path === "/readyz") readyz = check.observed;
     }
   } catch (error) {
     recordCheck(makeCheck("verifier", false, { error: errorMessage(error) }));
@@ -427,12 +413,7 @@ run().catch((error) => {
   recordCheck(makeCheck("verifier", false, { error: errorMessage(error) }));
   writeReport({
     status: null,
-    ok: null,
-    generatedAtUtc: null,
-    atlas: null,
-    since: args.since,
-    label: "service restart / snapshot time",
-    caveat: READYZ_CAVEAT,
+    body: null,
     error: errorMessage(error)
   });
 });

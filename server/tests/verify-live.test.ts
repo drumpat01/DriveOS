@@ -10,9 +10,9 @@ import {
   assertDefaultAppStoreHrefs,
   canonicalUrlForPath,
   classifyConsoleError,
-  compareGeneratedAtSince,
   evaluateLaunchBadge,
   evaluateLoginUmami,
+  evaluateSiteHealth,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
   evaluateRetiredPage,
@@ -308,18 +308,25 @@ test("App Store href assertions keep campaign tokens, reviews, and the served st
   assert.deepEqual(extractAppStoreHrefs(`<a href="${served[0]}"></a><a href="/support"></a>`, expectations), [served[0]]);
 });
 
-test("readyz --since compares Atlas snapshot time, not deploy time", () => {
-  const newer = compareGeneratedAtSince("2026-10-11T20:31:30.000Z", "2026-10-11T12:55:00.000Z");
-  assert.equal(newer.pass, true);
-  const older = compareGeneratedAtSince("2026-10-11T12:55:00.000Z", "2026-10-11T20:31:30.000Z");
-  assert.equal(older.pass, false);
-  const missing = compareGeneratedAtSince(null, "2026-10-11T12:55:00.000Z");
-  assert.equal(missing.pass, false);
-  const skipped = compareGeneratedAtSince("2026-10-11T20:31:30.000Z", null);
-  assert.equal(skipped.compared, false);
-  assert.equal(skipped.pass, true);
-  const invalid = compareGeneratedAtSince("2026-10-11T20:31:30.000Z", "not-a-date");
-  assert.equal(invalid.pass, false);
+test("health checks expect the site Worker JSON and reject Render readiness fields", () => {
+  const headers = { cacheControl: "no-store", contentType: "application/json; charset=utf-8", rndrId: null };
+  const worker = { ok: true, service: "journeydeck-site" };
+  assert.equal(evaluateSiteHealth("/healthz", expectations.health, 200, worker, headers).pass, true);
+  assert.equal(evaluateSiteHealth("/readyz", expectations.health, 200, worker, headers).pass, true);
+  const renderBody = {
+    ok: true,
+    service: "journeydeck-site",
+    legacyCompatibilityReachable: true,
+    snapshotStale: false,
+    atlas: { generatedAtUtc: "2026-10-11T20:31:30.000Z" }
+  };
+  const renderCheck = evaluateSiteHealth("/readyz", expectations.health, 200, renderBody, { ...headers, rndrId: "render" });
+  assert.equal(renderCheck.pass, false);
+  assert.equal((renderCheck.observed as { rndrId: string }).rndrId, "render");
+  assert.ok((renderCheck.observed as { presentFields: string[] }).presentFields.includes("legacyCompatibilityReachable"));
+  assert.ok((renderCheck.observed as { presentFields: string[] }).presentFields.includes("snapshotStale"));
+  assert.ok((renderCheck.observed as { presentFields: string[] }).presentFields.includes("generatedAtUtc"));
+  assert.throws(() => validateExpectations({ ...expectations, health: { ...expectations.health, body: { ok: true } } }), /health body/);
 });
 
 test("cache-busting, URL joining, CSP classification, and report text stay ASCII-hyphen clean", () => {
@@ -330,7 +337,7 @@ test("cache-busting, URL joining, CSP classification, and report text stay ASCII
   assert.equal(classifyConsoleError("Failed to load resource: net::ERR_FAILED https://gateway.umami.is/api/send").fail, false);
   assert.equal(classifyConsoleError("Refused to connect because it violates the following Content Security Policy directive").fail, true);
   assert.equal(classifyConsoleError("Image failed to load").fail, false);
-  const line = formatCheckLine({ name: "readyz", pass: true, observed: { generatedAtUtc: "2026-10-11T20:31:30.000Z" } });
+  const line = formatCheckLine({ name: "readyz", pass: true, observed: { body: { ok: true, service: "journeydeck-site" } } });
   assert.match(line, /^PASS readyz /);
   assert.doesNotMatch(line, /[\u2013\u2014]/);
   const report = formatHumanReport({
@@ -338,11 +345,11 @@ test("cache-busting, URL joining, CSP classification, and report text stay ASCII
     base: "http://127.0.0.1:8795",
     timestamp: "2026-10-11T21:00:00.000Z",
     ok: true,
-    readyz: { generatedAtUtc: "2026-10-11T20:31:30.000Z" }
+    readyz: { body: { ok: true, service: "journeydeck-site" } }
   });
-  assert.match(report, /service restart \/ snapshot time/);
-  assert.match(report, /not deploy time/);
+  assert.match(report, /service=journeydeck-site/);
   assert.match(report, /^PASS$/m);
+  assert.doesNotMatch(report, /generatedAtUtc/);
   assert.doesNotMatch(report, /[\u2013\u2014]/);
 });
 
@@ -430,13 +437,6 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
     const missing = await runtime.app.inject({ method: "GET", url: expectations.appStore.notFoundPath });
     const missingChecks = evaluateNotFoundAppStore(missing.body, expectations, missing.statusCode);
     assert.ok(missingChecks.every((check) => check.pass), missingChecks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; "));
-    const ready = await runtime.app.inject({ method: "GET", url: "/readyz" });
-    assert.equal(ready.statusCode, 200);
-    const body = JSON.parse(ready.body) as { ok?: boolean; atlas?: { generatedAtUtc?: string | null } };
-    assert.equal(body.ok, true);
-    assert.equal(typeof body.atlas?.generatedAtUtc, "string");
-    const comparison = compareGeneratedAtSince(body.atlas?.generatedAtUtc ?? null, "2000-01-01T00:00:00.000Z");
-    assert.equal(comparison.pass, true);
   } finally {
     await runtime.app.close();
     fixture.cleanup();

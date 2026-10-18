@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const DEFAULT_BASE_URL = "https://journeydeck.me";
-export const READYZ_CAVEAT = "generatedAtUtc is the Atlas snapshot time (service restart / snapshot time), not deploy time. It changes when the service restarts. On 2026-10-11 it moved to 20:31:30Z with no new commit on main since the 12:55Z deploy, so it proves a restart after the given time, not that a specific commit is live.";
 
 const TOOL_DIR = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_EXPECTATIONS_PATH = join(TOOL_DIR, "expectations.json");
@@ -97,6 +96,28 @@ export function validateExpectations(raw) {
   }
   if (typeof raw.loginPath !== "string" || !raw.loginPath.startsWith("/")) throw new Error("expectations.loginPath must be a path");
   if (!retiredPaths.has(raw.loginPath)) throw new Error("expectations.retiredPages.paths must include loginPath");
+  const health = raw.health;
+  if (!health || typeof health !== "object" || Array.isArray(health)) throw new Error("expectations.health must be an object");
+  if (health.status !== 200) throw new Error("expectations.health status must be 200");
+  if (health.cacheControl !== "no-store") throw new Error("expectations.health cacheControl must be no-store");
+  if (health.contentType !== "application/json") throw new Error("expectations.health contentType must be application/json");
+  if (!health.body || health.body.ok !== true || health.body.service !== "journeydeck-site" || Object.keys(health.body).length !== 2) {
+    throw new Error("expectations.health body must be the site Worker health JSON");
+  }
+  if (!Array.isArray(health.paths) || !health.paths.includes("/healthz") || !health.paths.includes("/readyz")) {
+    throw new Error("expectations.health.paths must include /healthz and /readyz");
+  }
+  for (const path of health.paths) {
+    if (typeof path !== "string" || !path.startsWith("/")) throw new Error("expectations.health.paths entries must start with /");
+  }
+  if (!Array.isArray(health.absentHeaders) || !health.absentHeaders.includes("rndr-id")) {
+    throw new Error("expectations.health.absentHeaders must include rndr-id");
+  }
+  for (const field of ["atlas", "generatedAtUtc", "legacyCompatibilityReachable", "snapshotStale"]) {
+    if (!Array.isArray(health.absentFields) || !health.absentFields.includes(field)) {
+      throw new Error(`expectations.health.absentFields must include ${field}`);
+    }
+  }
   if (typeof raw.canonicalOrigin !== "string") throw new Error("expectations.canonicalOrigin is required");
   if (!raw.umami?.scriptSrc || !raw.umami?.websiteId || !raw.umami?.dataDomains) throw new Error("expectations.umami is incomplete");
   if (!Array.isArray(raw.forbiddenTrialPhrases) || raw.forbiddenTrialPhrases.length === 0) throw new Error("expectations.forbiddenTrialPhrases must be a non-empty array");
@@ -428,15 +449,34 @@ export function pageCopyFor(expectations, pathname) {
   return page && typeof page === "object" ? page : null;
 }
 
-export function compareGeneratedAtSince(generatedAtUtc, sinceIso) {
-  if (!sinceIso) return { compared: false, pass: true, reason: "no --since provided" };
-  const sinceMs = Date.parse(sinceIso);
-  if (Number.isNaN(sinceMs)) return { compared: true, pass: false, reason: `--since is not a valid ISO timestamp: ${sinceIso}` };
-  if (!generatedAtUtc) return { compared: true, pass: false, reason: "generatedAtUtc is missing" };
-  const generatedMs = Date.parse(generatedAtUtc);
-  if (Number.isNaN(generatedMs)) return { compared: true, pass: false, reason: `generatedAtUtc is not a valid ISO timestamp: ${generatedAtUtc}` };
-  if (generatedMs < sinceMs) return { compared: true, pass: false, reason: `${generatedAtUtc} is older than ${sinceIso}` };
-  return { compared: true, pass: true, reason: `${generatedAtUtc} is on or after ${sinceIso}` };
+export function healthCheckName(path) {
+  return String(path || "").replace(/^\//, "") || "health";
+}
+
+export function evaluateSiteHealth(path, spec, statusCode, body, headers = {}) {
+  const expectedBody = spec.body;
+  const actual = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+  const actualKeys = Object.keys(actual).sort();
+  const expectedKeys = Object.keys(expectedBody).sort();
+  const bodyMatches = actualKeys.length === expectedKeys.length
+    && expectedKeys.every((key) => actual[key] === expectedBody[key]);
+  const cacheControl = headers.cacheControl == null ? null : String(headers.cacheControl);
+  const contentType = headers.contentType == null ? null : String(headers.contentType);
+  const cacheOk = cacheControl != null && cacheControl.trim().toLowerCase() === String(spec.cacheControl).toLowerCase();
+  const typeOk = contentType != null && contentType.toLowerCase().startsWith(String(spec.contentType).toLowerCase());
+  const rndrId = headers.rndrId == null || headers.rndrId === "" ? null : String(headers.rndrId);
+  const headerAbsent = spec.absentHeaders.includes("rndr-id") ? rndrId == null : true;
+  const presentFields = spec.absentFields.filter((field) => Object.prototype.hasOwnProperty.call(actual, field));
+  const nestedGeneratedAt = actual.atlas && typeof actual.atlas === "object" && actual.atlas.generatedAtUtc != null;
+  if (nestedGeneratedAt && !presentFields.includes("generatedAtUtc")) presentFields.push("generatedAtUtc");
+  return makeCheck(healthCheckName(path), statusCode === spec.status && bodyMatches && cacheOk && typeOk && headerAbsent && presentFields.length === 0, {
+    status: statusCode,
+    body: actual,
+    cacheControl,
+    contentType,
+    rndrId,
+    presentFields
+  });
 }
 
 export function classifyConsoleError(text, blockedUrls = []) {
@@ -661,8 +701,8 @@ export function formatHumanReport({ checks, base, timestamp, ok, readyz }) {
   lines.push(`base=${base}`);
   lines.push(`timestamp=${timestamp}`);
   if (readyz) {
-    lines.push(`readyz generatedAtUtc=${readyz.generatedAtUtc ?? "null"} (${"service restart / snapshot time"})`);
-    lines.push(`readyz caveat: ${READYZ_CAVEAT}`);
+    const body = readyz.body && typeof readyz.body === "object" ? readyz.body : readyz;
+    lines.push(`readyz ok=${body.ok ?? "null"} service=${body.service ?? "null"}`);
   }
   return `${lines.join("\n")}\n`;
 }
