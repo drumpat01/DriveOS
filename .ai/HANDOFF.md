@@ -6,8 +6,9 @@ Put `/wife.html` behind the same login that already protects `/wife`. Open a dra
 
 ## Checkout
 
-- Branch `cursor/wife-html-auth-460d`, based on main `102a13b`.
+- Branch `cursor/wife-html-auth-460d`, rebased onto main `b9c4031` (PR #300).
 - Draft pull request: https://github.com/drumpat01/DriveOS/pull/301. Do not merge it.
+- Rebase conflict was only `.ai/HANDOFF.md`. PR #300's Tessie onboarding copy in `mobile/recorder/src/first-run-v4.tsx` stayed.
 
 ## Material changes
 
@@ -17,6 +18,8 @@ Put `/wife.html` behind the same login that already protects `/wife`. Open a dra
 - `tools/verify-live/expectations.json` asserts unauthenticated `/wife.html` is 302 to `/login`.
 
 ## Verification
+
+Re-run after the rebase onto `b9c4031`:
 
 - Node `v24.22.0`.
 - `npm run check:server` passed.
@@ -30,7 +33,7 @@ Put `/wife.html` behind the same login that already protects `/wife`. Open a dra
 
 - Do not merge and do not deploy. Render and Cloudflare were not changed.
 - Production `npm run verify:live` will fail `unauthenticated:/wife.html` until this commit is deployed.
-- Other public `.html` bypasses were found and left unchanged. See the pull request body.
+- Other public `.html` bypasses were found and left unchanged. Do not start the decoded-path follow-up in this branch.
 
 ## Next steps
 
