@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "journeydeck-site",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-27",
+  "compatibility_flags": ["nodejs_compat"],
+  // workers.dev only. Do not add routes, route, custom_domain, or zone entries.
+  // The apex stays on Render until a separate cutover approval.
+  "workers_dev": true,
+  "assets": {
+    "directory": "../../web",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+  "rules": [
+    { "type": "Text", "globs": ["**/*.csv"], "fallthrough": true },
+    { "type": "Data", "globs": ["**/*.cer"], "fallthrough": true }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true
+    }
+  },
+  "vars": {
+    "RENDER_ORIGIN": "https://driveos.onrender.com",
+    "JOURNEYDECK_RETENTION_MESSAGE_ID": "7f3c1a92-4e58-4b0d-8c6a-1d2e3f4a5b6c",
+    "JOURNEYDECK_RETENTION_ENVIRONMENTS": "Production,Sandbox"
+  }
+}

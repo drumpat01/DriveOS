@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}
