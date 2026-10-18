@@ -74,8 +74,9 @@ add({ path: "/assets/", match: "exact", type: "static page", phase1_owner: "work
 
 // ---------- Worker: Apple retention messaging ----------
 // Render on the free plan sleeps, and Apple waits 700 ms without retrying.
-// The Worker answers these four routes. Verification is Web Crypto. The Apple
-// library stays on Render; its cold start is about 70 ms of CPU.
+// The Worker answers these four routes. Verification is Web Crypto. The pinned
+// Apple root and WWDR G6 intermediate are parsed at isolate startup. The Apple
+// library stays on Render.
 const RETENTION_HANDLER = "cloudflare/site/src/retention.ts";
 const retentionNote = "Answered by the Worker with Web Crypto. No fetch to RENDER_ORIGIN. OCSP stays off. Apple realtime call, 700 ms budget. 64 KB body limit, application/json only (415 otherwise).";
 for (const p of ["/retention-messaging-api", "/retention-messaging-api/"]) {

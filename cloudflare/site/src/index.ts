@@ -1,21 +1,14 @@
-import appleRootCaG3 from "../../../server/certs/AppleRootCA-G3.cer";
 import routeListCsv from "../route-list.csv";
 import type { SiteEnv } from "./env.ts";
 import { HOMEPAGE_LINKS, jsonResponse, mimeForPath, versionedCache, VERSIONED_IMMUTABLE, withOwnedHeaders } from "./headers.ts";
 import { proxyToRender } from "./proxy.ts";
-import { assertAppleRootPin, handleRetention, retentionSettingsFromEnv, warmupRetention } from "./retention.ts";
+import { appleRootDer, assertPinnedCertificateDigests, handleRetention, retentionSettingsFromEnv } from "./retention.ts";
 import { matchRoute, parseRouteList, type RouteRow } from "./routes.ts";
 
 const routes = parseRouteList(routeListCsv);
-const appleRoot = bytesOf(appleRootCaG3);
-await assertAppleRootPin(appleRoot);
-// Compile verification and cache the pinned root during isolate startup.
-// Startup has its own 1s budget, separate from the 10ms Free-plan request limit.
-await warmupRetention(appleRoot);
-
-function bytesOf(value: ArrayBuffer | Uint8Array) {
-  return value instanceof Uint8Array ? value : new Uint8Array(value);
-}
+// Fingerprints only. Certificate DER parsing already ran when retention.ts loaded.
+// importKey stays on the first request and is memoized per isolate.
+await assertPinnedCertificateDigests();
 
 function contentTypeFor(route: RouteRow) {
   if (route.content_type) return route.content_type;
@@ -97,7 +90,7 @@ export default {
         case "status_only":
           return applyRouteHeaders(request, statusOnly(route), route);
         case "native":
-          return applyRouteHeaders(request, await handleRetention(request, await retentionSettingsFromEnv(env, appleRoot, request.headers.get("host") || url.host)), route);
+          return applyRouteHeaders(request, await handleRetention(request, await retentionSettingsFromEnv(env, appleRootDer, request.headers.get("host") || url.host)), route);
         case "proxy":
           return proxyToRender(request, env.RENDER_ORIGIN || "https://driveos.onrender.com");
         case "none":

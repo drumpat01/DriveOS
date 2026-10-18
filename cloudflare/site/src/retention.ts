@@ -1,5 +1,6 @@
+import { APPLE_ROOT_CA_G3_BASE64, APPLE_WWDR_G6_BASE64 } from "./apple-pinned-certs.ts";
 import type { SiteEnv } from "./env.ts";
-import { certificateSignedBy, loadCertificate, RetentionVerifyError, verifyRetentionJws } from "./retention-jws.ts";
+import { inspectRetentionJws, pinPreparedCertificate, RetentionVerifyError, verifyInspectedRetentionJws } from "./retention-jws.ts";
 
 /**
  * Apple Root CA - G3, pinned from Apple PKI.
@@ -7,6 +8,20 @@ import { certificateSignedBy, loadCertificate, RetentionVerifyError, verifyReten
  * SHA-256: 63:34:3A:BF:B8:9A:6A:03:EB:B5:7E:9B:3F:5F:A7:BE:7C:4F:5C:75:6F:30:17:B3:A8:C4:88:C3:65:3E:91:79
  */
 export const APPLE_ROOT_CA_G3_SHA256 = "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179";
+export const APPLE_WWDR_G6_SHA256 = "bdd4ed6e74691f0c2bfd01be0296197af1379e0418e2d300efa9c3bef642ca30";
+
+function decodePinned(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+export const appleRootDer = decodePinned(APPLE_ROOT_CA_G3_BASE64);
+export const appleWwdrG6Der = decodePinned(APPLE_WWDR_G6_BASE64);
+// Synchronous X.509 parse at isolate startup. importKey is not called here.
+export const preparedAppleRoot = pinPreparedCertificate(appleRootDer);
+export const preparedAppleWwdrG6 = pinPreparedCertificate(appleWwdrG6Der);
 export const DEFAULT_RETENTION_MESSAGE_ID = "7f3c1a92-4e58-4b0d-8c6a-1d2e3f4a5b6c";
 export const RETENTION_BUNDLE_ID = "com.journeydeck.recorder";
 export const RETENTION_APP_APPLE_ID = 6806502526;
@@ -18,6 +33,8 @@ const messageIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-
 const compactJwsPattern = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const jsonContentType = /^application\/json(?:\s*;|$)/i;
 const pinPromises = new WeakMap<Uint8Array, Promise<string>>();
+const testRootBytes = new Map<string, Uint8Array>();
+const utf8Decoder = new TextDecoder();
 
 export interface RetentionSettings {
   bundleId: string;
@@ -49,24 +66,35 @@ function hex(bytes: Uint8Array) {
   return text;
 }
 
-async function digestPin(bytes: Uint8Array) {
+async function digestPin(bytes: Uint8Array, expected: string) {
   const pinned = new Uint8Array(bytes.byteLength);
   pinned.set(bytes);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", pinned.buffer));
   const fingerprint = hex(digest);
-  if (fingerprint !== APPLE_ROOT_CA_G3_SHA256) throw new Error("Pinned Apple Root CA - G3 fingerprint does not match.");
+  if (fingerprint !== expected) throw new Error("Pinned Apple certificate fingerprint does not match.");
   return fingerprint;
 }
 
-export function assertAppleRootPin(bytes: Uint8Array) {
+function assertCertificatePin(bytes: Uint8Array, expected: string) {
   const cached = pinPromises.get(bytes);
   if (cached) return cached;
-  const pending = digestPin(bytes);
+  const pending = digestPin(bytes, expected);
   pinPromises.set(bytes, pending);
   pending.catch(() => {
     if (pinPromises.get(bytes) === pending) pinPromises.delete(bytes);
   });
   return pending;
+}
+
+export function assertAppleRootPin(bytes: Uint8Array) {
+  return assertCertificatePin(bytes, APPLE_ROOT_CA_G3_SHA256);
+}
+
+export function assertPinnedCertificateDigests() {
+  return Promise.all([
+    assertAppleRootPin(appleRootDer),
+    assertCertificatePin(appleWwdrG6Der, APPLE_WWDR_G6_SHA256)
+  ]);
 }
 
 function isLocalRetentionHost(requestHost: string | undefined) {
@@ -81,9 +109,13 @@ function isLocalRetentionHost(requestHost: string | undefined) {
 }
 
 function bytesFromBase64(value: string) {
+  const cached = testRootBytes.get(value);
+  if (cached) return cached;
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  if (testRootBytes.size > 4) testRootBytes.clear();
+  testRootBytes.set(value, bytes);
   return bytes;
 }
 
@@ -99,11 +131,6 @@ export async function retentionSettingsFromEnv(env: SiteEnv, appleRoot: Uint8Arr
     return { bundleId: RETENTION_BUNDLE_ID, appAppleId: RETENTION_APP_APPLE_ID, messageId, environments, rootCertificates: [bytesFromBase64(env.RETENTION_TEST_ROOT_BASE64)] };
   }
   return { bundleId: RETENTION_BUNDLE_ID, appAppleId: RETENTION_APP_APPLE_ID, messageId, environments, rootCertificates: [appleRoot] };
-}
-
-export async function warmupRetention(appleRoot: Uint8Array) {
-  const root = await loadCertificate(appleRoot);
-  if (!await certificateSignedBy(root, root)) throw new Error("Pinned Apple Root CA - G3 signature does not verify.");
 }
 
 function jsonBody(status: number, body: unknown, extra?: Record<string, string>) {
@@ -162,19 +189,7 @@ async function readLimitedBody(request: Request) {
     merged.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { ok: true as const, text: new TextDecoder().decode(merged) };
-}
-
-function claimedEnvironment(signedPayload: string) {
-  try {
-    const encoded = signedPayload.split(".")[1];
-    if (!encoded) return undefined;
-    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((encoded.length + 3) % 4);
-    const parsed = JSON.parse(atob(padded)) as { environment?: unknown };
-    return typeof parsed.environment === "string" ? parsed.environment : undefined;
-  } catch {
-    return undefined;
-  }
+  return { ok: true as const, text: utf8Decoder.decode(merged) };
 }
 
 function rejectionMessage(error: RetentionVerifyError) {
@@ -204,13 +219,14 @@ async function respond(request: Request, settings: RetentionSettings) {
   const signedPayload = (parsed as { signedPayload?: unknown }).signedPayload;
   if (typeof signedPayload !== "string" || !compactJwsPattern.test(signedPayload)) return jsonBody(400, { error: "A signed RealtimeRequestBody is required." });
   if (settings.environments.length === 0) throw new Error("At least one retention messaging environment is required.");
-  const claimed = claimedEnvironment(signedPayload);
-  const selected = claimed && isRetentionEnvironment(claimed) && settings.environments.some(environment => environment === claimed)
-    ? claimed
-    : settings.environments[0];
-  if (!selected) throw new RetentionVerifyError("environment_mismatch");
   try {
-    const decoded = await verifyRetentionJws(signedPayload, settings.rootCertificates, selected);
+    const inspected = inspectRetentionJws(signedPayload);
+    const claimed = inspected.payload.environment;
+    const selected = claimed && isRetentionEnvironment(claimed) && settings.environments.some(environment => environment === claimed)
+      ? claimed
+      : settings.environments[0];
+    if (!selected) throw new RetentionVerifyError("environment_mismatch");
+    const decoded = await verifyInspectedRetentionJws(inspected, settings.rootCertificates, selected);
     if (decoded.appAppleId !== settings.appAppleId) throw new RetentionVerifyError("app_mismatch");
     if (decoded.bundleId !== undefined && decoded.bundleId !== settings.bundleId) throw new RetentionVerifyError("app_mismatch");
     if (!isRetentionEnvironment(decoded.environment) || !settings.environments.some(environment => environment === decoded.environment)) {

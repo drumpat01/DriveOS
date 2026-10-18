@@ -112,9 +112,9 @@ test("workerd retention answers without calling Render and stays inside the Appl
     const handlerMs = Number(/retention;dur=([0-9.]+)/.exec(timing)?.[1]);
     const cpuMs = Number(/cpu;dur=([0-9.]+)/.exec(timing)?.[1]);
     assert.equal(Number.isFinite(handlerMs), true, timing);
-    // The dev runtime's timer is 1 ms. A cold isolate's first request lands
-    // around 8–10 ms, so the assertion is the Apple budget. Warm requests
-    // below assert the Free-plan steady state.
+    // workerd's timer is 1 ms and it has no CPU counter. Fresh isolates
+    // measured cold handler wall from 8 ms to 14 ms, so this assertion is
+    // Apple's 700 ms budget. Warm requests below are the Free-plan steady state.
     assert.equal(handlerMs < 700, true, `workerd handler wall ${handlerMs} ms`);
     if (Number.isFinite(cpuMs)) assert.equal(cpuMs < 10, true, `workerd cpu ${cpuMs} ms`);
     console.log(`workerd retention cold wall ${wallMs.toFixed(3)} ms handler ${handlerMs.toFixed(3)} ms${Number.isFinite(cpuMs) ? ` cpu ${cpuMs.toFixed(3)} ms` : ""}`);
