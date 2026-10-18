@@ -2,35 +2,37 @@
 
 ## Current objective
 
-Serve Apple's Get Retention Message endpoint from the existing journeydeck.me Fastify app. Do not merge and do not deploy.
+Add a permanent 301 from `/homeworld` and `/homeworld/` to `https://studio.journeydeck.me/homeworld` in the journeydeck.me Fastify app. Open a draft pull request. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/retention-messaging-endpoint-5d8a`, based on main `de0cc35`. Draft PR: https://github.com/drumpat01/DriveOS/pull/296
-- Public URL to paste after deploy: `https://journeydeck.me/retention-messaging-api`
-- The same POST handler is registered at the trailing-slash path and does not redirect.
+- Branch `cursor/homeworld-redirect-8979`, based on main `ec46402`.
+- Draft pull request is opened from this branch. Do not merge it.
 
 ## Material changes
 
-- `POST /retention-messaging-api` accepts `RealtimeRequestBody` (`application/json`, `signedPayload` JWS).
-- Verification uses `@apple/app-store-server-library` `SignedDataVerifier` and the pinned Apple Root CA - G3 at `server/certs/AppleRootCA-G3.cer`.
-- A verified request returns `{ "message": { "messageIdentifier": "<uuid>" } }`.
-- Invalid requests return 400, 401, 403, 405, or 415 and do not log the signed payload or `originalTransactionId`.
+- `GET` and Fastify's automatic `HEAD` for `/homeworld` and `/homeworld/` reply `301` to `https://studio.journeydeck.me/homeworld`. The query string is not copied.
+- Both paths are in `publicPaths` in `server/src/app.ts`, next to the `/driving-journal` redirect.
+- `tools/verify-live/expectations.json` lists both redirects. `npm run verify:live` checks status and `Location` without following them.
 
 ## Verification
 
-- `npm run test:server`: 68 tests passed.
-- `npm run build:server` and server ESLint passed.
-- A signed test request completed in about 2 ms, inside Apple's 700 ms production timeout.
+- `npm run check:server` passed.
+- `npm run lint:server` passed.
+- `npm run test:server`: 68 passed, 0 failed.
+- `npm run test:atlas-performance` passed.
+- `npm run test:e2e`: 18 passed.
+- `node --test ./tests/frontend-modules.test.js ./tests/startup-refresh.test.js`: 2 passed.
+- Local `curl -sI http://127.0.0.1:8798/homeworld` in web mode returned `HTTP/1.1 301` and `location: https://studio.journeydeck.me/homeworld`. The same location was returned for `/homeworld/` and for a query string.
+- PowerShell analyzer, gitleaks, and trivy were not run here. Those commands are not installed on this Linux agent. GitHub Actions runs them on Windows.
 
 ## Unresolved
 
 - Do not merge and do not deploy. Render, Cloudflare, and DNS were not changed.
-- Optional env vars are unset: `JOURNEYDECK_RETENTION_MESSAGE_ID` (default `7f3c1a92-4e58-4b0d-8c6a-1d2e3f4a5b6c`) and `JOURNEYDECK_RETENTION_ENVIRONMENTS` (default `Production,Sandbox`).
-- App Store Connect still needs the message upload, per-locale default for `com.journeydeck.recorder.pro.annual`, sandbox realtime URL, and a passing performance test before production.
+- `npm run verify:live` against production will fail these two redirect checks until this commit is deployed.
 
 ## Next steps
 
-1. Leave the pull request open until the owner merges it.
-2. After deploy, paste `https://journeydeck.me/retention-messaging-api` into Apple's Retention Messaging API form for sandbox.
-3. Upload the message UUID and configure the annual product's default message before expecting a customer-visible message.
+1. Leave the draft pull request open until the owner merges it.
+2. After deploy, run `curl -sI https://journeydeck.me/homeworld` and `curl -sI https://journeydeck.me/homeworld/`. Both should show `301` and `location: https://studio.journeydeck.me/homeworld`.
+3. Then run `npm run verify:live -- --base https://journeydeck.me`.

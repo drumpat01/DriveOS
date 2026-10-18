@@ -74,6 +74,13 @@ export function loadExpectations(filePath = DEFAULT_EXPECTATIONS_PATH) {
 export function validateExpectations(raw) {
   if (!raw || typeof raw !== "object") throw new Error("expectations.json must be an object");
   if (!Array.isArray(raw.publicPages) || raw.publicPages.length === 0) throw new Error("expectations.publicPages must be a non-empty array");
+  if (!Array.isArray(raw.redirects)) throw new Error("expectations.redirects must be an array");
+  for (const redirect of raw.redirects) {
+    if (!redirect || typeof redirect !== "object") throw new Error("expectations.redirects entries must be objects");
+    if (typeof redirect.path !== "string" || !redirect.path.startsWith("/")) throw new Error("expectations.redirects path must start with /");
+    if (redirect.status !== 301) throw new Error("expectations.redirects status must be 301");
+    if (typeof redirect.location !== "string" || !/^https:\/\/[^/\s]+\/.+/.test(redirect.location)) throw new Error("expectations.redirects location must be an https URL");
+  }
   if (typeof raw.loginPath !== "string" || !raw.loginPath.startsWith("/")) throw new Error("expectations.loginPath must be a path");
   if (typeof raw.canonicalOrigin !== "string") throw new Error("expectations.canonicalOrigin is required");
   if (!raw.umami?.scriptSrc || !raw.umami?.websiteId || !raw.umami?.dataDomains) throw new Error("expectations.umami is incomplete");
@@ -439,6 +446,15 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
   }
   return checks;
+}
+
+export function evaluateRedirect(statusCode, location, redirect) {
+  return makeCheck(`redirect:${redirect.path}`, statusCode === redirect.status && location === redirect.location, {
+    status: statusCode,
+    location,
+    expectedStatus: redirect.status,
+    expectedLocation: redirect.location
+  });
 }
 
 export function evaluateNotFoundAppStore(html, expectations, statusCode) {

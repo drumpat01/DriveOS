@@ -15,6 +15,7 @@ import {
   evaluateLoginUmami,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
+  evaluateRedirect,
   evaluateUmamiScripts,
   extractAppStoreHrefs,
   extractDocumentTitle,
@@ -71,6 +72,12 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/privacy",
     "/terms"
   ]);
+  assert.deepEqual(expectations.redirects, [
+    { path: "/homeworld", status: 301, location: "https://studio.journeydeck.me/homeworld" },
+    { path: "/homeworld/", status: 301, location: "https://studio.journeydeck.me/homeworld" }
+  ]);
+  assert.equal(evaluateRedirect(301, "https://studio.journeydeck.me/homeworld", expectations.redirects[0]).pass, true);
+  assert.equal(evaluateRedirect(404, null, expectations.redirects[0]).pass, false);
   assert.equal(expectations.umami.websiteId, "a5f66e11-ec7d-4133-8e1a-f8e6c08593af");
   assert.equal(expectations.umami.dataDomains, "journeydeck.me");
   assert.deepEqual(expectations.forbiddenTrialPhrases, ["3-day"]);
