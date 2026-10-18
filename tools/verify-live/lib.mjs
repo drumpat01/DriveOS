@@ -123,6 +123,13 @@ export function validateExpectations(raw) {
   ) {
     throw new Error("expectations.launchBadge is incomplete");
   }
+  const termsSnippets = raw.pageSnippets?.["/terms"];
+  if (!Array.isArray(termsSnippets) || termsSnippets.some((snippet) => typeof snippet !== "string" || snippet.length === 0)) {
+    throw new Error("expectations.pageSnippets./terms must list the studio products snippets");
+  }
+  if (!termsSnippets.includes('id="studio-products"') || !termsSnippets.some((snippet) => snippet.includes("7 days of purchase"))) {
+    throw new Error('expectations.pageSnippets./terms must include id="studio-products" and the 7-day refund line');
+  }
   return raw;
 }
 
@@ -446,6 +453,11 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits }),
     makeCheck(`page:${pathname} pricing`, priceHits.length === 0 && missingPricing.length === 0, { forbidden: priceHits, missing: missingPricing })
   ];
+  const requiredSnippets = expectations.pageSnippets?.[pathname];
+  if (Array.isArray(requiredSnippets)) {
+    const missingSnippets = findMissingRequiredPhrases(html, requiredSnippets);
+    checks.push(makeCheck(`page:${pathname} snippets`, missingSnippets.length === 0, { missing: missingSnippets }));
+  }
   const expectedCt = expectations.appStore?.pageCampaigns?.[pathname];
   if (expectedCt) {
     const hrefs = extractAppStoreHrefs(html, expectations);
