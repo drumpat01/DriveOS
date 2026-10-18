@@ -6,8 +6,8 @@ Phase-one `journeydeck-site` Worker: serve public files from `web/` and proxy ev
 
 ## Checkout
 
-- Route list regenerated from this tree after rebasing onto main `f93ecce` (#307, #302, #299, and #306). `/homeworld` is in `server/src/app.ts`. The three private Soundtrack screenshots are not in the map. The #307 sample files are: `assets/v2/soundtrack-sample.jpg`, `assets/v2/soundtrack-sample.webp`, and `assets/v4/05-soundtrack-sample.webp`.
-- Branch `cursor/journeydeck-site-worker-4cad`, based on main `f93ecce`. Draft PR: https://github.com/drumpat01/DriveOS/pull/303
+- Rebased onto main `a0fa3ce` (#309, CSS only, plus #307, #302, #299, and #306). Route list rows are unchanged. `/homeworld` is in `server/src/app.ts`. The three private Soundtrack screenshots are not in the map. The #307 sample files are: `assets/v2/soundtrack-sample.jpg`, `assets/v2/soundtrack-sample.webp`, and `assets/v4/05-soundtrack-sample.webp`.
+- Branch `cursor/journeydeck-site-worker-4cad`, based on main `a0fa3ce`. Draft PR: https://github.com/drumpat01/DriveOS/pull/303
 - Config is `workers_dev` only. No routes, DNS, or secrets. `preview_urls` is false. Invocation logs are off, and query strings are redacted.
 
 ## Material changes
