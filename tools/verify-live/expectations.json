@@ -16,13 +16,21 @@
     "/privacy",
     "/terms"
   ],
-  "unauthenticatedPages": [
-    {
-      "path": "/wife.html",
-      "status": 302,
-      "location": "/login"
-    }
-  ],
+  "retiredPages": {
+    "status": 410,
+    "robots": "noindex",
+    "cacheControl": "no-store",
+    "phrase": "The old web app has been retired",
+    "paths": [
+      "/app",
+      "/wife",
+      "/wife.html",
+      "/index.html",
+      "/spotify-callback",
+      "/login.html",
+      "/login"
+    ]
+  },
   "redirects": [
     {
       "path": "/homeworld",
@@ -36,6 +44,28 @@
     }
   ],
   "loginPath": "/login",
+  "health": {
+    "status": 200,
+    "cacheControl": "no-store",
+    "contentType": "application/json",
+    "body": {
+      "ok": true,
+      "service": "journeydeck-site"
+    },
+    "paths": [
+      "/healthz",
+      "/readyz"
+    ],
+    "absentHeaders": [
+      "rndr-id"
+    ],
+    "absentFields": [
+      "atlas",
+      "generatedAtUtc",
+      "legacyCompatibilityReachable",
+      "snapshotStale"
+    ]
+  },
   "canonicalOrigin": "https://journeydeck.me",
   "umami": {
     "scriptSrc": "https://cloud.umami.is/script.js",
