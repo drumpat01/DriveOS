@@ -6,7 +6,7 @@ Stop hosted login throttling from treating every caller as 127.0.0.1. Draft pull
 
 ## Checkout
 
-- Branch `cursor/login-client-ip-throttle-f653`, rebased onto main `2c190bf` (includes merged #298).
+- Branch `cursor/login-client-ip-throttle-f653`, rebased onto main `45c9cf0` (includes merged #298 and #301).
 - Draft PR: https://github.com/drumpat01/DriveOS/pull/302. Do not merge it.
 
 ## Material changes
@@ -18,13 +18,13 @@ Stop hosted login throttling from treating every caller as 127.0.0.1. Draft pull
 
 ## Verification
 
-- Rebased onto main `2c190bf` and rechecked with Node 24.22.0.
+- Rebased onto main `45c9cf0` and rechecked with Node 24.22.0.
 - `npm run check:server` passed.
 - `npm run lint:server` passed.
-- `npm run test:server`: 78 passed, 0 failed, including the login throttle tests.
+- `npm run test:server`: 79 passed, 0 failed, including the login throttle tests and the wife.html session gate.
 - `npm run test:e2e`: 18 passed.
 - `tests/WebRequest.Tests.ps1` passed on PowerShell 7.5.4, including proxy header and per-address throttle checks.
-- `npm run verify:live -- --base http://127.0.0.1:8795` passed against a local web-mode server.
+- `npm run verify:live -- --base http://127.0.0.1:8795` passed against a local web-mode server, including `unauthenticated:/wife.html`.
 
 ## Unresolved
 
