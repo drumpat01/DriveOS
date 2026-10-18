@@ -2,33 +2,33 @@
 
 ## Current objective
 
-Keep draft PR #299 open. The Tesla page layout stacks the replay text above the phones from 701px up. Do not merge and do not deploy.
+Stop hosted login throttling from treating every caller as 127.0.0.1. Draft pull request only. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/tesla-journal-landing-e036`, rebased onto main `e490f0f` (#304 and #306).
-- Draft PR: https://github.com/drumpat01/DriveOS/pull/299
+- Branch `cursor/login-client-ip-throttle-f653`, rebased onto main `2c190bf` (includes merged #298).
+- Draft PR is opened from that branch. Do not merge it.
 
 ## Material changes
 
-- `.soundtrack-proof--pair` is one column above 700px. The text is at most 560px wide. The phones stay side by side, each at most 300px, top-aligned, with a 32px row gap.
-- The line under the hero lede has class `tesla-aside` and 14px of top margin.
-- Mobile under 701px is unchanged.
-- Rebase conflicts were `.ai/HANDOFF.md` and `expectations.json`. Tesla page checks stay next to the removed Soundtrack image checks and the Studio terms snippets. The Tesla page, CSS, and screenshots match the previous tip.
+- Node derives the client address with `TRUST_PROXY` (default `1`, Render's single hop). It uses the right-most untrusted `X-Forwarded-For` entry and falls back to the socket. `CF-Connecting-IP` is used only when the TCP peer is Cloudflare.
+- The proxy strips any incoming `X-DriveOS-Client-IP` and sets that header from the derived address.
+- Hosted PowerShell keys the existing 5-failure, 30-second login throttle on that header only for a loopback Node proxy. Other callers use the socket address.
+- Node applies the same per-address limit in front of `/api/auth/login` and `/api/auth/passkey/verify`.
 
 ## Verification
 
-- No horizontal overflow at 360, 390, 701, 768, 1024, or 1280.
-- Text width is 560px from 701px up. At 390 it is 316px. At 360 it is 286px, which is the full card width, and the heading does not overflow.
-- `npm run check:server` and `npm run lint:server` passed.
-- `npm run test:server`: 69 passed. `npm run test:e2e`: 19 passed.
-- Local `verify:live` against `http://127.0.0.1:8792`: 221 checks, 0 failed, including the Studio terms snippets, the removed Soundtrack URLs, `unauthenticated:/wife.html`, `redirect:/homeworld`, and the Tesla page.
-- Lighthouse mobile, from the layout pass: performance 99, LCP 2.0 s, accessibility 100, best practices 100, SEO 92.
+- `npm run check:server` passed.
+- `npm run lint:server` passed.
+- `npm run test:server`: 78 passed, 0 failed.
+- `tests/WebRequest.Tests.ps1` passed, including proxy header and per-address throttle checks.
 
 ## Unresolved
 
-- Do not merge and do not deploy.
+- Do not merge and do not deploy. Render, Cloudflare, and DNS were not changed.
+- `TRUST_PROXY` is unset in production. The default of one hop matches the current Render edge. Set it to `0` only if Node is exposed without a proxy, or to a higher hop count only if another proxy is added in front.
 
 ## Next steps
 
 1. Leave the draft pull request open until the owner merges it.
+2. After deploy, failed logins from one address must not block a different address.

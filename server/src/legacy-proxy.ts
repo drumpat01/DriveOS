@@ -2,17 +2,22 @@ import http, { type IncomingMessage } from "node:http";
 import https from "node:https";
 import { Readable } from "node:stream";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { CLIENT_IP_HEADER, normalizeIp } from "./client-ip.js";
 import { legacyForwardingContext } from "./legacy-forwarding.js";
 
 const hop = new Set(["connection", "content-encoding", "content-length", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
 const safeReadPostPaths = new Set(["/api/drive/map", "/api/drive/share-card", "/api/collections/attachments/list", "/api/collections/attachments/get", "/api/memories/attachments/list", "/api/memories/attachments/get", "/api/assistant/query"]);
 
-export async function proxyLegacy(req: FastifyRequest, reply: FastifyReply, upstream: string, readOnly = true, forwardedOrigin = "") {
+export async function proxyLegacy(req: FastifyRequest, reply: FastifyReply, upstream: string, readOnly = true, forwardedOrigin = "", clientIp = "") {
   if (!upstream) return reply.code(503).send({ error: "This API remains in the documented PowerShell compatibility boundary, but no local compatibility upstream is configured." });
   const requestPath = req.url.split("?")[0];
   if (readOnly && !["GET", "HEAD"].includes(req.method) && !req.url.startsWith("/api/auth/") && !safeReadPostPaths.has(requestPath)) return reply.code(503).send({ error: "The local compatibility adapter is read-only. This write was not sent to the production service." });
   const url = new URL(req.url, upstream), headers: Record<string, string> = {};
+  // The allowlist drops a caller-supplied client address. The value below is the one this proxy derived.
   for (const name of ["accept", "accept-language", "content-type", "cookie", "user-agent", "x-driveos-sync-token"]) { const value = req.headers[name]; if (value) headers[name] = String(value); }
+  delete headers[CLIENT_IP_HEADER];
+  const normalizedClient = normalizeIp(clientIp);
+  if (normalizedClient) headers[CLIENT_IP_HEADER] = normalizedClient;
   const forwarding = legacyForwardingContext(upstream, forwardedOrigin);
   headers.host = forwarding.destinationHost;
   headers["x-forwarded-proto"] = forwarding.forwardedProtocol;
