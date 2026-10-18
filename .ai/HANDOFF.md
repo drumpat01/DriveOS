@@ -7,6 +7,7 @@
 ## Checkout
 
 - Branch `cursor/worker-retention-api-02df`, based on main `75cffb2`.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/310. Do not merge.
 - R029–R032 are `native` on `cloudflare/site/src/retention.ts`. Every other route is unchanged. Render's `server/src/retention-messaging.ts` is still there.
 - Config is `workers_dev` only. No routes, DNS, or new secrets. `preview_urls` is false.
 
@@ -33,7 +34,7 @@
 
 ## Next steps
 
-1. Review the draft PR. Do not merge it as a deploy.
+1. Review https://github.com/drumpat01/DriveOS/pull/310. Do not merge it as a deploy.
 2. Confirm whether the Cloudflare account is Workers Free or Paid before any route cutover.
 3. From a machine with approval: `npm run predeploy:site`, then `npx wrangler deploy --config cloudflare/site/wrangler.jsonc`.
 4. Re-run parity against the workers.dev URL. A real Apple sandbox retention request is still untested.
