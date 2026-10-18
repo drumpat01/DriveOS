@@ -7,7 +7,7 @@ Point the V4 onboarding Tesla note at Settings, Music & Connections. Open a draf
 ## Checkout
 
 - Branch `cursor/tessie-settings-copy-1783`, based on main `102a13b`.
-- Draft PR is open from this branch. Do not merge it.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/300. Do not merge it.
 
 ## Material changes
 
