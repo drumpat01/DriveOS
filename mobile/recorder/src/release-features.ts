@@ -51,3 +51,9 @@ export const CONNECTOR_MCP_URL: string | null = typeof Constants.expoConfig?.ext
 
 /** V4 iPhone redesign: Today, Memories, Soundtrack and Atlas tabs, Search, and the recorder accessory. */
 export const V4_REDESIGN_ENABLED: boolean = Constants.expoConfig?.extra?.features?.redesign === true;
+
+/**
+ * One-time soft Plus card after the first completed trip.
+ * Off in every build unless JOURNEYDECK_POST_FIRST_TRIP_PROMPT=on.
+ */
+export const POST_FIRST_TRIP_PLUS_PROMPT_ENABLED: boolean = Constants.expoConfig?.extra?.features?.postFirstTripPlusPrompt === true;

@@ -109,7 +109,7 @@ module.exports = ({ config }) => {
       ...(v4Store ? { connector: { url: process.env.EAS_BUILD_PROFILE === 'v4-development-simulator' || process.env.JOURNEYDECK_CONNECTOR === 'staging'
         ? 'https://mcp-staging.journeydeck.me/mcp'
         : 'https://mcp.journeydeck.me/mcp' } } : {}),
-      features: { ...config.extra?.features, atlasUnlocked: modern && !paywallLive, markerPrototype: modern, fiftyStates: modern, askJourneyDeck: modern, midnightCanopy: modern, auroraGlass: v4Store, connector: v4Store, redesign: v4Store, tessieEnabled: modern, lastFmEnabled: modern, testflightPlusUnlocked: (v3Store || v4Store) && !paywallLive },
+      features: { ...config.extra?.features, atlasUnlocked: modern && !paywallLive, markerPrototype: modern, fiftyStates: modern, askJourneyDeck: modern, midnightCanopy: modern, auroraGlass: v4Store, connector: v4Store, redesign: v4Store, tessieEnabled: modern, lastFmEnabled: modern, testflightPlusUnlocked: (v3Store || v4Store) && !paywallLive, postFirstTripPlusPrompt: process.env.JOURNEYDECK_POST_FIRST_TRIP_PROMPT === 'on' },
       release: v4Store ? { label: 'JourneyDeck V4 — Connector TestFlight', sequence: 'V4-STORE-TF' } : v3Preview ? { label: 'JourneyDeck V3 — Adaptive Preview', sequence: 'V3-P2-CURRENT-V2' } : v3Store ? { label: 'JourneyDeck V3 — Live TestFlight', sequence: 'V3-STORE-TF' } : preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P9-HARDENED' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE4-HARDENED' },
     },
   };

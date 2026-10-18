@@ -64,6 +64,7 @@ import {
 import { getCurrentUser, isDemoProfile } from './src/auth';
 import { commitCompletedDrive } from './src/completed-drive-store';
 import { sessionIdForFinishedDrive } from './src/completed-drive-count';
+import { firstTripPromptReadyToPresent } from './src/first-trip-prompt';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_FIFTY_STATES_ENABLED } from './src/release-features';
@@ -161,7 +162,7 @@ function completionMomentFromSnapshot(snapshot: LiveRecorderSnapshot, fallback: 
   };
 }
 
-function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample, onCompletedDrive }: {
+function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange, onLeaveSample, onCompletedDrive, onRecorderIdle }: {
   onClose: () => void;
   /** Leaves the sample for the member's own library (the recorder remounts there). */
   onLeaveSample?: () => Promise<void>;
@@ -171,6 +172,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   onActivityChange?: (active: boolean) => void;
   onProgressChange?: (progress: ActiveJourneyProgress | null) => void;
   onCompletedDrive?: (completedCount: number) => void;
+  onRecorderIdle?: (idle: boolean) => void;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
@@ -577,6 +579,17 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     onActivityChange?.(active || busy);
     return () => onActivityChange?.(false);
   }, [active, busy, onActivityChange]);
+
+  const recorderChromeIdle = firstTripPromptReadyToPresent({
+    recording: summary?.status === 'recording' || summary?.status === 'paused',
+    finishing: summary?.status === 'finishing',
+    saving: syncStage === 'saving' || busy,
+    completionVisible: completionMoment != null,
+    otherSheetVisible: recorderSheetOpen && (presentation === 'accessory' || presentation === 'accessory-inline'),
+  });
+  useEffect(() => {
+    onRecorderIdle?.(recorderChromeIdle);
+  }, [onRecorderIdle, recorderChromeIdle]);
 
   const withBusy = useCallback(async (work: () => Promise<void>, label = 'Working…') => {
     if (busyRef.current) return;
