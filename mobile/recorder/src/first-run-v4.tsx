@@ -251,7 +251,7 @@ function LocationStep({ onBack, onContinue, initialMode }: { onBack: () => void;
       <TeslaCar />
       <View style={styles.flex}>
         <Text style={[styles.optionTitle, { color: c.text }]}>Bring in your Tesla drives</Text>
-        <Text style={[styles.optionDetail, { color: c.textSecondary }]}>Connect Tessie later in Settings › Recording and JourneyDeck will add your Tesla trips automatically.</Text>
+        <Text style={[styles.optionDetail, { color: c.textSecondary }]}>Connect Tessie later in Settings › Music & Connections and JourneyDeck will add your Tesla trips automatically.</Text>
       </View>
     </Animated.View> : null}
     <View style={styles.spacer} />
