@@ -22,10 +22,12 @@
   <meta name="twitter:image:alt" content="JourneyDeck: every route, every song, every memory. A phone showing a Summer Vacation Memory.">
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon.png?v=app-logo-1">
   <link rel="apple-touch-icon" href="/assets/journeydeck-cinematic-180.png">
+  <link rel="preload" as="image" href="/assets/beta/grand-touring-home-800.webp?v=1" imagesrcset="/assets/beta/grand-touring-home-800.webp?v=1 800w, /assets/beta/grand-touring-home-1600.webp?v=1 1600w" imagesizes="(max-width: 620px) calc(100vw - 28px), 940px" fetchpriority="high">
   <link rel="stylesheet" href="/public-page.css?v=grand-tour-5">
   <link rel="stylesheet" href="/site-mobile-nav.css?v=2">
-  <link rel="stylesheet" href="/soundtrack-v2.css?v=2">
+  <link rel="stylesheet" href="/soundtrack-v2.css?v=3">
   <link rel="stylesheet" href="/public-a11y.css?v=2">
+  <style>.tesla-lede { text-wrap: pretty; }</style>
   <title>Tesla drive journal for iPhone | JourneyDeck</title>
   <script type="application/ld+json">
 {
@@ -37,7 +39,7 @@
       "name": "What happens without Tessie?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "You start a drive yourself. One tap or Siri. Those are the Start Journey and Stop Journey shortcuts. Automatic drive and charging history needs Plus and Tessie."
+        "text": "You start each drive yourself, with one tap or Siri. Automatic history needs Plus and Tessie."
       }
     },
     {
@@ -45,7 +47,7 @@
       "name": "What does the iPhone detect?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The iPhone's GPS detects drives. Tessie turns on automatic drive detection and imports the car's drives and charging history from the last 30 days. That needs Plus and Tessie, and it runs on iPhone."
+        "text": "With Plus and Tessie, the iPhone's GPS detects your drives automatically, and Tessie imports the car's drives and charging history from the last 30 days."
       }
     },
     {
@@ -95,11 +97,11 @@
     <div class="header-actions"><details class="mobile-menu"><summary><span aria-hidden="true">☰</span> Menu</summary><nav aria-label="Mobile navigation"><a href="/">Home</a><a href="/tesla-drive-journal" aria-current="page">Tesla</a><a href="/apple-music-soundtrack">Soundtracks</a><a href="/privacy">Privacy</a><a class="nav-studio" href="https://studio.journeydeck.me">Studio <span aria-hidden="true">↗</span></a><a href="/support">Support</a></nav></details><a class="button button-small" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8">Get the app <span aria-hidden="true">↗</span></a></div>
   </header>
   <main class="page">
-    <section class="hero">
+    <section class="hero has-photo">
+      <img class="hero-photo" src="/assets/beta/grand-touring-home-800.webp?v=1" srcset="/assets/beta/grand-touring-home-800.webp?v=1 800w, /assets/beta/grand-touring-home-1600.webp?v=1 1600w" sizes="(max-width: 620px) calc(100vw - 28px), 940px" width="1536" height="1024" alt="" fetchpriority="high" decoding="async">
       <p class="eyebrow">TESLA / YOUR ARCHIVE</p>
       <h1>The trip, later</h1>
-      <p class="lede">I built JourneyDeck so a long drive would still be there when I got home. With Tessie and Plus, the iPhone's GPS detects the drives, and Tessie imports the car's drives and charging history from the last 30 days. Then you can replay the whole trip.</p>
-      <p>That's automatic drive and charging history with Tessie, a Plus feature. It needs both. iPhone only.</p>
+      <p class="lede tesla-lede">I built JourneyDeck so a long drive would still be there when I got home. With Tessie and Plus, the iPhone's GPS detects the drives, and Tessie imports the car's drives and charging history from the last 30 days. Then you can replay the whole trip. iPhone only.</p>
       <p>I'm one guy, and I still forget the drive by the time I park.</p>
       <div class="page-actions"><a class="contact" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8">Download on the App Store ↗</a></div>
     </section>
@@ -115,20 +117,20 @@
         <p>Without Tessie, you start a drive yourself. One tap or Siri. Those are the Start Journey and Stop Journey shortcuts.</p>
       </article>
     </section>
-    <section class="soundtrack-proof" aria-labelledby="replay-title">
+    <section class="soundtrack-proof soundtrack-proof--pair" aria-labelledby="replay-title">
       <div>
         <p class="eyebrow">LOOK BACK</p>
         <h2 id="replay-title">Replay, then Atlas.</h2>
-        <p>These are real screens from the app. A trip replay in JourneyDeck, and Atlas. Neither one is from a Tesla.</p>
+        <p>These are real screens from the app. Neither one shows a Tesla drive.</p>
       </div>
       <div class="soundtrack-shots">
         <figure>
-          <img src="/assets/v4/02-journey-screen-400.webp?v=1" srcset="/assets/v4/02-journey-screen-400.webp?v=1 400w, /assets/v4/02-journey-screen.webp?v=1 500w" sizes="(max-width: 700px) 255px, 300px" width="500" height="1120" loading="lazy" decoding="async" alt="A trip replay in JourneyDeck">
-          <figcaption>A trip replay in JourneyDeck</figcaption>
+          <img src="/assets/v4/02-journey-screen-400.webp?v=1" srcset="/assets/v4/02-journey-screen-400.webp?v=1 400w, /assets/v4/02-journey-screen.webp?v=1 516w" sizes="(max-width: 700px) 255px, 300px" width="516" height="1108" loading="lazy" decoding="async" alt="A trip replay in JourneyDeck. Not a Tesla drive.">
+          <figcaption>A trip replay in JourneyDeck. Not a Tesla drive.</figcaption>
         </figure>
         <figure>
-          <img src="/assets/v4/06-atlas-400.webp?v=1" srcset="/assets/v4/06-atlas-400.webp?v=1 400w, /assets/v4/06-atlas.webp?v=1 660w" sizes="(max-width: 700px) 255px, 300px" width="660" height="1434" loading="lazy" decoding="async" alt="Atlas in JourneyDeck">
-          <figcaption>Atlas in JourneyDeck</figcaption>
+          <img src="/assets/v4/06-atlas-400.webp?v=1" srcset="/assets/v4/06-atlas-400.webp?v=1 400w, /assets/v4/06-atlas.webp?v=1 660w" sizes="(max-width: 700px) 255px, 300px" width="660" height="1434" loading="lazy" decoding="async" alt="Atlas in JourneyDeck. Not Tesla data.">
+          <figcaption>Atlas in JourneyDeck. Not Tesla data.</figcaption>
         </figure>
       </div>
     </section>
@@ -137,7 +139,7 @@
         <h2>What's free</h2>
         <p>Free to record. No account required. Tessie is not part of the free app.</p>
         <ul>
-          <li>Manual drive recording and route viewing. One tap or Siri, the Start Journey and Stop Journey shortcuts.</li>
+          <li>Manual drive recording and route viewing.</li>
           <li>Today's journeys.</li>
           <li>Optional Apple Music soundtracks and Identify Song.</li>
           <li>Optional private iCloud continuity.</li>
@@ -148,15 +150,15 @@
       <article class="card">
         <h2>Plus</h2>
         <p>JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.</p>
-        <p>Plus keeps your full history and Atlas. That is automatic drive and charging history with Tessie, a Plus feature. Any Tessie fees are separate.</p>
+        <p>Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie. Any Tessie fees are separate.</p>
         <div class="page-actions"><a class="contact" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8">Download on the App Store ↗</a></div>
       </article>
       <article class="card">
         <h2>Frequently asked questions</h2>
         <h3>What happens without Tessie?</h3>
-        <p>You start a drive yourself. One tap or Siri. Those are the Start Journey and Stop Journey shortcuts. Automatic drive and charging history needs Plus and Tessie.</p>
+        <p>You start each drive yourself, with one tap or Siri. Automatic history needs Plus and Tessie.</p>
         <h3>What does the iPhone detect?</h3>
-        <p>The iPhone's GPS detects drives. Tessie turns on automatic drive detection and imports the car's drives and charging history from the last 30 days. That needs Plus and Tessie, and it runs on iPhone.</p>
+        <p>With Plus and Tessie, the iPhone's GPS detects your drives automatically, and Tessie imports the car's drives and charging history from the last 30 days.</p>
         <h3>Do I need a Tesla?</h3>
         <p>No. You can record on an iPhone without a Tesla. Tessie is optional, for Tesla owners who already use it.</p>
         <h3>What iPhone does it need?</h3>

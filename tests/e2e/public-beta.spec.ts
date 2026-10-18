@@ -27,14 +27,14 @@ test('homepage and Tesla page show annual Plus pricing', async ({ page }) => {
     await page.goto('/tesla-drive-journal.html');
     const plusCard = page.locator('article.card').filter({ has: page.getByRole('heading', { level: 2, name: 'Plus' }) });
     await expect(plusCard).toContainText('JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.');
-    await expect(plusCard).toContainText('automatic drive and charging history with Tessie, a Plus feature');
+    await expect(plusCard).toContainText('Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie.');
     await expect(page.locator('h1')).toHaveText('The trip, later');
     await expect(page.locator('main')).not.toContainText('$39.99/year');
     await expect(page.locator('main')).not.toContainText('0.99');
     await expect(page.locator('main')).not.toContainText('2.99');
     await expect(page.locator('main')).not.toContainText('3-day');
     await expect(page.locator('main')).not.toContainText('monthly');
-    await expect(page.locator('figcaption').first()).toHaveText('A trip replay in JourneyDeck');
+    await expect(page.locator('figcaption').first()).toHaveText('A trip replay in JourneyDeck. Not a Tesla drive.');
     await expect(page.locator('figure img').first()).toHaveAttribute('loading', 'lazy');
   }
 });

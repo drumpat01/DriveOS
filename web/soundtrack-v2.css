@@ -11,3 +11,4 @@
 .soundtrack-step-grid h3 { margin:12px 0; }
 .soundtrack-step-grid p { margin:0; }
 @media(max-width:700px) { .soundtrack-proof { grid-template-columns:1fr; margin:36px 0; padding:28px 22px; } .soundtrack-proof img { width:min(100%,255px); } .soundtrack-step-grid { grid-template-columns:1fr; gap:22px; } }
+@media (min-width:701px){ .soundtrack-proof--pair{ grid-template-columns:minmax(0,1fr) minmax(0,640px);} .soundtrack-proof--pair .soundtrack-shots{ grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; } }

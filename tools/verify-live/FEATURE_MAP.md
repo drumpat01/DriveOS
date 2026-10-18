@@ -58,7 +58,7 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 
 - Owner: public HTML, including visible copy and JSON-LD offers. Privacy and terms meta descriptions do not pitch the price. Plus is $39.99/year, with a 7-day free trial.
 - Required phrases: `$39.99/year`, `7-day free trial`.
-- `/tesla-drive-journal` replaces that required price line with `expectations.pages["/tesla-drive-journal"].requiredPricingPhrases`: `JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers`. Its `headline` check expects `The trip, later`. Its `copy` check requires the Tessie wording in `requiredPhrases` and forbids `2.99`, `monthly`, `$39.99/year`, `CarPlay`, `Bluetooth`, `motion trigger`, `the car records`, and `navigation app`, plus the global price and trial bans.
+- `/tesla-drive-journal` replaces that required price line with `expectations.pages["/tesla-drive-journal"].requiredPricingPhrases`: `JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers`. Its `headline` check expects `The trip, later`. Its `copy` check requires the edited Tessie wording in `requiredPhrases`, including `iPhone only.`, the one shortcut explanation, and `Neither one shows a Tesla drive.` It forbids `2.99`, `monthly`, `$39.99/year`, `CarPlay`, `Bluetooth`, `motion trigger`, `the car records`, and `navigation app`, plus the global price and trial bans.
 - Forbidden price phrases (case-insensitive): `0.99`, `24.99`, `per week`, `weekly`.
 - Free recording stays available.
 - Checks: `page:<path> pricing`.

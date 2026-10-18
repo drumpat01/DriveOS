@@ -141,14 +141,20 @@
         "JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers"
       ],
       "requiredPhrases": [
-        "automatic drive and charging history with Tessie, a Plus feature",
+        "Then you can replay the whole trip. iPhone only.",
         "for new subscribers",
         "last 30 days",
-        "One tap or Siri",
+        "One tap or Siri. Those are the Start Journey and Stop Journey shortcuts.",
+        "Manual drive recording and route viewing.",
+        "You start each drive yourself, with one tap or Siri. Automatic history needs Plus and Tessie.",
+        "With Plus and Tessie, the iPhone's GPS detects your drives automatically",
+        "Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie.",
         "Music &amp; Connections",
         "Generate Access Token",
         "Tessie access token",
-        "A trip replay in JourneyDeck"
+        "Neither one shows a Tesla drive.",
+        "A trip replay in JourneyDeck. Not a Tesla drive.",
+        "Atlas in JourneyDeck. Not Tesla data."
       ],
       "forbiddenPhrases": [
         "3-day",

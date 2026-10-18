@@ -104,7 +104,8 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("2.99"));
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("monthly"));
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("$39.99/year"));
-  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("automatic drive and charging history with Tessie, a Plus feature"));
+  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie."));
+  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Neither one shows a Tesla drive."));
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
   assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "journal");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-tracker-app"], "journal");
