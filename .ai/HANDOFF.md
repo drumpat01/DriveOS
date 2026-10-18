@@ -7,6 +7,7 @@ Add a JourneyDeck Studio digital products section to `web/terms.html`. Do not me
 ## Checkout
 
 - Branch `cursor/terms-studio-digital-products-b41d`, based on main `ec46402`.
+- Pull request: https://github.com/drumpat01/DriveOS/pull/306 (not a draft). Do not merge.
 - Terms use an effective date, not a last-updated line. Effective date stays September 13, 2026.
 
 ## Material changes
@@ -23,7 +24,7 @@ Add a JourneyDeck Studio digital products section to `web/terms.html`. Do not me
 ## Unresolved
 
 - Do not merge and do not deploy. Render was not changed.
-- Pull request URL is recorded after it is opened.
+- GitHub CI on https://github.com/drumpat01/DriveOS/pull/306 was still pending when this note was written.
 
 ## Next steps
 
