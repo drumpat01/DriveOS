@@ -124,8 +124,9 @@
       "/apple-music-soundtrack"
     ],
     "forbidden": [
-      "/assets/v4/05-soundtrack",
-      "/assets/v2/soundtrack"
+      "/assets/v4/05-soundtrack.webp",
+      "/assets/v2/soundtrack.webp",
+      "/assets/v2/soundtrack.jpg"
     ]
   },
   "pageSnippets": {
@@ -171,6 +172,26 @@
         "the car records",
         "navigation app"
       ]
+    }
+  },
+  "samplePublicImages": {
+    "assets": [
+      {
+        "url": "/assets/v4/05-soundtrack-sample.webp",
+        "contentType": "image/webp"
+      },
+      {
+        "url": "/assets/v2/soundtrack-sample.webp?v=1",
+        "contentType": "image/webp"
+      },
+      {
+        "url": "/assets/v2/soundtrack-sample.jpg",
+        "contentType": "image/jpeg"
+      }
+    ],
+    "pages": {
+      "/": "/assets/v4/05-soundtrack-sample.webp",
+      "/apple-music-soundtrack": "/assets/v2/soundtrack-sample.webp?v=1"
     }
   },
   "launchBadge": {

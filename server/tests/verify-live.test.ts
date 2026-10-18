@@ -18,6 +18,7 @@ import {
   evaluateUnauthenticatedPage,
   evaluateRedirect,
   evaluateRemovedPublicImages,
+  evaluateSamplePublicImages,
   evaluateUmamiScripts,
   extractAppStoreHrefs,
   extractDocumentTitle,
@@ -130,20 +131,52 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/assets/v2/soundtrack.jpg"
   ]);
   assert.deepEqual(expectations.removedPublicImages.pages, ["/", "/apple-music-soundtrack"]);
-  assert.deepEqual(expectations.removedPublicImages.forbidden, ["/assets/v4/05-soundtrack", "/assets/v2/soundtrack"]);
-  assert.throws(() => validateExpectations({ ...expectations, removedPublicImages: { urls: [], pages: ["/"], forbidden: ["/assets/v2/soundtrack"] } }), /removedPublicImages\.urls/);
+  assert.deepEqual(expectations.removedPublicImages.forbidden, [
+    "/assets/v4/05-soundtrack.webp",
+    "/assets/v2/soundtrack.webp",
+    "/assets/v2/soundtrack.jpg"
+  ]);
+  assert.throws(() => validateExpectations({ ...expectations, removedPublicImages: { urls: [], pages: ["/"], forbidden: ["/assets/v2/soundtrack.webp"] } }), /removedPublicImages\.urls/);
   const removedChecks = evaluateRemovedPublicImages(
     expectations,
-    { "/": "<img src=\"/assets/v4/02-journey.webp\">", "/apple-music-soundtrack": "<img src=\"/assets/v4/02-journey.webp\">" },
+    {
+      "/": "<img src=\"/assets/v4/05-soundtrack-sample.webp\"><img src=\"/assets/v4/02-journey.webp\">",
+      "/apple-music-soundtrack": "<img src=\"/assets/v2/soundtrack-sample.webp?v=1\">"
+    },
     expectations.removedPublicImages.urls.map((url) => ({ url, status: 404, cacheControl: "public, max-age=0" }))
   );
   assert.ok(removedChecks.every((check) => check.pass), removedChecks.filter((check) => !check.pass).map((check) => check.name).join(","));
   const leaked = evaluateRemovedPublicImages(
     expectations,
-    { "/": "<img src=\"/assets/v4/05-soundtrack.webp\">", "/apple-music-soundtrack": "<img src=\"/assets/v4/02-journey.webp\">" },
+    { "/": "<img src=\"/assets/v4/05-soundtrack.webp\">", "/apple-music-soundtrack": "<img src=\"/assets/v2/soundtrack-sample.webp?v=1\">" },
     [{ url: "/assets/v4/05-soundtrack.webp", status: 200, cacheControl: "public, max-age=604800" }]
   );
   assert.equal(leaked.every((check) => check.pass), false);
+  assert.deepEqual(expectations.samplePublicImages.assets.map((asset) => asset.url), [
+    "/assets/v4/05-soundtrack-sample.webp",
+    "/assets/v2/soundtrack-sample.webp?v=1",
+    "/assets/v2/soundtrack-sample.jpg"
+  ]);
+  assert.deepEqual(expectations.samplePublicImages.pages, {
+    "/": "/assets/v4/05-soundtrack-sample.webp",
+    "/apple-music-soundtrack": "/assets/v2/soundtrack-sample.webp?v=1"
+  });
+  assert.throws(() => validateExpectations({ ...expectations, samplePublicImages: { assets: [], pages: { "/": "/assets/v4/05-soundtrack-sample.webp" } } }), /samplePublicImages\.assets/);
+  const sampleChecks = evaluateSamplePublicImages(
+    expectations,
+    {
+      "/": "<img src=\"/assets/v4/05-soundtrack-sample.webp\">",
+      "/apple-music-soundtrack": "<img src=\"/assets/v2/soundtrack-sample.webp?v=1\">"
+    },
+    expectations.samplePublicImages.assets.map((asset) => ({ url: asset.url, status: 200, contentType: asset.contentType }))
+  );
+  assert.ok(sampleChecks.every((check) => check.pass), sampleChecks.filter((check) => !check.pass).map((check) => check.name).join(","));
+  const wrongType = evaluateSamplePublicImages(
+    expectations,
+    { "/": "<img src=\"/assets/v4/02-journey.webp\">", "/apple-music-soundtrack": "<img src=\"/assets/v2/soundtrack-sample.webp?v=1\">" },
+    [{ url: "/assets/v4/05-soundtrack-sample.webp", status: 200, contentType: "text/plain" }]
+  );
+  assert.equal(wrongType.every((check) => check.pass), false);
   assert.equal(expectations.launchBadge.productHref, "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral");
   assert.equal(expectations.launchBadge.imageSrc, "https://tools.launchllama.co/featured-badge-white.jpg?v=5");
   assert.equal(expectations.launchBadge.imageAlt, "Featured on Launch");

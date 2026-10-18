@@ -14,6 +14,7 @@ import {
   evaluateUnauthenticatedPage,
   evaluateRedirect,
   evaluateRemovedPublicImages,
+  evaluateSamplePublicImages,
   extractAppStoreHrefs,
   formatHumanReport,
   headlineMatches,
@@ -63,6 +64,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       location: response.headers.get("location"),
       text,
       cacheControl: response.headers.get("cache-control"),
+      contentType: response.headers.get("content-type"),
       json: json ? safeJson(text) : null
     };
   } catch (error) {
@@ -72,6 +74,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       location: null,
       text: "",
       cacheControl: null,
+      contentType: null,
       json: null,
       error: errorMessage(error)
     };
@@ -330,6 +333,20 @@ async function run() {
       });
     }
     for (const check of evaluateRemovedPublicImages(expectations, pageHtml, removedAssets)) {
+      recordCheck(check);
+    }
+
+    const sampleAssets = [];
+    for (const asset of expectations.samplePublicImages.assets) {
+      const response = await fetchResource(asset.url);
+      sampleAssets.push({
+        url: asset.url,
+        status: response.status,
+        contentType: response.contentType,
+        error: response.error
+      });
+    }
+    for (const check of evaluateSamplePublicImages(expectations, pageHtml, sampleAssets)) {
       recordCheck(check);
     }
 

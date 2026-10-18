@@ -89,10 +89,17 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 
 ## Removed listening screenshots
 
-- Owner: `web/beta.html` and `web/apple-music-soundtrack.html`. The private Soundtrack captures are not served.
+- Owner: `web/beta.html` and `web/apple-music-soundtrack.html`. The private Soundtrack captures are not served. The sample-profile replacements use new filenames, so the old URLs stay 404.
 - `expectations.removedPublicImages.urls` must return HTTP 404, and those responses must not advertise a year-long immutable cache or the 7-day image cache.
-- `expectations.removedPublicImages.pages` must not contain `expectations.removedPublicImages.forbidden`.
+- `expectations.removedPublicImages.pages` must not contain `expectations.removedPublicImages.forbidden`. Those tokens are the deleted filenames, including the extension, so `05-soundtrack-sample.webp` and `soundtrack-sample.webp` are allowed.
 - Checks: `removed-image <path>` for `/` and `/apple-music-soundtrack`, plus `removed-image <url>` for each removed file.
+
+## Sample Soundtrack captures
+
+- Owner: the homepage tour slide in `web/beta.html` (`GET /`) and the proof figure in `web/apple-music-soundtrack.html`. The route replay figure on `/` still uses `/assets/v4/02-journey.webp`.
+- `expectations.samplePublicImages.assets` must return HTTP 200 with the listed image content type.
+- `expectations.samplePublicImages.pages` must contain the listed sample path.
+- Checks: `sample-image <path>` for `/` and `/apple-music-soundtrack`, plus `sample-image <url>` for each sample file.
 
 ## Content Security Policy
 
