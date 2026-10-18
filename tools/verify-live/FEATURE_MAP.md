@@ -34,7 +34,7 @@ Public HTML is served by `server/src/app.ts` in web mode. The public route allow
 | `/tesla-drive-journal` | `web/tesla-drive-journal.html` | `page:/tesla-drive-journal status`, `page:/tesla-drive-journal title`, `page:/tesla-drive-journal meta-description`, `page:/tesla-drive-journal canonical`, `page:/tesla-drive-journal og:title`, `page:/tesla-drive-journal og:description`, `page:/tesla-drive-journal og:url`, `page:/tesla-drive-journal og:image`, `page:/tesla-drive-journal json-ld`, `page:/tesla-drive-journal umami`, `page:/tesla-drive-journal trial-wording`, `page:/tesla-drive-journal pricing` |
 | `/support` | `web/support.html` | `page:/support status`, `page:/support title`, `page:/support meta-description`, `page:/support canonical`, `page:/support og:title`, `page:/support og:description`, `page:/support og:url`, `page:/support og:image`, `page:/support json-ld`, `page:/support umami`, `page:/support trial-wording`, `page:/support pricing` |
 | `/privacy` | `web/privacy.html` | `page:/privacy status`, `page:/privacy title`, `page:/privacy meta-description`, `page:/privacy canonical`, `page:/privacy og:title`, `page:/privacy og:description`, `page:/privacy og:url`, `page:/privacy og:image`, `page:/privacy json-ld`, `page:/privacy umami`, `page:/privacy trial-wording`, `page:/privacy pricing` |
-| `/terms` | `web/terms.html` | `page:/terms status`, `page:/terms title`, `page:/terms meta-description`, `page:/terms canonical`, `page:/terms og:title`, `page:/terms og:description`, `page:/terms og:url`, `page:/terms og:image`, `page:/terms json-ld`, `page:/terms umami`, `page:/terms trial-wording`, `page:/terms pricing` |
+| `/terms` | `web/terms.html` | `page:/terms status`, `page:/terms title`, `page:/terms meta-description`, `page:/terms canonical`, `page:/terms og:title`, `page:/terms og:description`, `page:/terms og:url`, `page:/terms og:image`, `page:/terms json-ld`, `page:/terms umami`, `page:/terms trial-wording`, `page:/terms pricing`, `page:/terms snippets` |
 | `/login` | `web/login.html` | `page:/login status`, `page:/login umami` |
 
 JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/private-driving-journal.html`, `web/road-trip-journal-app.html`, `web/road-trip-tracker-app.html`, `web/travel-journal-app-with-photos.html`, `web/driving-history-app.html`, `web/route-66-road-trip-journal.html`, `web/pacific-coast-highway-road-trip-journal.html`, `web/national-parks-road-trip-journal.html`, `web/texas-hill-country-road-trip-journal.html`, `web/tesla-drive-journal.html`, `web/support.html`, `web/privacy.html`, and `web/terms.html`. Every `application/ld+json` block that is present must parse. Plus pricing is an `Offer`.
@@ -61,6 +61,12 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 - Forbidden price phrases (case-insensitive): `0.99`, `24.99`, `per week`, `weekly`.
 - Free recording stays available.
 - Checks: `page:<path> pricing`.
+
+## Terms Studio products
+
+- Owner: `web/terms.html` `#studio-products`.
+- `/terms` must include `id="studio-products"` and the 7-day refund line `within 7 days of purchase and I'll refund you.`
+- Check: `page:/terms snippets`. Other public pages do not use this check.
 
 ## Campaign pass-through and X headline
 

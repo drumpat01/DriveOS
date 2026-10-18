@@ -47,6 +47,12 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
 
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.match(terms.body, /trial terms/);
+    assert.match(terms.body, /For in-app subscriptions only, refund requests are handled under Apple/);
+    assert.match(terms.body, /id="studio-products"/);
+    assert.match(terms.body, /within 7 days of purchase and I'll refund you/);
+    const studio = terms.body.match(/<article class="card" id="studio-products">[\s\S]*?<\/article>/);
+    assert.ok(studio, "studio products section");
+    assert.doesNotMatch(studio[0], /[\u2013\u2014]/);
   } finally {
     await runtime.app.close();
     fixture.cleanup();

@@ -128,6 +128,12 @@
       "/assets/v2/soundtrack"
     ]
   },
+  "pageSnippets": {
+    "/terms": [
+      "id=\"studio-products\"",
+      "within 7 days of purchase and I'll refund you."
+    ]
+  },
   "launchBadge": {
     "productHref": "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral",
     "imageSrc": "https://tools.launchllama.co/featured-badge-white.jpg?v=5",
