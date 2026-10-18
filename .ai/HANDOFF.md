@@ -7,7 +7,7 @@ Add a permanent 301 from `/homeworld` and `/homeworld/` to `https://studio.journ
 ## Checkout
 
 - Branch `cursor/homeworld-redirect-8979`, based on main `ec46402`.
-- Draft pull request is opened from this branch. Do not merge it.
+- Draft PR: https://github.com/drumpat01/DriveOS/pull/297. Do not merge it.
 
 ## Material changes
 
