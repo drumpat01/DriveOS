@@ -144,7 +144,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.launchBadge.mcpText, "Launch MCP");
   assert.deepEqual(expectations.pageSnippets["/terms"], [
     'id="studio-products"',
-    "within 7 days of purchase and I'll refund you."
+    "within 7 days of purchase and I’ll refund you."
   ]);
   assert.throws(() => validateExpectations({ ...expectations, pageSnippets: { "/terms": ["hello"] } }), /7-day refund line/);
   assert.throws(() => validateExpectations({}), /publicPages/);
@@ -366,7 +366,7 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
       assert.ok(checks.every((check) => check.pass), `${pathname}: ${checks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; ")}`);
       if (pathname === "/terms") {
         assert.match(page.body, /id="studio-products"/);
-        assert.match(page.body, /within 7 days of purchase and I'll refund you/);
+        assert.match(page.body, /within 7 days of purchase and I’ll refund you/);
         const snippets = checks.find((check) => check.name === "page:/terms snippets");
         assert.equal(snippets?.pass, true, JSON.stringify(snippets?.observed));
       }

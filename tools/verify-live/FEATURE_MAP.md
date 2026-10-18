@@ -65,7 +65,7 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 ## Terms Studio products
 
 - Owner: `web/terms.html` `#studio-products`.
-- `/terms` must include `id="studio-products"` and the 7-day refund line `within 7 days of purchase and I'll refund you.`
+- `/terms` must include `id="studio-products"` and the 7-day refund line `within 7 days of purchase and I’ll refund you.`
 - Check: `page:/terms snippets`. Other public pages do not use this check.
 
 ## Campaign pass-through and X headline

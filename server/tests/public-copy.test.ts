@@ -49,9 +49,12 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
     assert.match(terms.body, /trial terms/);
     assert.match(terms.body, /For in-app subscriptions only, refund requests are handled under Apple/);
     assert.match(terms.body, /id="studio-products"/);
-    assert.match(terms.body, /within 7 days of purchase and I'll refund you/);
+    assert.match(terms.body, /within 7 days of purchase and I’ll refund you/);
+    assert.match(terms.body, /mailto:support@journeydeck\.me\?subject=JourneyDeck%20Terms/);
+    assert.doesNotMatch(terms.body, /journeydeckapp@gmail\.com/);
     const studio = terms.body.match(/<article class="card" id="studio-products">[\s\S]*?<\/article>/);
     assert.ok(studio, "studio products section");
+    assert.equal(studio[0].match(/<a href="mailto:support@journeydeck\.me">/g)?.length, 1);
     assert.doesNotMatch(studio[0], /[\u2013\u2014]/);
   } finally {
     await runtime.app.close();
