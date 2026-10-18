@@ -6,8 +6,8 @@ Phase-one `journeydeck-site` Worker: serve public files from `web/` and proxy ev
 
 ## Checkout
 
-- Route list regenerated from this tree after rebasing onto main `e490f0f` (#304 and #306). `/homeworld` is in `server/src/app.ts`. The three private Soundtrack screenshots are not in the map.
-- Branch `cursor/journeydeck-site-worker-4cad`, based on main `e490f0f`. Draft PR: https://github.com/drumpat01/DriveOS/pull/303
+- Route list regenerated from this tree after rebasing onto main `f93ecce` (#307, #302, #299, and #306). `/homeworld` is in `server/src/app.ts`. The three private Soundtrack screenshots are not in the map. The #307 sample files are: `assets/v2/soundtrack-sample.jpg`, `assets/v2/soundtrack-sample.webp`, and `assets/v4/05-soundtrack-sample.webp`.
+- Branch `cursor/journeydeck-site-worker-4cad`, based on main `f93ecce`. Draft PR: https://github.com/drumpat01/DriveOS/pull/303
 - Config is `workers_dev` only. No routes, DNS, or secrets. `preview_urls` is false. Invocation logs are off, and query strings are redacted.
 
 ## Material changes
@@ -25,8 +25,8 @@ Phase-one `journeydeck-site` Worker: serve public files from `web/` and proxy ev
 ## Verification
 
 - `npx tsc -p cloudflare/site/tsconfig.json --noEmit` passed.
-- `npm run test:site`: 24 passed. `npm run predeploy:site` passed on the previous commit.
-- Totals are 429 rows (308 worker, 114 passthrough, 7 dead, 369 probes). R029–R032 are `proxy`.
+- `npm run test:site`: 24 passed. `npm run predeploy:site` passed.
+- Totals are 435 rows (314 worker, 114 passthrough, 7 dead, 375 probes). R029–R032 are `proxy`. #307 added the three Soundtrack sample images. #299 added three `web/assets/v4` images.
 
 ## Unresolved
 

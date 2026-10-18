@@ -1,9 +1,9 @@
 {
-  "total": 429,
-  "worker": 308,
+  "total": 435,
+  "worker": 314,
   "workerExplicit": 32,
-  "workerAssets": 276,
+  "workerAssets": 282,
   "passthrough": 114,
   "dead": 7,
-  "probed": 369
+  "probed": 375
 }
