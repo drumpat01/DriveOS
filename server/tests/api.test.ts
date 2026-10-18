@@ -565,8 +565,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
 
 test("wife.html uses the same session gate and robots tag as /wife", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
-  const wifePageUrls = ["/wife.html", "/wife%2ehtml", "/wife%2Ehtml", "/%77ife.html", "/%77ife", "/wife.html?v=1"];
-  const untouchedUrls = ["/Wife.html", "/WIFE.HTML", "/wife.html/", "/wife/"];
+  const wifePageUrls = ["/wife.html", "/wife%2ehtml", "/wife%2Ehtml", "/%77ife.html", "/%77ife", "/wife.html?v=1", "/Wife.html", "/WIFE.HTML", "/wife.html/", "/wife/"];
   try {
     const wife = await runtime.app.inject({ method: "GET", url: "/wife" });
     assert.equal(wife.statusCode, 302, wife.body);
@@ -581,11 +580,6 @@ test("wife.html uses the same session gate and robots tag as /wife", async () =>
         assert.equal(response.headers["x-robots-tag"], baseline.headers["x-robots-tag"], `${method} ${url}`);
         assert.equal(response.body.includes("Wife Mode"), false, `${method} ${url}`);
       }
-    }
-    for (const url of untouchedUrls) {
-      const response = await runtime.app.inject({ method: "GET", url });
-      assert.notEqual(response.statusCode, 200, url);
-      assert.equal(response.body.includes("Wife Mode"), false, url);
     }
     const authenticatedWife = await runtime.app.inject({ method: "GET", url: "/wife", headers: auth });
     const authenticatedHtml = await runtime.app.inject({ method: "GET", url: "/wife.html", headers: auth });

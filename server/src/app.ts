@@ -88,17 +88,22 @@ function decodeRequestPath(url: string) {
   try { return decodeURI(pathname); } catch { return pathname; }
 }
 
+function isWifePagePath(url: string) {
+  const decoded = decodeRequestPath(url);
+  const stripped = decoded.length > 1 ? decoded.replace(/\/+$/, "") : decoded;
+  const normalized = stripped.toLowerCase();
+  return normalized === "/wife" || normalized === "/wife.html";
+}
+
 function requiresWebSession(requestPath: string) {
   if (webSessionPaths.has(requestPath)) return true;
-  // @fastify/static decodes the URL before it serves wife.html, and the router does the same for /wife.
-  const decoded = decodeRequestPath(requestPath);
-  return decoded === "/wife" || decoded === "/wife.html";
+  // @fastify/static decodes the URL, then a case-insensitive filesystem can serve wife.html for /Wife.html.
+  return isWifePagePath(requestPath);
 }
 
 function shouldSendRobotsTag(pathname: string, mode: string) {
   if (pathname === "/login" || pathname === "/login.html") return true;
-  const decoded = decodeRequestPath(pathname);
-  if (decoded === "/wife" || decoded === "/wife.html") return true;
+  if (isWifePagePath(pathname)) return true;
   return mode === "web" && (pathname === "/index.html" || pathname === "/app" || pathname === "/spotify-callback");
 }
 
