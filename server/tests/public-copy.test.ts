@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { createApp } from "../src/app.js";
 import { fixtureDatabase, root } from "./helpers.js";
@@ -37,7 +39,8 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
     for (const url of publicPages) {
       const page = await runtime.app.inject({ method: "GET", url });
       assert.equal(page.statusCode, 200, url);
-      assert.match(page.body, /\$39\.99\/year/, url);
+      assert.match(page.body, /\$39\.99\/yr(?!e)/, url);
+      assert.doesNotMatch(page.body, /\$39\.99\/year/, url);
       assert.match(page.body, /7-day free trial/, url);
       // The old trial-wording ban covered "3-day", "plus trial", and "free trial".
       // Only the 3-day wording stays forbidden. A 7-day free trial is the annual offer.
@@ -60,5 +63,28 @@ test("public marketing copy uses JourneyDeck 4.0, matching hero App Store labels
   } finally {
     await runtime.app.close();
     fixture.cleanup();
+  }
+});
+
+function htmlFiles(directory: string): string[] {
+  return readdirSync(directory).flatMap((name) => {
+    const path = join(directory, name);
+    if (statSync(path).isDirectory()) return htmlFiles(path);
+    return path.endsWith(".html") ? [path] : [];
+  });
+}
+
+test("every web html description is 155 characters or fewer", () => {
+  const files = htmlFiles(join(root, "web"));
+  assert.ok(files.length > 0);
+  for (const file of files) {
+    const html = readFileSync(file, "utf8");
+    for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+      const name = (/\b(?:name|property)\s*=\s*"([^"]+)"/i.exec(tag)?.[1] ?? "").toLowerCase();
+      if (name !== "description" && name !== "og:description" && name !== "twitter:description") continue;
+      const content = /\bcontent\s*=\s*"([^"]*)"/i.exec(tag)?.[1] ?? "";
+      assert.ok(content.length > 0 && content.length <= 155, `${file} ${name} is ${content.length}`);
+      assert.doesNotMatch(content, /[\u2013\u2014]/, `${file} ${name}`);
+    }
   }
 });

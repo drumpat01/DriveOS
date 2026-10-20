@@ -2,37 +2,27 @@
 
 ## Current objective
 
-Give each landing page that used `ct=journal` its own App Store campaign token so App Store Connect can attribute downloads. Do not merge and do not deploy.
+Open one pull request against main for the public site: robots `ai-input=yes`, Plus at `$39.99/yr`, `llms.txt`, and meta descriptions of 155 characters or fewer. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/app-store-page-ct-bdbe`, based on main `d6bbbcc` (#314).
-- PR: https://github.com/drumpat01/DriveOS/pull/315. Do not merge.
-- Public home is `web/beta.html` at `GET /`. The site Worker serves `web/`. Render is suspended.
+- Branch `cursor/site-plus-price-llms-7cea`, based on main `c957167`.
+- Public home is `web/beta.html` at `GET /`. The site Worker serves `web/`.
 
 ## Material changes
 
-- Replaced `ct=journal` on nine landing pages. `home`, `tesla_page`, `soundtrack`, and `site` are unchanged. Query shape stays `pt=129344416&ct=...&mt=8`.
-- `tools/verify-live/expectations.json` `appStore.pageCampaigns` and the server tests that assert those tokens match the new values.
-
-| Page | Old | New |
-| --- | --- | --- |
-| `/private-driving-journal` | journal | private_journal |
-| `/road-trip-journal-app` | journal | road_trip |
-| `/road-trip-tracker-app` | journal | road_trip_tracker |
-| `/travel-journal-app-with-photos` | journal | travel_journal |
-| `/driving-history-app` | journal | driving_history |
-| `/route-66-road-trip-journal` | journal | route_66 |
-| `/pacific-coast-highway-road-trip-journal` | journal | route_pacific_coast_highway |
-| `/national-parks-road-trip-journal` | journal | route_national_parks |
-| `/texas-hill-country-road-trip-journal` | journal | route_texas_hill_country |
+- `web/robots.txt`: `Content-Signal` is `ai-train=no, search=yes, ai-input=yes`. The other robots lines are unchanged.
+- Public pages, including `/support`, say Plus is `$39.99/yr`. Offer JSON-LD stays `price` `39.99` and `priceCurrency` `USD`. No weekly price, no `$24.99`, and no 3-day trial. Existing 7-day trial wording stays. Support's check date is October 20, 2026.
+- `web/llms.txt` is served at `/llms.txt` as `text/plain; charset=utf-8` by site Worker route `R438`. It is not in the sitemap. The sitemap still lists HTML pages only.
+- Meta descriptions, `og:description`, and `twitter:description` are 155 characters or fewer.
 
 ## Verification
 
-- Node v24.22.0.
-- `npm run check:server`, `npm run lint:server`, `npm run test:server` (79 pass).
-- Playwright `tests/e2e/public-beta.spec.ts` (11 pass), including the per-page `ct` check.
-- `verify:live` was not run against production. The new tokens are not deployed.
+- Local Node is v22.23.3. CI validate uses Node 24.
+- `npm run check:server`, `npm run lint:server`, targeted `server/tests` (`api`, `public-copy`, `verify-live`), `npm run check:site`, `npm run test:site`, `npm run predeploy:site`.
+- Playwright `tests/e2e/public-beta.spec.ts` (11 pass).
+- Workerd returns `/llms.txt` as `text/plain` with `cache-control: public, max-age=0` and no `x-robots-tag`.
+- `verify:live` was not run against production. The live site still has the previous copy.
 
 ## Unresolved
 
@@ -40,4 +30,4 @@ Give each landing page that used `ct=journal` its own App Store campaign token s
 
 ## Next steps
 
-1. Review https://github.com/drumpat01/DriveOS/pull/315. Do not merge it from this handoff.
+1. Review the pull request for this branch. Do not merge it from this handoff.

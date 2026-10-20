@@ -122,7 +122,10 @@ export function validateExpectations(raw) {
   if (!raw.umami?.scriptSrc || !raw.umami?.websiteId || !raw.umami?.dataDomains) throw new Error("expectations.umami is incomplete");
   if (!Array.isArray(raw.forbiddenTrialPhrases) || raw.forbiddenTrialPhrases.length === 0) throw new Error("expectations.forbiddenTrialPhrases must be a non-empty array");
   if (!Array.isArray(raw.forbiddenPricePhrases) || raw.forbiddenPricePhrases.length === 0) throw new Error("expectations.forbiddenPricePhrases must be a non-empty array");
+  if (!raw.forbiddenPricePhrases.includes("$39.99/year")) throw new Error("expectations.forbiddenPricePhrases must include $39.99/year");
   if (!Array.isArray(raw.requiredPricingPhrases) || raw.requiredPricingPhrases.length === 0) throw new Error("expectations.requiredPricingPhrases must be a non-empty array");
+  if (!raw.requiredPricingPhrases.includes("$39.99/yr")) throw new Error("expectations.requiredPricingPhrases must include $39.99/yr");
+  if (raw.maxMetaDescriptionLength !== 155) throw new Error("expectations.maxMetaDescriptionLength must be 155");
   if (!raw.appStore?.baseUrl || !raw.appStore?.providerToken || !raw.appStore?.mediaType) throw new Error("expectations.appStore is incomplete");
   if (typeof raw.appStore.notFoundPath !== "string" || !raw.appStore.notFoundPath.startsWith("/")) throw new Error("expectations.appStore.notFoundPath is required");
   if (!raw.appStore.pageCampaigns || typeof raw.appStore.pageCampaigns !== "object") throw new Error("expectations.appStore.pageCampaigns is incomplete");
@@ -556,6 +559,7 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   const ogDescription = extractPropertyMetas(html, "og:description");
   const ogUrl = extractPropertyMetas(html, "og:url");
   const ogImage = extractPropertyMetas(html, "og:image");
+  const twitterDescription = extractNamedMetas(html, "twitter:description");
   const jsonLd = parseJsonLdBlocks(extractJsonLdBlocks(html));
   const umami = evaluateUmamiScripts(findUmamiScripts(html, expectations), expectations, { requireOne: true });
   const pageCopy = pageCopyFor(expectations, pathname);
@@ -565,15 +569,23 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
   const trialHits = findForbiddenTrialPhrases(html, expectations.forbiddenTrialPhrases);
   const priceHits = findForbiddenTrialPhrases(html, expectations.forbiddenPricePhrases);
   const missingPricing = findMissingRequiredPhrases(html, pricingPhrases);
+  const maxDescription = expectations.maxMetaDescriptionLength;
+  const descriptionFits = (extracted) => extracted.count === 1
+    && typeof extracted.value === "string"
+    && extracted.value.length > 0
+    && extracted.value.length <= maxDescription;
   const checks = [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
     makeCheck(`page:${pathname} title`, title.count === 1 && Boolean(title.value), title),
-    makeCheck(`page:${pathname} meta-description`, description.count === 1 && Boolean(description.value), description),
+    makeCheck(`page:${pathname} meta-description`, descriptionFits(description), { ...description, max: maxDescription }),
     makeCheck(`page:${pathname} canonical`, canonical.count === 1 && canonical.value === expectedCanonical, { ...canonical, expected: expectedCanonical }),
     makeCheck(`page:${pathname} og:title`, ogTitle.count === 1 && Boolean(ogTitle.value), ogTitle),
-    makeCheck(`page:${pathname} og:description`, ogDescription.count === 1 && Boolean(ogDescription.value), ogDescription),
+    makeCheck(`page:${pathname} og:description`, descriptionFits(ogDescription), { ...ogDescription, max: maxDescription }),
     makeCheck(`page:${pathname} og:url`, ogUrl.count === 1 && ogUrl.value === expectedCanonical, { ...ogUrl, expected: expectedCanonical }),
     makeCheck(`page:${pathname} og:image`, ogImage.count === 1 && Boolean(ogImage.value), ogImage),
+    ...(twitterDescription.count > 0
+      ? [makeCheck(`page:${pathname} twitter:description`, descriptionFits(twitterDescription), { ...twitterDescription, max: maxDescription })]
+      : []),
     makeCheck(`page:${pathname} json-ld`, jsonLd.pass, { count: jsonLd.count, errors: jsonLd.errors }),
     makeCheck(`page:${pathname} umami`, umami.pass, umami.observed),
     makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits }),

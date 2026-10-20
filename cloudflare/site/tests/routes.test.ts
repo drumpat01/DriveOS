@@ -21,8 +21,8 @@ function matched(method: string, path: string) {
 }
 
 test("route list has the phase-one shape", () => {
-  assert.equal(routes.length, 437);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 430);
+  assert.equal(routes.length, 438);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 431);
   assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 0);
   assert.equal(routes.filter(route => route.worker_action === "health").length, 4);
   assert.equal(routes.filter(route => route.target === "RENDER_ORIGIN").length, 0);
@@ -46,6 +46,17 @@ test("every CSV row resolves to its action", () => {
     assert.equal(winner.worker_action, route.worker_action, `${route.route_id} ${route.method} ${route.path}`);
     if (route.match === "exact" || route.match === "query") assert.equal(winner.route_id, route.route_id, route.path);
   }
+});
+
+test("llms.txt is a public plain text asset", () => {
+  const route = matched("GET", "/llms.txt");
+  assert.equal(route?.worker_action, "asset");
+  assert.equal(route?.target, "llms.txt");
+  assert.equal(route?.content_type, "text/plain; charset=utf-8");
+  assert.equal(route?.cache_control, "public, max-age=0");
+  assert.equal(route?.x_robots_tag, "");
+  assert.equal(route?.expected_status, "200");
+  assert.equal(matched("HEAD", "/llms.txt")?.target, "llms.txt");
 });
 
 test("homepage, clean URLs, trailing slash, and app shell stay distinct", () => {

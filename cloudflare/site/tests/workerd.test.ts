@@ -53,6 +53,13 @@ test("workerd serves phase-one assets", async () => {
     assert.equal(icon.status, 200);
     assert.equal(icon.headers.get("content-type"), "image/vnd.microsoft.icon");
 
+    const llms = await worker.fetch("https://journeydeck.me/llms.txt");
+    assert.equal(llms.status, 200);
+    assert.equal(llms.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(llms.headers.get("cache-control"), "public, max-age=0");
+    assert.equal(llms.headers.get("x-robots-tag"), null);
+    assert.match(await llms.text(), /\$39\.99\/yr(?!e)/);
+
     const directory = await worker.fetch("https://journeydeck.me/assets/");
     assert.equal(directory.status, 403);
     assert.equal(directory.headers.get("cache-control"), null);

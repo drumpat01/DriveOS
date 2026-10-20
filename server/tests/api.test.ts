@@ -102,7 +102,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(support.body, /Recording needs an iPhone/);
     assert.match(support.body, /Plus unlocks full history/);
     assert.doesNotMatch(support.body, /annual only/);
-    assert.match(support.body, /\$39\.99\/year/);
+    assert.match(support.body, /\$39\.99\/yr(?!e)/);
+    assert.doesNotMatch(support.body, /\$39\.99\/year/);
     assert.match(support.body, /7-day free trial/);
     assert.doesNotMatch(support.body, /0\.99|24\.99|3-day|per week|weekly/i);
     assert.match(support.body, /Restore Purchases is in Settings &gt; Membership/);
@@ -361,6 +362,8 @@ test("public information and discovery pages are accessible without an authentic
     }
     const robots = await runtime.app.inject({ method: "GET", url: "/robots.txt" });
     assert.equal(robots.statusCode, 200, robots.body);
+    assert.match(robots.body, /^Content-Signal: ai-train=no, search=yes, ai-input=yes$/m);
+    assert.doesNotMatch(robots.body, /ai-input=no/);
     assert.match(robots.body, /Sitemap: https:\/\/journeydeck\.me\/sitemap\.xml/i);
     assert.match(robots.body, /^Allow: \/$/m);
     assert.match(robots.body, /^Disallow: \/app\$$/m);
@@ -417,6 +420,19 @@ test("public information and discovery pages are accessible without an authentic
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
     assert.doesNotMatch(sitemap.body, /google8e611381b21882a8/i);
     assert.doesNotMatch(sitemap.body, /wife/i);
+    assert.doesNotMatch(sitemap.body, /llms\.txt/i);
+    const llms = await runtime.app.inject({ method: "GET", url: "/llms.txt" });
+    assert.equal(llms.statusCode, 200, llms.body);
+    assert.match(String(llms.headers["content-type"]), /^text\/plain\b/i);
+    assert.equal(llms.headers["x-robots-tag"], undefined);
+    assert.match(llms.body, /You start each drive yourself/);
+    assert.match(llms.body, /view the route, the photos, and the music/);
+    assert.match(llms.body, /\$39\.99\/yr(?!e)/);
+    assert.match(llms.body, /https:\/\/journeydeck\.me\/\n/);
+    assert.match(llms.body, /https:\/\/journeydeck\.me\/tesla-drive-journal/);
+    assert.match(llms.body, /https:\/\/journeydeck\.me\/support/);
+    assert.match(llms.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.doesNotMatch(llms.body, /3-day|0\.99|24\.99|\$39\.99\/year/);
     const googleVerification = await runtime.app.inject({ method: "GET", url: "/google8e611381b21882a8.html" });
     assert.equal(googleVerification.statusCode, 200, googleVerification.body);
     assert.equal(googleVerification.body.replace(/\r?\n$/, ""), "google-site-verification: google8e611381b21882a8.html");
@@ -690,14 +706,37 @@ test("public marketing pages expose one title, description, canonical, Open Grap
         assert.doesNotMatch(description, /\$39\.99|7-day free trial/, `${page.url} meta price`);
         assert.doesNotMatch(metaPropertyContent(html, "og:description"), /\$39\.99|7-day free trial/, `${page.url} og price`);
       }
+      const offers: Array<{ price?: unknown; priceCurrency?: unknown }> = [];
+      const visitJson = (node: unknown) => {
+        if (!node || typeof node !== "object") return;
+        if (Array.isArray(node)) {
+          node.forEach(visitJson);
+          return;
+        }
+        const record = node as { "@type"?: unknown };
+        if (record["@type"] === "Offer") offers.push(record as { price?: unknown; priceCurrency?: unknown });
+        Object.values(record).forEach(visitJson);
+      };
       for (const block of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
-        assert.doesNotThrow(() => JSON.parse(block[1]), `${page.url} JSON-LD`);
+        const parsed = JSON.parse(block[1]);
+        visitJson(parsed);
       }
+      assert.ok(offers.length > 0, `${page.url} offer`);
+      for (const offer of offers) {
+        assert.equal(offer.price, "39.99", `${page.url} offer price`);
+        assert.equal(offer.priceCurrency, "USD", `${page.url} offer currency`);
+      }
+      assert.ok(description.length <= 155, `${page.url} description is ${description.length}`);
+      const ogDescription = metaPropertyContent(html, "og:description");
+      assert.ok(ogDescription.length > 0 && ogDescription.length <= 155, `${page.url} og:description is ${ogDescription.length}`);
+      const twitterDescription = metaNameContent(html, "twitter:description");
+      if (twitterDescription) assert.ok(twitterDescription.length <= 155, `${page.url} twitter:description is ${twitterDescription.length}`);
       if (page.url === "/tesla-drive-journal") {
         assert.match(html, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers/, `${page.url} price`);
         assert.doesNotMatch(html, /\$39\.99\/year/, `${page.url} old annual wording`);
       } else {
-        assert.match(html, /\$39\.99\/year/, `${page.url} price`);
+        assert.match(html, /\$39\.99\/yr(?!e)/, `${page.url} price`);
+        assert.doesNotMatch(html, /\$39\.99\/year/, `${page.url} old annual wording`);
       }
       assert.match(html, /7-day free trial/, `${page.url} trial`);
       assert.match(html, /"@type": "Offer"/, `${page.url} offer`);
@@ -719,7 +758,8 @@ test("hosted home and Support HTML advertise annual Plus and ban only the 3-day 
     assert.equal(home.statusCode, 200, home.body);
     assert.equal(support.statusCode, 200, support.body);
     for (const [name, body] of [["home", home.body], ["Support", support.body]] as const) {
-      assert.match(body, /\$39\.99\/year/, name);
+      assert.match(body, /\$39\.99\/yr(?!e)/, name);
+      assert.doesNotMatch(body, /\$39\.99\/year/, name);
       assert.match(body, /7-day free trial/, name);
       assert.doesNotMatch(body, /annual only/, name);
       // Previously this also banned "Plus trial". That ban is replaced by a 3-day ban only.
@@ -772,7 +812,7 @@ test("hosted cache headers distinguish versioned assets, unversioned images, and
     assert.equal(unversionedMedallion.statusCode, 200, unversionedMedallion.body);
     assert.equal(unversionedMedallion.headers["cache-control"], "public, max-age=604800");
 
-    for (const url of ["/", "/login", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/service-worker.js", "/build.json", "/login.js"]) {
+    for (const url of ["/", "/login", "/robots.txt", "/llms.txt", "/sitemap.xml", "/manifest.webmanifest", "/service-worker.js", "/build.json", "/login.js"]) {
       const response = await runtime.app.inject({ method: "GET", url });
       assert.equal(response.statusCode, 200, url);
       assert.equal(response.headers["cache-control"], "public, max-age=0", url);

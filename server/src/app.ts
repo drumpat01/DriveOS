@@ -26,7 +26,7 @@ import { isRetentionMessagingPath, loadPinnedAppleRootCertificates, registerRete
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
 const googleSiteVerificationPath = "/google8e611381b21882a8.html";
-const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/apple-music-soundtrack", "/private-driving-journal", "/driving-journal", "/homeworld", "/homeworld/", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/.well-known/api-catalog", "/openapi.json", "/api-docs", "/auth.md", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico", googleSiteVerificationPath]);
+const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/apple-music-soundtrack", "/private-driving-journal", "/driving-journal", "/homeworld", "/homeworld/", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/llms.txt", "/.well-known/api-catalog", "/openapi.json", "/api-docs", "/auth.md", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico", googleSiteVerificationPath]);
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
@@ -45,7 +45,7 @@ const homepageLinks = [
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const versionedStaticPattern = /\.(?:css|js|mjs|map|png|jpe?g|gif|webp|svg|ico|avif|woff2?|ttf|otf|eot)$/i;
 const unversionedAssetPattern = /\.(?:png|jpe?g|gif|webp|svg|ico|avif|woff2?|ttf|otf|eot)$/i;
-const shortLivedCacheNames = new Set(["robots.txt", "sitemap.xml", "manifest.webmanifest", "service-worker.js", "version.json", "build.json"]);
+const shortLivedCacheNames = new Set(["robots.txt", "llms.txt", "sitemap.xml", "manifest.webmanifest", "service-worker.js", "version.json", "build.json"]);
 const staticAssetFolders = ["/assets/", "/medallions/"];
 
 type PublicCacheClass = "versioned-immutable" | "unversioned-asset" | "unchanged";
