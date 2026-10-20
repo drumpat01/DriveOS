@@ -78,13 +78,15 @@
   "forbiddenPricePhrases": [
     "0.99",
     "24.99",
+    "$39.99/year",
     "per week",
     "weekly"
   ],
   "requiredPricingPhrases": [
-    "$39.99/year",
+    "$39.99/yr",
     "7-day free trial"
   ],
+  "maxMetaDescriptionLength": 155,
   "appStore": {
     "baseUrl": "https://apps.apple.com/us/app/journeydeck/id6806502526",
     "providerToken": "129344416",

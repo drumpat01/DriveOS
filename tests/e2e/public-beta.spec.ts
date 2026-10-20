@@ -15,14 +15,15 @@ test('homepage and Tesla page show annual Plus pricing', async ({ page }) => {
     await page.goto('/beta.html');
     const membership = page.locator('#membership');
     await membership.scrollIntoViewIfNeeded();
-    await expect(membership).toContainText('$39.99/year');
+    await expect(membership).toContainText('$39.99/yr');
+    await expect(membership).not.toContainText('$39.99/year');
     await expect(membership).toContainText('7-day free trial');
     await expect(membership).toContainText('Free to record');
     await expect(membership).not.toContainText('annual only');
     await expect(membership).not.toContainText('0.99');
     await expect(membership).not.toContainText('24.99');
     await expect(membership).not.toContainText('3-day');
-    await expect(page.locator('.membership-card-plus h3 + p')).toHaveText('Plus is $39.99/year, with a 7-day free trial.');
+    await expect(page.locator('.membership-card-plus h3 + p')).toHaveText('Plus is $39.99/yr, with a 7-day free trial.');
     await expect(page.locator('.membership-card:not(.membership-card-plus) h3 + p')).toHaveText('Free to record. No account required.');
     await page.goto('/tesla-drive-journal.html');
     const plusCard = page.locator('article.card').filter({ has: page.getByRole('heading', { level: 2, name: 'Plus' }) });

@@ -197,7 +197,8 @@ for (const rel of files) {
   const path = "/" + rel, ext = extname(rel).toLowerCase();
   const assetFolder = path.startsWith("/assets/") || path.startsWith("/medallions/");
   const cc = assetFolder && imgRe.test(path) ? "public, max-age=604800" : "public, max-age=0";
-  const special = { "/robots.txt": "robots; Disallow /api/, /app$, /app/, /spotify-callback, /wife; Sitemap https://journeydeck.me/sitemap.xml",
+  const special = { "/llms.txt": "llm summary; text/plain; Plus is $39.99/yr; not in the sitemap",
+    "/robots.txt": "robots; Disallow /api/, /app$, /app/, /spotify-callback, /wife; Sitemap https://journeydeck.me/sitemap.xml",
     "/sitemap.xml": "15 <loc> on https://journeydeck.me (host-specific)", "/service-worker.js": "PWA service worker: scope / . A different SW body at the edge changes client caching",
     "/build.json": "web build manifest", "/manifest.webmanifest": "PWA manifest", "/404.html": "direct fetch returns 200 (not 404)", "/openapi.json": "linked from / Link header", "/auth.md": "agent auth doc",
     "/api-catalog.json": "raw file; /.well-known/api-catalog serves the same bytes as application/linkset+json" }[path] || "";
