@@ -6,7 +6,8 @@ Open one pull request against main for the public site: robots `ai-input=yes`, P
 
 ## Checkout
 
-- Branch `cursor/site-plus-price-llms-7cea`, based on main `c957167`.
+- Branch `cursor/site-plus-price-llms-7cea`, based on main `c957167`. Head `19e2d3e`.
+- Pull request: https://github.com/drumpat01/DriveOS/pull/318 (draft).
 - Public home is `web/beta.html` at `GET /`. The site Worker serves `web/`.
 
 ## Material changes
@@ -30,4 +31,4 @@ Open one pull request against main for the public site: robots `ai-input=yes`, P
 
 ## Next steps
 
-1. Review the pull request for this branch. Do not merge it from this handoff.
+1. Review https://github.com/drumpat01/DriveOS/pull/318. Do not merge it from this handoff.
