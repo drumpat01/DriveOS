@@ -117,8 +117,15 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie."));
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Neither one shows a Tesla drive."));
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
-  assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "journal");
-  assert.equal(expectations.appStore.pageCampaigns["/road-trip-tracker-app"], "journal");
+  assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "private_journal");
+  assert.equal(expectations.appStore.pageCampaigns["/road-trip-journal-app"], "road_trip");
+  assert.equal(expectations.appStore.pageCampaigns["/road-trip-tracker-app"], "road_trip_tracker");
+  assert.equal(expectations.appStore.pageCampaigns["/travel-journal-app-with-photos"], "travel_journal");
+  assert.equal(expectations.appStore.pageCampaigns["/driving-history-app"], "driving_history");
+  assert.equal(expectations.appStore.pageCampaigns["/route-66-road-trip-journal"], "route_66");
+  assert.equal(expectations.appStore.pageCampaigns["/pacific-coast-highway-road-trip-journal"], "route_pacific_coast_highway");
+  assert.equal(expectations.appStore.pageCampaigns["/national-parks-road-trip-journal"], "route_national_parks");
+  assert.equal(expectations.appStore.pageCampaigns["/texas-hill-country-road-trip-journal"], "route_texas_hill_country");
   assert.equal(expectations.appStore.pageCampaigns["/support"], "site");
   assert.equal(expectations.appStore.pageCampaigns["/privacy"], "site");
   assert.equal(expectations.appStore.pageCampaigns["/terms"], "site");

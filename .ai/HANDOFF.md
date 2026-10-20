@@ -2,25 +2,37 @@
 
 ## Current objective
 
-Footer cross-link to the studio Road Trip templates, and drop the public footer Sign in link. Same PR. Do not merge and do not deploy.
+Give each landing page that used `ct=journal` its own App Store campaign token so App Store Connect can attribute downloads. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/home-studio-crosslink-1e8d`, rebased on main `dde5d6f` (#313).
-- PR: https://github.com/drumpat01/DriveOS/pull/314. Do not merge.
+- Branch `cursor/app-store-page-ct-bdbe`, based on main `d6bbbcc` (#314).
+- PR: https://github.com/drumpat01/DriveOS/pull/315. Do not merge.
 - Public home is `web/beta.html` at `GET /`. The site Worker serves `web/`. Render is suspended.
 
 ## Material changes
 
-- Home footer nav: same-tab `From the studio: Road Trip templates` to `https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink`, in the slot where Sign in was.
-- Footer `href="/login"` removed from `web/beta.html` and `web/landing.html`. Other public pages already had no footer login link.
-- `/login` route and Worker source are unchanged. Retired-page expectations from #313 stay: `/login` is HTTP 410.
-- `verify:live` checks `page:<path> no-footer-login` on every public page and `page:/ studio-link` on `/`.
+- Replaced `ct=journal` on nine landing pages. `home`, `tesla_page`, `soundtrack`, and `site` are unchanged. Query shape stays `pt=129344416&ct=...&mt=8`.
+- `tools/verify-live/expectations.json` `appStore.pageCampaigns` and the server tests that assert those tokens match the new values.
+
+| Page | Old | New |
+| --- | --- | --- |
+| `/private-driving-journal` | journal | private_journal |
+| `/road-trip-journal-app` | journal | road_trip |
+| `/road-trip-tracker-app` | journal | road_trip_tracker |
+| `/travel-journal-app-with-photos` | journal | travel_journal |
+| `/driving-history-app` | journal | driving_history |
+| `/route-66-road-trip-journal` | journal | route_66 |
+| `/pacific-coast-highway-road-trip-journal` | journal | route_pacific_coast_highway |
+| `/national-parks-road-trip-journal` | journal | route_national_parks |
+| `/texas-hill-country-road-trip-journal` | journal | route_texas_hill_country |
 
 ## Verification
 
 - Node v24.22.0.
-- `npm run check:server`, `npm run lint:server`, `npm run test:server` (79 pass), and `npm run test:e2e` (20 pass).
+- `npm run check:server`, `npm run lint:server`, `npm run test:server` (79 pass).
+- Playwright `tests/e2e/public-beta.spec.ts` (11 pass), including the per-page `ct` check.
+- `verify:live` was not run against production. The new tokens are not deployed.
 
 ## Unresolved
 
@@ -28,4 +40,4 @@ Footer cross-link to the studio Road Trip templates, and drop the public footer 
 
 ## Next steps
 
-1. Review https://github.com/drumpat01/DriveOS/pull/314. Do not merge it from this handoff.
+1. Review https://github.com/drumpat01/DriveOS/pull/315. Do not merge it from this handoff.
