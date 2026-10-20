@@ -7,6 +7,7 @@ Give each landing page that used `ct=journal` its own App Store campaign token s
 ## Checkout
 
 - Branch `cursor/app-store-page-ct-bdbe`, based on main `d6bbbcc` (#314).
+- PR: https://github.com/drumpat01/DriveOS/pull/315. Do not merge.
 - Public home is `web/beta.html` at `GET /`. The site Worker serves `web/`. Render is suspended.
 
 ## Material changes
@@ -39,4 +40,4 @@ Give each landing page that used `ct=journal` its own App Store campaign token s
 
 ## Next steps
 
-1. Review the pull request for `cursor/app-store-page-ct-bdbe`. Do not merge it from this handoff.
+1. Review https://github.com/drumpat01/DriveOS/pull/315. Do not merge it from this handoff.
