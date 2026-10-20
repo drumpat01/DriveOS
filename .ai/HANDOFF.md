@@ -6,7 +6,7 @@ Open one pull request against main for the public site: robots `ai-input=yes`, P
 
 ## Checkout
 
-- Branch `cursor/site-plus-price-llms-7cea`, based on main `c957167`. Head `19e2d3e`.
+- Branch `cursor/site-plus-price-llms-7cea`, based on main `c957167`. Feature commit `19e2d3e`.
 - Pull request: https://github.com/drumpat01/DriveOS/pull/318 (draft).
 - Public home is `web/beta.html` at `GET /`. The site Worker serves `web/`.
 
