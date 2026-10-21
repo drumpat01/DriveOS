@@ -250,9 +250,12 @@ test('homepage templates and the Tesla Plus trial banner fit at 390 and 1280', a
     const templates = page.locator('#templates');
     await templates.scrollIntoViewIfNeeded();
     await expect(templates).toBeVisible();
-    const link = templates.getByRole('link', { name: 'Road Trip templates' });
+    await expect(templates.locator('.eyebrow')).toHaveText('FROM THE STUDIO');
+    await expect(templates.locator('#templates-title')).toContainText('Plan the next one.');
+    await expect(templates.locator('#templates-title .gold')).toHaveText('Road Trip templates.');
+    const link = templates.getByRole('link', { name: 'See the templates' });
     await expect(link).toBeVisible();
-    await expect(link).toHaveAttribute('href', 'https://studio.journeydeck.me');
+    await expect(link).toHaveAttribute('href', 'https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink');
     await expect(link).toHaveAttribute('data-umami-event', 'templates-click');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `home overflow at ${width}`).toBe(true);
 
@@ -262,7 +265,9 @@ test('homepage templates and the Tesla Plus trial banner fit at 390 and 1280', a
     await expect(banner).toBeVisible();
     await expect(banner).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8');
     await expect(banner).toHaveAttribute('data-umami-event', 'plus-trial-click');
-    await expect(banner).toHaveText('Try the free trial of JourneyDeck Plus, then $39.99 a year.');
+    await expect(banner).toContainText('Try the free trial of JourneyDeck Plus, then $39.99 a year.');
+    await expect(banner.locator('span[aria-hidden="true"]')).toHaveText('↗');
+    await expect(banner).toHaveCSS('border-top-color', 'rgb(212, 177, 90)');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `tesla overflow at ${width}`).toBe(true);
   }
 });

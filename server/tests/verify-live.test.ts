@@ -213,7 +213,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.launchBadge.mcpText, "Launch MCP");
   assert.deepEqual(expectations.pageSnippets["/"], [
     'id="templates"',
-    'data-umami-event="templates-click" href="https://studio.journeydeck.me"'
+    'data-umami-event="templates-click" href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink"'
   ]);
   assert.deepEqual(expectations.pageSnippets["/terms"], [
     'id="studio-products"',
@@ -247,7 +247,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
     <script type="application/ld+json">{"@type":"Organization","name":"JourneyDeck"}</script>
   </head><body>
     <h1 id="hero-title">Take the road.<br><span class="gold">Keep the story.</span></h1>
-    <section id="templates"><a data-umami-event="templates-click" href="https://studio.journeydeck.me">Road Trip templates</a></section>
+    <section id="templates"><a data-umami-event="templates-click" href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">See the templates</a></section>
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=home&mt=8">Get the app</a>
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?see-all=reviews&pt=129344416&ct=home&mt=8">Reviews</a>
     <p>Available products, price, billing period, trial terms, and included features are shown before purchase.</p>

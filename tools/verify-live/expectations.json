@@ -175,7 +175,7 @@
   "pageSnippets": {
     "/": [
       "id=\"templates\"",
-      "data-umami-event=\"templates-click\" href=\"https://studio.journeydeck.me\""
+      "data-umami-event=\"templates-click\" href=\"https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink\""
     ],
     "/terms": [
       "id=\"studio-products\"",

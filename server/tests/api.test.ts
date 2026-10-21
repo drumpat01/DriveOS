@@ -494,7 +494,9 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /id="memories"/);
     assert.match(landing.body, /class="feature-cta" href="\/travel-journal-app-with-photos">See the travel journal with photos/);
     assert.match(landing.body, /id="templates"/);
-    assert.match(landing.body, /data-umami-event="templates-click" href="https:\/\/studio\.journeydeck\.me"/);
+    assert.match(landing.body, /FROM THE STUDIO/);
+    assert.match(landing.body, /Plan the next one\.<br><span class="gold">Road Trip templates\.<\/span>/);
+    assert.match(landing.body, /data-umami-event="templates-click" href="https:\/\/studio\.journeydeck\.me\/\?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">See the templates/);
     assert.match(landing.body, /id="membership"/);
     assert.match(landing.body, /class="feature-cta" href="\/driving-history-app">See the driving history app/);
     assert.match(landing.body, /<h1 id="hero-title">A road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
@@ -749,10 +751,12 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       assert.equal(speaksToYou(description), true, `${page.url} description voice`);
       assert.equal(speaksToYou(ogDescription), true, `${page.url} og voice`);
       if (twitterDescription) assert.equal(speaksToYou(twitterDescription), true, `${page.url} twitter voice`);
+      if (page.url === "/") assert.match(description, /^Your private journal/, `${page.url} description`);
+      if (page.url === "/road-trip-journal-app") assert.match(description, /^Your private road trip journal/, `${page.url} description`);
       if (page.url === "/tesla-drive-journal") {
         assert.match(description, /drives and charging history/, `${page.url} description`);
         assert.match(html, /data-umami-event="plus-trial-click"/);
-        assert.match(html, /Try the free trial of JourneyDeck Plus, then \$39\.99 a year\./);
+        assert.match(html, /Try the free trial of JourneyDeck Plus, then \$39\.99 a year\. <span aria-hidden="true">↗<\/span>/);
         assert.match(html, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers/, `${page.url} price`);
         assert.doesNotMatch(html, /\$39\.99\/year/, `${page.url} old annual wording`);
       } else {

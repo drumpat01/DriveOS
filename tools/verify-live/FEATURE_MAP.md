@@ -70,7 +70,7 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 
 - Owner: `web/terms.html` `#studio-products`.
 - `/terms` must include `id="studio-products"` and the 7-day refund line `within 7 days of purchase and I’ll refund you.`
-- `/` must include `id="templates"` and `data-umami-event="templates-click" href="https://studio.journeydeck.me"`. That section links to the studio store. The footer studio link stays the longer crosslink and is a separate check.
+- `/` must include `id="templates"` and `data-umami-event="templates-click" href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink"`. That section links to the studio store with the same campaign parameters as the footer studio link. The footer link text stays `From the studio: Road Trip templates` and is a separate check.
 - Checks: `page:/ snippets` and `page:/terms snippets`.
 
 ## Campaign pass-through and X headline
