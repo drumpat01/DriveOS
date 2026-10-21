@@ -124,58 +124,72 @@ visual.addEventListener('dragstart', event => event.preventDefault());
 tour.addEventListener('focusin', event => { if (event.target !== playButton) setPlaying(false); });
 document.addEventListener('visibilitychange', scheduleTour);
 
-const revealElements = [...document.querySelectorAll('[data-reveal]')];
-let revealObserver;
-if ('IntersectionObserver' in window) {
-  document.documentElement.classList.add('motion-ready');
-  document.querySelectorAll('.feature-grid, .device-grid').forEach(group => {
-    [...group.children].forEach((child, index) => child.style.setProperty('--reveal-delay', `${index * 85}ms`));
-  });
-  revealObserver = new IntersectionObserver(entries => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      entry.target.classList.add('is-visible');
-      revealObserver.unobserve(entry.target);
+function startScenicMotion() {
+  const revealElements = [...document.querySelectorAll('[data-reveal]')];
+  let revealObserver;
+  const markInView = element => {
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom > 0 && rect.top < innerHeight) element.classList.add('is-visible');
+  };
+  if ('IntersectionObserver' in window) {
+    document.querySelectorAll('.feature-grid, .device-grid').forEach(group => {
+      [...group.children].forEach((child, index) => child.style.setProperty('--reveal-delay', `${index * 85}ms`));
+    });
+    revealElements.forEach(markInView);
+    document.documentElement.classList.add('motion-ready');
+    revealObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('is-visible');
+        revealObserver.unobserve(entry.target);
+      }
+    }, { threshold: .12, rootMargin: '0px 0px -20px 0px' });
+    revealElements.forEach(element => revealObserver.observe(element));
+    const tourObserver = new IntersectionObserver(entries => { tourVisible = entries[0].isIntersecting; scheduleTour(); }, { threshold: .2 });
+    tourObserver.observe(tour);
+  }
+
+  const scenic = document.querySelector('.scenic-break');
+  const deck = document.querySelector('.phone-stack');
+  const routePaths = [...document.querySelectorAll('.draw-route')].map(element => ({ element, length: element.getTotalLength() }));
+  routePaths.forEach(({ element, length }) => element.style.setProperty('--route-length', length));
+  let frame = 0;
+  function updateScroll() {
+    frame = 0;
+    if (motionPreference.matches) return;
+    const height = innerHeight;
+    const heroRect = tour.getBoundingClientRect();
+    if (heroRect.bottom > 0 && heroRect.top < height) deck.style.setProperty('--deck-y', `${Math.max(-25, Math.min(18, -heroRect.top * .045))}px`);
+    const scenicRect = scenic.getBoundingClientRect();
+    if (scenicRect.bottom > 0 && scenicRect.top < height) scenic.style.setProperty('--parallax-y', `${(height / 2 - scenicRect.top - scenicRect.height / 2) * .1}px`);
+    for (const { element, length } of routePaths) {
+      const rect = element.getBoundingClientRect();
+      const progress = Math.min(1, Math.max(0, (height * .95 - rect.top) / (height * .45)));
+      element.style.setProperty('--route-offset', (1 - progress) * length);
     }
-  }, { threshold: .12, rootMargin: '0px 0px -20px 0px' });
-  revealElements.forEach(element => revealObserver.observe(element));
-  const tourObserver = new IntersectionObserver(entries => { tourVisible = entries[0].isIntersecting; scheduleTour(); }, { threshold: .2 });
-  tourObserver.observe(tour);
+  }
+  function requestScrollUpdate() { if (!frame && !motionPreference.matches) frame = requestAnimationFrame(updateScroll); }
+  window.addEventListener('scroll', requestScrollUpdate, { passive: true });
+  window.addEventListener('resize', requestScrollUpdate, { passive: true });
+  function applyMotionPreference() {
+    if (motionPreference.matches) {
+      setPlaying(false);
+      playButton.hidden = true;
+      revealElements.forEach(element => element.classList.add('is-visible'));
+      slides.forEach(slide => slide.getAnimations().forEach(animation => animation.finish()));
+      caption.getAnimations().forEach(animation => animation.finish());
+      cancelAnimationFrame(frame); frame = 0;
+    } else { playButton.hidden = false; requestScrollUpdate(); }
+  }
+  motionPreference.addEventListener('change', applyMotionPreference);
+  applyMotionPreference();
+  window.addEventListener('pagehide', () => { stopTimer(); cancelAnimationFrame(frame); frame = 0; });
+  window.addEventListener('pageshow', () => { scheduleTour(); requestScrollUpdate(); });
 }
 
-const scenic = document.querySelector('.scenic-break');
-const deck = document.querySelector('.phone-stack');
-const routePaths = [...document.querySelectorAll('.draw-route')].map(element => ({ element, length: element.getTotalLength() }));
-routePaths.forEach(({ element, length }) => element.style.setProperty('--route-length', length));
-let frame = 0;
-function updateScroll() {
-  frame = 0;
-  if (motionPreference.matches) return;
-  const height = innerHeight;
-  const heroRect = tour.getBoundingClientRect();
-  if (heroRect.bottom > 0 && heroRect.top < height) deck.style.setProperty('--deck-y', `${Math.max(-25, Math.min(18, -heroRect.top * .045))}px`);
-  const scenicRect = scenic.getBoundingClientRect();
-  if (scenicRect.bottom > 0 && scenicRect.top < height) scenic.style.setProperty('--parallax-y', `${(height / 2 - scenicRect.top - scenicRect.height / 2) * .1}px`);
-  for (const { element, length } of routePaths) {
-    const rect = element.getBoundingClientRect();
-    const progress = Math.min(1, Math.max(0, (height * .95 - rect.top) / (height * .45)));
-    element.style.setProperty('--route-offset', (1 - progress) * length);
-  }
+function scheduleScenicMotion() {
+  if ('requestIdleCallback' in window) requestIdleCallback(startScenicMotion, { timeout: 1500 });
+  else setTimeout(startScenicMotion, 1);
 }
-function requestScrollUpdate() { if (!frame && !motionPreference.matches) frame = requestAnimationFrame(updateScroll); }
-window.addEventListener('scroll', requestScrollUpdate, { passive: true });
-window.addEventListener('resize', requestScrollUpdate, { passive: true });
-function applyMotionPreference() {
-  if (motionPreference.matches) {
-    setPlaying(false);
-    playButton.hidden = true;
-    revealElements.forEach(element => element.classList.add('is-visible'));
-    slides.forEach(slide => slide.getAnimations().forEach(animation => animation.finish()));
-    caption.getAnimations().forEach(animation => animation.finish());
-    cancelAnimationFrame(frame); frame = 0;
-  } else { playButton.hidden = false; requestScrollUpdate(); }
-}
-motionPreference.addEventListener('change', applyMotionPreference);
-applyMotionPreference();
-window.addEventListener('pagehide', () => { stopTimer(); cancelAnimationFrame(frame); frame = 0; });
-window.addEventListener('pageshow', () => { scheduleTour(); requestScrollUpdate(); });
+if (document.readyState === 'complete') scheduleScenicMotion();
+else window.addEventListener('load', scheduleScenicMotion, { once: true });

@@ -96,7 +96,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.doesNotMatch(privacy.body, /tessie/i);
     assert.match(privacy.body, /Questions and answers are not saved and are not sent to JourneyDeck servers/);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
-    assert.match(privacy.body, /\/public-page\.css\?v=followx-1/);
+    assert.match(privacy.body, /\/public-page\.css\?v=perf-1/);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
@@ -301,7 +301,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(teslaJournal.body, /<nav class="desktop-nav" aria-label="Main navigation"><a href="\/">Home<\/a><a href="\/tesla-drive-journal" aria-current="page">Tesla<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
     assert.match(teslaJournal.body, /aria-label="Mobile navigation"><a href="\/">Home<\/a><a href="\/tesla-drive-journal" aria-current="page">Tesla<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
     assert.doesNotMatch(teslaJournal.body, /Tesla journal/);
-    assert.match(teslaJournal.body, /href="\/public-a11y\.css\?v=2"/);
+    assert.match(teslaJournal.body, /href="\/public-a11y\.css\?v=3"/);
+    assert.match(teslaJournal.body, /06-atlas-400\.webp\?v=1 400w[\s\S]{0,180}sizes="\(max-width: 700px\) 228px, 300px"/);
     assert.match(teslaJournal.body, /alt="A trip replay in JourneyDeck\. Not a Tesla drive\."/);
     assert.match(teslaJournal.body, /<figcaption>A trip replay in JourneyDeck\. Not a Tesla drive\.<\/figcaption>/);
     assert.match(teslaJournal.body, /alt="Atlas in JourneyDeck\. Not Tesla data\."/);
@@ -563,8 +564,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.equal(landing.body.includes("/assets/v4/05-soundtrack.webp"), false);
     assert.equal(landing.body.includes("/assets/v2/soundtrack.webp"), false);
     assert.equal(landing.body.includes("/assets/v2/soundtrack.jpg"), false);
-    assert.match(landing.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/05-soundtrack-sample\.webp" width="660" height="1434" alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
-    assert.match(landing.body, /class="showcase-visual"[^>]*><img src="\/assets\/v4\/02-journey\.webp" width="660" height="1434"/);
+    assert.match(landing.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/05-soundtrack-sample-400\.webp\?v=1" width="660" height="1434" alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
+    assert.match(landing.body, /class="showcase-visual"[^>]*><picture>[\s\S]*?src="\/assets\/v4\/02-journey-400\.webp\?v=1" width="660" height="1434"/);
     for (const url of ["/assets/v4/05-soundtrack.webp", "/assets/v2/soundtrack.webp", "/assets/v2/soundtrack.webp?v=1", "/assets/v2/soundtrack.jpg"]) {
       const removed = await runtime.app.inject({ method: "GET", url });
       assert.equal(removed.statusCode, 404, url);

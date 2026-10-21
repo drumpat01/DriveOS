@@ -302,11 +302,16 @@ export function findUmamiScripts(html, expectations) {
   const expectedHost = umamiScriptHost(expectations);
   return [...html.matchAll(/<script\b[^>]*>/gi)]
     .map((match) => match[0])
-    .map((tag) => ({
-      src: attrValue(tag, "src"),
-      websiteId: attrValue(tag, "data-website-id"),
-      dataDomains: attrValue(tag, "data-domains")
-    }))
+    .map((tag) => {
+      const src = attrValue(tag, "src");
+      const scheduledSrc = attrValue(tag, "data-umami-src");
+      const effective = scriptSrcHost(src) === expectedHost ? src : scheduledSrc;
+      return {
+        src: effective,
+        websiteId: attrValue(tag, "data-website-id"),
+        dataDomains: attrValue(tag, "data-domains")
+      };
+    })
     .filter((script) => script.src && scriptSrcHost(script.src) === expectedHost);
 }
 

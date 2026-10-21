@@ -31,7 +31,9 @@ a:hover { color: var(--ivory); }
 .button:hover { background: #e5c77e; color: var(--navy); transform: translateY(-2px); box-shadow: 0 8px 26px #0003; }
 .button-small { min-height: 42px; padding: 11px 18px; gap: 20px; font-size: 12px; }
 .page { width: min(100% - 40px, 940px); margin: 0 auto; padding: 30px 0 max(52px, env(safe-area-inset-bottom)); }
-.hero { position: relative; isolation: isolate; overflow: hidden; min-height: 310px; padding: clamp(30px, 6vw, 58px); border: 1px solid #d4b15a80; border-radius: 14px; background: linear-gradient(90deg, #081832f5 0%, #081832e8 52%, #0818328a 100%), url('/assets/beta/grand-touring-home.webp') center 55% / cover; box-shadow: 0 28px 70px #0004; }
+picture { display: contents; }
+.hero { position: relative; isolation: isolate; overflow: hidden; min-height: 310px; padding: clamp(30px, 6vw, 58px); border: 1px solid #d4b15a80; border-radius: 14px; background-color: #081832; box-shadow: 0 28px 70px #0004; }
+.hero:not(.has-photo) { background: linear-gradient(90deg, #081832f5 0%, #081832e8 52%, #0818328a 100%), url("/assets/beta/grand-touring-home-800.webp?v=1") center 55% / cover; background-image: linear-gradient(90deg, #081832f5 0%, #081832e8 52%, #0818328a 100%), image-set(url("/assets/beta/grand-touring-home-800.webp?v=1") 800w, url("/assets/beta/grand-touring-home-1600.webp?v=1") 1600w); }
 .hero.has-photo { background: #081832; }
 .hero.has-photo::before { content: ""; position: absolute; z-index: 1; inset: 0; background: linear-gradient(90deg, #081832f5 0%, #081832e8 52%, #0818328a 100%); pointer-events: none; }
 .hero-photo { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 55%; pointer-events: none; }
@@ -69,7 +71,8 @@ strong { color: var(--ivory); }
 .error-hero { min-height: 430px; display: flex; flex-direction: column; justify-content: center; }
 @media (max-width: 620px) {
   .page { width: min(100% - 28px, 940px); }
-  .hero { min-height: 0; background: linear-gradient(90deg, #081832f5, #081832c9), url('/assets/beta/grand-touring-home.webp') center / cover; }
+  .hero { min-height: 0; }
+  .hero:not(.has-photo) { background: linear-gradient(90deg, #081832f5, #081832c9), url("/assets/beta/grand-touring-home-800.webp?v=1") center / cover; background-image: linear-gradient(90deg, #081832f5, #081832c9), image-set(url("/assets/beta/grand-touring-home-800.webp?v=1") 800w, url("/assets/beta/grand-touring-home-1600.webp?v=1") 1600w); }
   .hero.has-photo { background: #081832; }
   .hero.has-photo::before { background: linear-gradient(90deg, #081832f5, #081832c9); }
   .hero-photo { object-position: center; }

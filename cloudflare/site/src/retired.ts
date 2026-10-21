@@ -24,14 +24,14 @@ export function retiredPageHtml() {
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=app-logo-1">
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon.png?v=app-logo-1">
   <link rel="apple-touch-icon" href="/assets/journeydeck-cinematic-180.png">
-  <link rel="stylesheet" href="/public-page.css?v=grand-tour-4">
-  <link rel="stylesheet" href="/public-a11y.css?v=2">
+  <link rel="stylesheet" href="/public-page.css?v=perf-1">
+  <link rel="stylesheet" href="/public-a11y.css?v=3">
   <title>The old web app has been retired · JourneyDeck</title>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="JourneyDeck home"><img src="/assets/beta/journeydeck-pulse.svg" width="36" height="36" alt=""><span>Journey<span class="gold">Deck</span></span></a>
+    <a class="brand" href="/" aria-label="JourneyDeck home"><img src="/assets/beta/journeydeck-pulse.svg?v=1" width="36" height="36" alt=""><span>Journey<span class="gold">Deck</span></span></a>
     <div class="header-actions"><a class="button button-small" href="${APP_STORE_URL}">Get the app <span aria-hidden="true">↗</span></a></div>
   </header>
   <main id="main" class="page error-page">

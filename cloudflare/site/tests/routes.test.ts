@@ -21,8 +21,8 @@ function matched(method: string, path: string) {
 }
 
 test("route list has the phase-one shape", () => {
-  assert.equal(routes.length, 438);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 431);
+  assert.equal(routes.length, 463);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 456);
   assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 0);
   assert.equal(routes.filter(route => route.worker_action === "health").length, 4);
   assert.equal(routes.filter(route => route.target === "RENDER_ORIGIN").length, 0);
@@ -123,7 +123,7 @@ test("retention stays native and retired routes do not proxy", () => {
   assert.equal(matched("HEAD", "/readyz")?.method, "GET");
   assert.equal(matched("GET", "/healthz")?.worker_action, "health");
   assert.equal(matched("HEAD", "/healthz")?.route_id, "R040");
-  assert.equal(matched("POST", "/healthz")?.route_id, "R436");
+  assert.equal(matched("POST", "/healthz")?.route_id, "R462");
   assert.equal(matched("POST", "/healthz")?.expected_status, "405");
   assert.equal(matched("PUT", "/readyz")?.expected_status, "405");
   assert.equal(matched("GET", "/healthz")?.cache_control, "no-store");
