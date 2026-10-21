@@ -356,6 +356,8 @@ test("served public pages embed Apple campaign tokens and load the first-party c
       if (url === "/") assert.ok(hrefs.some(href => new URL(href).searchParams.get("see-all") === "reviews"), url);
       assert.doesNotMatch(page.body, /googletagmanager|gtag\(|plausible|cloudflareinsights/i, url);
       assert.match(String(page.headers["content-security-policy"]), /script-src[^;]*https:\/\/cloud\.umami\.is/, url);
+      assert.match(String(page.headers["content-security-policy"]), /script-src[^;]*https:\/\/static\.cloudflareinsights\.com/, url);
+      assert.match(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/cloudflareinsights\.com/, url);
       assert.match(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/gateway\.umami\.is/, url);
       assert.doesNotMatch(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/cloud\.umami\.is/, url);
       assert.match(String(page.headers["content-security-policy"]), /img-src[^;]*https:\/\/tools\.launchllama\.co/, url);

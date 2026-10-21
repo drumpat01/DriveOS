@@ -24,6 +24,17 @@ test("workerd serves phase-one assets", async () => {
     assert.equal(home.headers.get("cache-control"), "public, max-age=0");
     assert.equal(home.headers.get("cache-control")?.includes("must-revalidate"), false);
     assert.match(home.headers.get("link") || "", /api-catalog/);
+    const homeCsp = home.headers.get("content-security-policy") || "";
+    assert.match(homeCsp, /script-src[^;]*https:\/\/static\.cloudflareinsights\.com/);
+    assert.match(homeCsp, /connect-src[^;]*https:\/\/cloudflareinsights\.com/);
+
+    const robots = await worker.fetch("https://journeydeck.me/robots.txt");
+    assert.equal(robots.status, 200);
+    assert.equal(robots.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(robots.headers.get("x-robots-tag"), null);
+    const robotsBody = await robots.text();
+    assert.match(robotsBody, /^Content-Signal: ai-train=no, search=yes, ai-input=yes$/m);
+    assert.equal(robotsBody.includes("ai-input=no"), false);
 
     const privacy = await worker.fetch("https://journeydeck.me/privacy.html");
     assert.equal(privacy.status, 200);

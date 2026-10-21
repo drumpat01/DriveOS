@@ -7,8 +7,10 @@ import {
   classifyConsoleError,
   errorMessage,
   evaluateLoginUmami,
+  evaluateInsightsCsp,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
+  evaluateRobotsTxt,
   evaluateRetiredPage,
   evaluateSiteHealth,
   evaluateRedirect,
@@ -66,6 +68,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       text,
       cacheControl: response.headers.get("cache-control"),
       contentType: response.headers.get("content-type"),
+      csp: response.headers.get("content-security-policy"),
       json: json ? safeJson(text) : null
     };
   } catch (error) {
@@ -78,6 +81,7 @@ async function fetchResource(pathAndQuery, { json = false } = {}) {
       text: "",
       cacheControl: null,
       contentType: null,
+      csp: null,
       json: null,
       error: errorMessage(error)
     };
@@ -306,6 +310,7 @@ async function run() {
   };
   try {
     let servedHomeHrefs = [];
+    let homeCsp = null;
     const pageHtml = {};
     for (const pathname of expectations.publicPages) {
       const page = await fetchResource(pathname);
@@ -314,7 +319,10 @@ async function run() {
         continue;
       }
       pageHtml[pathname] = page.text;
-      if (pathname === "/") servedHomeHrefs = extractAppStoreHrefs(page.text, expectations);
+      if (pathname === "/") {
+        servedHomeHrefs = extractAppStoreHrefs(page.text, expectations);
+        homeCsp = page.csp;
+      }
       for (const check of evaluatePublicPageHtml(page.text, pathname, expectations, page.status)) {
         recordCheck(check);
       }
@@ -385,6 +393,14 @@ async function run() {
       }
       recordCheck(evaluateRedirect(page.status, page.location, redirect));
     }
+
+    const robots = await fetchResource("/robots.txt");
+    if (robots.error) {
+      recordCheck(makeCheck("robots.txt content-signal", false, { error: robots.error, status: robots.status }));
+    } else {
+      recordCheck(evaluateRobotsTxt(robots.text, robots.status, expectations));
+    }
+    recordCheck(evaluateInsightsCsp(homeCsp, expectations));
 
     await runBrowserChecks(servedHomeHrefs);
     evaluateCspCheck();

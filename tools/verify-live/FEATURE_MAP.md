@@ -38,6 +38,10 @@ Public HTML is served by `server/src/app.ts` in web mode. The public route allow
 
 JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/private-driving-journal.html`, `web/road-trip-journal-app.html`, `web/road-trip-tracker-app.html`, `web/travel-journal-app-with-photos.html`, `web/driving-history-app.html`, `web/route-66-road-trip-journal.html`, `web/pacific-coast-highway-road-trip-journal.html`, `web/national-parks-road-trip-journal.html`, `web/texas-hill-country-road-trip-journal.html`, `web/tesla-drive-journal.html`, `web/support.html`, `web/privacy.html`, and `web/terms.html`. Every `application/ld+json` block that is present must parse. Plus pricing is an `Offer`.
 
+Every public page also checks `page:<path> description-voice`. The meta description and `og:description` speak to you (`you`, `your`, `yours`, or `yourself`) and do not use first person. A `twitter:description`, when present, follows the same rule. Each stays at 155 characters or fewer.
+
+When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `priceCurrency` `USD`, `availability` `https://schema.org/InStock`, `url` equal to that page's App Store link (`pt`, the page `ct`, and `mt`), and `priceSpecification` of type `UnitPriceSpecification` with the same price and currency and `billingDuration` `P1Y`.
+
 ## Umami tag
 
 - Owner: the public HTML files above. `/login` is the retired notice from `cloudflare/site/src/retired.ts`, and that page must stay untagged.
@@ -57,7 +61,7 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 
 - Owner: public HTML, including visible copy and JSON-LD offers. Privacy and terms meta descriptions do not pitch the price. Plus is $39.99/yr, with a 7-day free trial. Meta descriptions, Open Graph descriptions, and Twitter descriptions stay at 155 characters or fewer.
 - Required phrases: `$39.99/yr`, `7-day free trial`. `$39.99/year` is forbidden.
-- `/tesla-drive-journal` replaces that required price line with `expectations.pages["/tesla-drive-journal"].requiredPricingPhrases`: `JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers`. Its `headline` check expects `The trip, later`. Its `copy` check requires the edited Tessie wording in `requiredPhrases`, including `iPhone only.`, the one shortcut explanation, and `Neither one shows a Tesla drive.` It forbids `2.99`, `monthly`, `$39.99/year`, `CarPlay`, `Bluetooth`, `motion trigger`, `the car records`, and `navigation app`, plus the global price and trial bans.
+- `/tesla-drive-journal` replaces that required price line with `expectations.pages["/tesla-drive-journal"].requiredPricingPhrases`: `JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers`. Its `headline` check expects `The trip, later`. Its `copy` check requires the edited Tessie wording in `requiredPhrases`, including `Keep your Tesla drives and charging history on your iPhone.`, `Try the free trial of JourneyDeck Plus, then $39.99 a year.`, `iPhone only.`, the one shortcut explanation, and `Neither one shows a Tesla drive.` It forbids `2.99`, `monthly`, `$39.99/year`, `CarPlay`, `Bluetooth`, `motion trigger`, `the car records`, and `navigation app`, plus the global price and trial bans. The trial banner links to the page App Store URL and uses `data-umami-event="plus-trial-click"`.
 - Forbidden price phrases (case-insensitive): `0.99`, `24.99`, `per week`, `weekly`.
 - Free recording stays available.
 - Checks: `page:<path> pricing`.
@@ -66,7 +70,8 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 
 - Owner: `web/terms.html` `#studio-products`.
 - `/terms` must include `id="studio-products"` and the 7-day refund line `within 7 days of purchase and I’ll refund you.`
-- Check: `page:/terms snippets`. Other public pages do not use this check.
+- `/` must include `id="templates"` and `data-umami-event="templates-click" href="https://studio.journeydeck.me"`. That section links to the studio store. The footer studio link stays the longer crosslink and is a separate check.
+- Checks: `page:/ snippets` and `page:/terms snippets`.
 
 ## Campaign pass-through and X headline
 
@@ -109,10 +114,16 @@ JSON-LD blocks live in `web/beta.html`, `web/apple-music-soundtrack.html`, `web/
 
 ## Content Security Policy
 
-- Owner: `securityHeaders` in `server/src/app.ts`. `script-src` allows `https://cloud.umami.is`. `connect-src` allows `https://gateway.umami.is` and does not allow `https://cloud.umami.is`. `img-src` allows `https://tools.launchllama.co` for the homepage Launch Llama badge and does not add that host to other directives.
+- Owner: `securityHeaders` in `server/src/app.ts` and `SECURITY_HEADERS` in `cloudflare/site/src/headers.ts`. `script-src` allows `https://cloud.umami.is` and `https://static.cloudflareinsights.com`. `connect-src` allows `https://gateway.umami.is` and `https://cloudflareinsights.com`, and does not allow `https://cloud.umami.is`. `img-src` allows `https://tools.launchllama.co` for the homepage Launch Llama badge and does not add that host to other directives. The beacon script is not in the HTML. The zone injects it.
 - The verifier lets `cloud.umami.is/script.js` load so the policy is actually exercised. It aborts `gateway.umami.is` so a run never sends analytics. It also aborts navigations to `apps.apple.com`.
 - The aborted gateway request is expected to appear as `net::ERR_FAILED`. That must not fail the run. It is listed as `blocked by verifier`.
-- Checks: `csp console` (no console errors that mention Content Security Policy, and no `securitypolicyviolation` events).
+- Checks: `csp console` (no console errors that mention Content Security Policy, and no `securitypolicyviolation` events). `csp cloudflare-insights` reads the homepage `Content-Security-Policy` header and requires both Cloudflare insights hosts.
+
+## robots.txt
+
+- Owner: `web/robots.txt`. The site Worker serves that file as an asset. It does not rewrite the body and does not set `X-Robots-Tag` on it.
+- The file includes the exact line `Content-Signal: ai-train=no, search=yes, ai-input=yes`.
+- Check: `robots.txt content-signal`.
 
 ## Permanent redirects
 

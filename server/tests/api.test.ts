@@ -100,7 +100,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
     assert.match(support.body, /Recording needs an iPhone/);
-    assert.match(support.body, /Plus unlocks full history/);
+    assert.match(support.body, /Plus adds full history/);
+    assert.doesNotMatch(support.body, /unlocks full history/);
     assert.doesNotMatch(support.body, /annual only/);
     assert.match(support.body, /\$39\.99\/yr(?!e)/);
     assert.doesNotMatch(support.body, /\$39\.99\/year/);
@@ -202,6 +203,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(drivingHistory.body, /href="\/apple-music-soundtrack"/);
     assert.match(drivingHistory.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(drivingHistory.body, /rel="canonical" href="https:\/\/journeydeck\.me\/driving-history-app"/);
+    assert.match(drivingHistory.body, /JourneyDeck Plus adds Atlas/);
+    assert.doesNotMatch(drivingHistory.body, /unlocks Atlas/);
     assert.doesNotMatch(drivingHistory.body, /[\u2013\u2014]/);
     const route66 = await runtime.app.inject({ method: "GET", url: "/route-66-road-trip-journal" });
     assert.equal(route66.statusCode, 200, route66.body);
@@ -452,7 +455,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     for (const rel of ["api-catalog", "service-desc", "service-doc", "describedby"]) assert.match(links, new RegExp(`rel="${rel}"`));
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 4\.0/);
-    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-6"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-7"/);
     assertStudioNav(landing.body, "/");
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
@@ -466,6 +469,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /APPLE WATCH \/ PAIRED IPHONE/);
     assert.match(landing.body, /<meta name="google-site-verification" content="C9F75mNcVf450GCL_J5RBoD5NRkqRig1EwwXUrr0P-w" \/>/);
     assert.match(String(landing.headers["content-security-policy"]), /default-src 'self'/);
+    assert.match(String(landing.headers["content-security-policy"]), /script-src[^;]*https:\/\/static\.cloudflareinsights\.com/);
+    assert.match(String(landing.headers["content-security-policy"]), /connect-src[^;]*https:\/\/cloudflareinsights\.com/);
     assert.match(String(landing.headers["content-security-policy"]), /img-src[^;]*https:\/\/tools\.launchllama\.co/);
     assert.doesNotMatch(String(landing.headers["content-security-policy"]), /(?:script-src|connect-src)[^;]*https:\/\/tools\.launchllama\.co/);
     assert.match(landing.body, /href="https:\/\/tools\.launchllama\.co\/products\/journeydeck\?utm_source=badge&utm_medium=referral"/);
@@ -488,6 +493,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /class="feature-cta" href="\/road-trip-tracker-app">See the road trip tracker app/);
     assert.match(landing.body, /id="memories"/);
     assert.match(landing.body, /class="feature-cta" href="\/travel-journal-app-with-photos">See the travel journal with photos/);
+    assert.match(landing.body, /id="templates"/);
+    assert.match(landing.body, /data-umami-event="templates-click" href="https:\/\/studio\.journeydeck\.me"/);
     assert.match(landing.body, /id="membership"/);
     assert.match(landing.body, /class="feature-cta" href="\/driving-history-app">See the driving history app/);
     assert.match(landing.body, /<h1 id="hero-title">A road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
@@ -511,7 +518,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.doesNotMatch(String(googleVerification.headers["content-security-policy"]), /google-site-verification/);
 
     for (const [url, mime] of [
-      ["/beta.css?v=grand-tour-6", /text\/css/],
+      ["/beta.css?v=grand-tour-7", /text\/css/],
       ["/public-page.css?v=grand-tour-4", /text\/css/],
       ["/public-page.css?v=hero-lcp-2", /text\/css/],
       ["/site-mobile-nav.css?v=2", /text\/css/],
@@ -573,7 +580,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(missing.body, /Page not found/i);
     assert.equal(missing.headers["x-robots-tag"], "noindex, nofollow");
     assertStudioNav(missing.body, "404");
-    const betaCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-6" });
+    const betaCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-7" });
     const publicCss = await runtime.app.inject({ method: "GET", url: "/public-page.css?v=grand-tour-4" });
     const mobileCss = await runtime.app.inject({ method: "GET", url: "/site-mobile-nav.css?v=2" });
     assert.match(betaCss.body, /\.desktop-nav \.nav-studio \{ color: var\(--gold\); font-weight: 500; \}/);
@@ -706,7 +713,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
         assert.doesNotMatch(description, /\$39\.99|7-day free trial/, `${page.url} meta price`);
         assert.doesNotMatch(metaPropertyContent(html, "og:description"), /\$39\.99|7-day free trial/, `${page.url} og price`);
       }
-      const offers: Array<{ price?: unknown; priceCurrency?: unknown }> = [];
+      const offers: Array<{ price?: unknown; priceCurrency?: unknown; url?: unknown; availability?: unknown; priceSpecification?: { "@type"?: unknown; price?: unknown; priceCurrency?: unknown; billingDuration?: unknown } }> = [];
       const visitJson = (node: unknown) => {
         if (!node || typeof node !== "object") return;
         if (Array.isArray(node)) {
@@ -714,7 +721,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
           return;
         }
         const record = node as { "@type"?: unknown };
-        if (record["@type"] === "Offer") offers.push(record as { price?: unknown; priceCurrency?: unknown });
+        if (record["@type"] === "Offer") offers.push(record as { price?: unknown; priceCurrency?: unknown; url?: unknown; availability?: unknown; priceSpecification?: { "@type"?: unknown; price?: unknown; priceCurrency?: unknown; billingDuration?: unknown } });
         Object.values(record).forEach(visitJson);
       };
       for (const block of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
@@ -725,13 +732,27 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       for (const offer of offers) {
         assert.equal(offer.price, "39.99", `${page.url} offer price`);
         assert.equal(offer.priceCurrency, "USD", `${page.url} offer currency`);
+        assert.equal(offer.availability, "https://schema.org/InStock", `${page.url} offer availability`);
+        assert.match(String(offer.url), /^https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=[a-z0-9_]+&mt=8$/, `${page.url} offer url`);
+        assert.ok(html.includes(`href="${offer.url}"`), `${page.url} offer url is already used on the page`);
+        assert.equal(offer.priceSpecification?.["@type"], "UnitPriceSpecification", `${page.url} price specification`);
+        assert.equal(offer.priceSpecification?.price, "39.99", `${page.url} billing price`);
+        assert.equal(offer.priceSpecification?.priceCurrency, "USD", `${page.url} billing currency`);
+        assert.equal(offer.priceSpecification?.billingDuration, "P1Y", `${page.url} billing duration`);
       }
       assert.ok(description.length <= 155, `${page.url} description is ${description.length}`);
       const ogDescription = metaPropertyContent(html, "og:description");
       assert.ok(ogDescription.length > 0 && ogDescription.length <= 155, `${page.url} og:description is ${ogDescription.length}`);
       const twitterDescription = metaNameContent(html, "twitter:description");
       if (twitterDescription) assert.ok(twitterDescription.length <= 155, `${page.url} twitter:description is ${twitterDescription.length}`);
+      const speaksToYou = (value: string) => /\b(you|your|yours|yourself)\b/i.test(value) && !/\b(I|we|us|our|ours|my|mine)\b/.test(value);
+      assert.equal(speaksToYou(description), true, `${page.url} description voice`);
+      assert.equal(speaksToYou(ogDescription), true, `${page.url} og voice`);
+      if (twitterDescription) assert.equal(speaksToYou(twitterDescription), true, `${page.url} twitter voice`);
       if (page.url === "/tesla-drive-journal") {
+        assert.match(description, /drives and charging history/, `${page.url} description`);
+        assert.match(html, /data-umami-event="plus-trial-click"/);
+        assert.match(html, /Try the free trial of JourneyDeck Plus, then \$39\.99 a year\./);
         assert.match(html, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers/, `${page.url} price`);
         assert.doesNotMatch(html, /\$39\.99\/year/, `${page.url} old annual wording`);
       } else {
@@ -772,7 +793,7 @@ test("hosted home and Support HTML advertise annual Plus and ban only the 3-day 
 test("hosted cache headers distinguish versioned assets, unversioned images, and short-lived documents", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
-    const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-6" });
+    const versionedCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-7" });
     assert.equal(versionedCss.statusCode, 200, versionedCss.body);
     assert.equal(versionedCss.headers["cache-control"], "public, max-age=31536000, immutable");
 
