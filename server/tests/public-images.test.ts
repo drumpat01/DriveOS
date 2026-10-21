@@ -9,7 +9,8 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
   try {
     const home = await runtime.app.inject({ method: "GET", url: "/" });
     assert.equal(home.statusCode, 200, home.body);
-    assert.match(home.body, /rel="preload" as="image"/);
+    assert.match(home.body, /rel="preload" as="image" href="\/assets\/beta\/grand-touring-home-800\.webp\?v=1" imagesrcset="\/assets\/beta\/grand-touring-home-800\.webp\?v=1 800w, \/assets\/beta\/grand-touring-home-1600\.webp\?v=1 1600w"/);
+    assert.doesNotMatch(home.body, /rel="preload"[^>]*01-today/);
     assert.match(home.body, /01-today-400\.webp\?v=1/);
     assert.match(home.body, /01-today\.webp\?v=1 660w/);
     assert.match(home.body, /imagesrcset="/);
@@ -19,14 +20,20 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
     assert.doesNotMatch(home.body, /data-feature="Today"[^>]*<img[^>]*loading="lazy"/);
     assert.match(home.body, /grand-touring-home-800\.webp\?v=1 800w/);
     assert.match(home.body, /grand-touring-home-1600\.webp\?v=1 1600w/);
+    assert.match(home.body, /class="hero-photo" src="\/assets\/beta\/grand-touring-home-800\.webp\?v=1"/);
     assert.match(home.body, /favicon-32\.png\?v=app-logo-1/);
     assert.match(home.body, /\/assets\/favicon\.png\?v=app-logo-1/);
 
     assert.equal(home.body.includes("/assets/v4/05-soundtrack.webp"), false);
     assert.equal(home.body.includes("/assets/v2/soundtrack.webp"), false);
     assert.equal(home.body.includes("/assets/v2/soundtrack.jpg"), false);
-    assert.match(home.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/05-soundtrack-sample\.webp" width="660" height="1434" alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
-    assert.match(home.body, /class="showcase-visual"[^>]*><img src="\/assets\/v4\/02-journey\.webp" width="660" height="1434"/);
+    assert.match(home.body, /data-feature="Soundtrack"[\s\S]*?src="\/assets\/v4\/05-soundtrack-sample-400\.webp\?v=1" width="660" height="1434" alt="JourneyDeck Soundtrack screen with this month's road anthem, Golden Hour Highway by The Marlow Set, and listening stats from sample drives\."/);
+    assert.match(home.body, /05-soundtrack-sample-400\.avif\?v=1 400w, \/assets\/v4\/05-soundtrack-sample\.avif\?v=1 660w/);
+    assert.match(home.body, /05-soundtrack-sample-400\.webp\?v=1 400w, \/assets\/v4\/05-soundtrack-sample\.webp\?v=1 660w/);
+    assert.match(home.body, /class="showcase-visual"[^>]*><picture>[\s\S]*?src="\/assets\/v4\/02-journey-400\.webp\?v=1" width="660" height="1434"/);
+    assert.match(home.body, /02-journey-400\.avif\?v=1 400w, \/assets\/v4\/02-journey\.avif\?v=1 660w/);
+    assert.match(home.body, /grand-touring-memories-400\.webp\?v=1 400w, \/assets\/beta\/grand-touring-memories-800\.webp\?v=1 800w/);
+    assert.match(home.body, /grand-touring-memories-400\.avif\?v=1 400w/);
     const tourScript = await runtime.app.inject({ method: "GET", url: "/beta.js?v=v4-1" });
     assert.equal(tourScript.statusCode, 200, tourScript.body);
     assert.match(tourScript.body, /title: 'Hear the memory again\.'/);
@@ -42,6 +49,14 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
       ["/assets/v2/soundtrack-sample.jpg", /image\/jpeg/],
       ["/assets/beta/grand-touring-home-800.webp?v=1", /image\/webp/],
       ["/assets/beta/grand-touring-home-1600.webp?v=1", /image\/webp/],
+      ["/assets/v4/02-journey-400.webp?v=1", /image\/webp/],
+      ["/assets/v4/02-journey-400.avif?v=1", /image\/avif/],
+      ["/assets/v4/02-journey.avif?v=1", /image\/avif/],
+      ["/assets/v4/05-soundtrack-sample-400.webp?v=1", /image\/webp/],
+      ["/assets/v4/05-soundtrack-sample.avif?v=1", /image\/avif/],
+      ["/assets/beta/grand-touring-memories-400.webp?v=1", /image\/webp/],
+      ["/assets/beta/grand-touring-memories-800.avif?v=1", /image\/avif/],
+      ["/assets/beta/journeydeck-pulse.svg?v=1", /image\/svg\+xml/],
       ["/assets/favicon-32.png?v=app-logo-1", /image\/png/],
       ["/favicon.ico", /image\/x-icon|image\/vnd\.microsoft\.icon|image\/png|application\/octet-stream/],
       ["/assets/medallions/soundtrack-100-redline-pick.webp", /image\/webp/],
@@ -56,6 +71,10 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
       "/assets/v4/01-today-400.webp?v=1",
       "/assets/beta/grand-touring-home-800.webp?v=1",
       "/assets/beta/grand-touring-home-1600.webp?v=1",
+      "/assets/v4/02-journey-400.avif?v=1",
+      "/assets/v4/05-soundtrack-sample.webp?v=1",
+      "/assets/beta/grand-touring-memories-800.webp?v=1",
+      "/assets/beta/journeydeck-pulse.svg?v=1",
       "/assets/favicon-32.png?v=app-logo-1",
       "/assets/v2/soundtrack-sample.webp?v=1"
     ]) {

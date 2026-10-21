@@ -21,7 +21,7 @@ import {
   umamiAppStoreClickDetail
 } from "../../web/campaign.js";
 
-const UMAMI_TAG = '<script defer src="https://cloud.umami.is/script.js" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af" data-domains="journeydeck.me"></script>';
+const UMAMI_TAG = '<script defer src="/umami-loader.js?v=1" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af" data-domains="journeydeck.me" data-umami-src="https://cloud.umami.is/script.js"></script>';
 
 const liveExpectations = loadExpectations();
 const APP_STORE_URL = "https://apps.apple.com/us/app/journeydeck/id6806502526";

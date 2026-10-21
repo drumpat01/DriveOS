@@ -113,7 +113,7 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 
 ## Sample Soundtrack captures
 
-- Owner: the homepage tour slide in `web/beta.html` (`GET /`) and the proof figure in `web/apple-music-soundtrack.html`. The route replay figure on `/` still uses `/assets/v4/02-journey.webp`.
+- Owner: the homepage tour slide in `web/beta.html` (`GET /`) and the proof figure in `web/apple-music-soundtrack.html`. The route replay figure on `/` uses a picture whose WebP source still includes `/assets/v4/02-journey.webp`.
 - `expectations.samplePublicImages.assets` must return HTTP 200 with the listed image content type.
 - `expectations.samplePublicImages.pages` must contain the listed sample path.
 - Checks: `sample-image <path>` for `/` and `/apple-music-soundtrack`, plus `sample-image <url>` for each sample file.

@@ -9,9 +9,13 @@
 .contact, .secondary-action { min-height: 52px; }
 .tour-dots button { min-width: 24px; width: 24px; }
 .text-link, .hero-soundtrack-link, .feature-cta, .hero-baseline a { min-height: 24px; }
-section.hero {
-  background: linear-gradient(90deg, #081832cc 0%, #081832cc 58%, #081832b3 78%, #08183280 100%), url("/assets/beta/grand-touring-home.webp") center 55% / cover;
+picture { display: contents; }
+section.hero:not(.has-photo) {
+  background: linear-gradient(90deg, #081832cc 0%, #081832cc 58%, #081832b3 78%, #08183280 100%), url("/assets/beta/grand-touring-home-800.webp?v=1") center 55% / cover;
+  background-image: linear-gradient(90deg, #081832cc 0%, #081832cc 58%, #081832b3 78%, #08183280 100%), image-set(url("/assets/beta/grand-touring-home-800.webp?v=1") 800w, url("/assets/beta/grand-touring-home-1600.webp?v=1") 1600w);
 }
+section.hero.has-photo { position: relative; isolation: isolate; background-color: #081832; background-image: none; }
+section.hero.has-photo .hero-photo { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: center 55%; pointer-events: none; }
 section.hero:not(.has-photo)::before { content: none; }
 section.hero.has-photo::before {
   content: "";
@@ -23,9 +27,11 @@ section.hero.has-photo::before {
 }
 .hero > :not(.hero-photo) { position: relative; z-index: 2; }
 @media (max-width: 620px) {
-  section.hero {
-    background: linear-gradient(90deg, #081832cc, #081832c6), url("/assets/beta/grand-touring-home.webp") center / cover;
+  section.hero:not(.has-photo) {
+    background: linear-gradient(90deg, #081832cc, #081832c6), url("/assets/beta/grand-touring-home-800.webp?v=1") center / cover;
+    background-image: linear-gradient(90deg, #081832cc, #081832c6), image-set(url("/assets/beta/grand-touring-home-800.webp?v=1") 800w, url("/assets/beta/grand-touring-home-1600.webp?v=1") 1600w);
   }
+  section.hero.has-photo .hero-photo { object-position: center; }
   section.hero.has-photo::before { background: linear-gradient(90deg, #081832cc, #081832c6); }
 }
 @media (max-width: 390px) {
