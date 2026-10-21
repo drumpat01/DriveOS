@@ -202,6 +202,17 @@ export function validateExpectations(raw) {
   ) {
     throw new Error("expectations.footerLinks is incomplete");
   }
+  if (raw.robotsTxt?.contentSignal !== "Content-Signal: ai-train=no, search=yes, ai-input=yes") {
+    throw new Error("expectations.robotsTxt.contentSignal must allow AI answers");
+  }
+  const csp = raw.contentSecurityPolicy;
+  if (!Array.isArray(csp?.scriptHosts) || !csp.scriptHosts.includes("https://static.cloudflareinsights.com") || !Array.isArray(csp?.connectHosts) || !csp.connectHosts.includes("https://cloudflareinsights.com")) {
+    throw new Error("expectations.contentSecurityPolicy must allow the Cloudflare Web Analytics beacon");
+  }
+  const homeSnippets = raw.pageSnippets?.["/"];
+  if (!Array.isArray(homeSnippets) || !homeSnippets.includes('id="templates"') || !homeSnippets.some((snippet) => snippet.includes("templates-click"))) {
+    throw new Error("expectations.pageSnippets./ must include the templates section");
+  }
   return raw;
 }
 
@@ -550,6 +561,74 @@ export function evaluateLaunchBadge(html, expectations) {
   };
 }
 
+const SECOND_PERSON = /\b(you|your|yours|yourself)\b/i;
+const FIRST_PERSON = /\b(I|we|us|our|ours|my|mine)\b/;
+
+export function descriptionSpeaksToYou(value) {
+  return typeof value === "string" && value.length > 0 && SECOND_PERSON.test(value) && !FIRST_PERSON.test(value);
+}
+
+export function collectTypedNodes(node, type, found = []) {
+  if (!node || typeof node !== "object") return found;
+  if (Array.isArray(node)) {
+    for (const item of node) collectTypedNodes(item, type, found);
+    return found;
+  }
+  if (node["@type"] === type) found.push(node);
+  for (const value of Object.values(node)) collectTypedNodes(value, type, found);
+  return found;
+}
+
+export function appStoreOfferUrl(pathname, expectations) {
+  const ct = expectations.appStore?.pageCampaigns?.[pathname];
+  if (typeof ct !== "string" || !expectations.appStore?.baseUrl) return null;
+  return `${expectations.appStore.baseUrl}?pt=${expectations.appStore.providerToken}&ct=${ct}&mt=${expectations.appStore.mediaType}`;
+}
+
+export function offerSchemaProblems(offer, expectedUrl) {
+  const problems = [];
+  if (offer?.price !== "39.99") problems.push("price");
+  if (offer?.priceCurrency !== "USD") problems.push("priceCurrency");
+  if (offer?.availability !== "https://schema.org/InStock") problems.push("availability");
+  if (!expectedUrl || offer?.url !== expectedUrl) problems.push("url");
+  const spec = offer?.priceSpecification;
+  if (!spec || spec["@type"] !== "UnitPriceSpecification" || spec.price !== "39.99" || spec.priceCurrency !== "USD" || spec.billingDuration !== "P1Y") {
+    problems.push("billingDuration");
+  }
+  return problems;
+}
+
+export function evaluateOfferSchema(html, pathname, expectations) {
+  const parsed = parseJsonLdBlocks(extractJsonLdBlocks(html));
+  const offers = [];
+  for (const block of parsed.parsed) collectTypedNodes(block, "Offer", offers);
+  if (offers.length === 0) return null;
+  const expectedUrl = appStoreOfferUrl(pathname, expectations);
+  const problems = offers.flatMap((offer) => offerSchemaProblems(offer, expectedUrl));
+  return makeCheck(`page:${pathname} offer`, problems.length === 0, {
+    count: offers.length,
+    expectedUrl,
+    problems
+  });
+}
+
+export function evaluateRobotsTxt(text, status, expectations) {
+  const line = expectations.robotsTxt?.contentSignal;
+  const body = String(text ?? "");
+  const pass = status === 200 && typeof line === "string" && body.split(/\r?\n/).includes(line) && !body.includes("ai-input=no");
+  return makeCheck("robots.txt content-signal", pass, { status, line });
+}
+
+export function evaluateInsightsCsp(csp, expectations) {
+  const value = String(csp || "");
+  const directive = (name) => value.split(";").map((part) => part.trim()).find((part) => part.startsWith(name)) || "";
+  const scriptHosts = expectations.contentSecurityPolicy?.scriptHosts || [];
+  const connectHosts = expectations.contentSecurityPolicy?.connectHosts || [];
+  const scriptOk = scriptHosts.length > 0 && scriptHosts.every((host) => directive("script-src").includes(host));
+  const connectOk = connectHosts.length > 0 && connectHosts.every((host) => directive("connect-src").includes(host));
+  return makeCheck("csp cloudflare-insights", scriptOk && connectOk, { scriptOk, connectOk });
+}
+
 export function evaluatePublicPageHtml(html, pathname, expectations, statusCode) {
   const expectedCanonical = canonicalUrlForPath(pathname, expectations);
   const title = extractDocumentTitle(html);
@@ -574,10 +653,16 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     && typeof extracted.value === "string"
     && extracted.value.length > 0
     && extracted.value.length <= maxDescription;
+  const voiceOk = (extracted) => extracted.count === 1 && descriptionSpeaksToYou(extracted.value);
   const checks = [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
     makeCheck(`page:${pathname} title`, title.count === 1 && Boolean(title.value), title),
     makeCheck(`page:${pathname} meta-description`, descriptionFits(description), { ...description, max: maxDescription }),
+    makeCheck(`page:${pathname} description-voice`, voiceOk(description) && voiceOk(ogDescription) && (twitterDescription.count === 0 || voiceOk(twitterDescription)), {
+      description: description.value,
+      ogDescription: ogDescription.value,
+      twitterDescription: twitterDescription.value
+    }),
     makeCheck(`page:${pathname} canonical`, canonical.count === 1 && canonical.value === expectedCanonical, { ...canonical, expected: expectedCanonical }),
     makeCheck(`page:${pathname} og:title`, ogTitle.count === 1 && Boolean(ogTitle.value), ogTitle),
     makeCheck(`page:${pathname} og:description`, descriptionFits(ogDescription), { ...ogDescription, max: maxDescription }),
@@ -591,6 +676,8 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} trial-wording`, trialHits.length === 0, { forbidden: trialHits }),
     makeCheck(`page:${pathname} pricing`, priceHits.length === 0 && missingPricing.length === 0, { forbidden: priceHits, missing: missingPricing })
   ];
+  const offer = evaluateOfferSchema(html, pathname, expectations);
+  if (offer) checks.push(offer);
   const requiredSnippets = expectations.pageSnippets?.[pathname];
   if (Array.isArray(requiredSnippets)) {
     const missingSnippets = findMissingRequiredPhrases(html, requiredSnippets);

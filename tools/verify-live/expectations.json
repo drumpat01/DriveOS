@@ -87,6 +87,17 @@
     "7-day free trial"
   ],
   "maxMetaDescriptionLength": 155,
+  "robotsTxt": {
+    "contentSignal": "Content-Signal: ai-train=no, search=yes, ai-input=yes"
+  },
+  "contentSecurityPolicy": {
+    "scriptHosts": [
+      "https://static.cloudflareinsights.com"
+    ],
+    "connectHosts": [
+      "https://cloudflareinsights.com"
+    ]
+  },
   "appStore": {
     "baseUrl": "https://apps.apple.com/us/app/journeydeck/id6806502526",
     "providerToken": "129344416",
@@ -162,6 +173,10 @@
     ]
   },
   "pageSnippets": {
+    "/": [
+      "id=\"templates\"",
+      "data-umami-event=\"templates-click\" href=\"https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink\""
+    ],
     "/terms": [
       "id=\"studio-products\"",
       "within 7 days of purchase and I’ll refund you."
@@ -182,6 +197,8 @@
         "You start each drive yourself, with one tap or Siri. Automatic history needs Plus and Tessie.",
         "With Plus and Tessie, the iPhone's GPS detects your drives automatically",
         "Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie.",
+        "Keep your Tesla drives and charging history on your iPhone.",
+        "Try the free trial of JourneyDeck Plus, then $39.99 a year.",
         "Music &amp; Connections",
         "Generate Access Token",
         "Tessie access token",

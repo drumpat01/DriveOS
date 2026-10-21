@@ -13,9 +13,12 @@ import {
   evaluateLaunchBadge,
   evaluateLoginUmami,
   evaluateSiteHealth,
+  evaluateInsightsCsp,
   evaluateNotFoundAppStore,
+  evaluateOfferSchema,
   evaluatePublicPageHtml,
   evaluateRetiredPage,
+  evaluateRobotsTxt,
   evaluateRedirect,
   evaluateRemovedPublicImages,
   evaluateSamplePublicImages,
@@ -102,6 +105,11 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.deepEqual(expectations.forbiddenPricePhrases, ["0.99", "24.99", "$39.99/year", "per week", "weekly"]);
   assert.deepEqual(expectations.requiredPricingPhrases, ["$39.99/yr", "7-day free trial"]);
   assert.equal(expectations.maxMetaDescriptionLength, 155);
+  assert.equal(expectations.robotsTxt.contentSignal, "Content-Signal: ai-train=no, search=yes, ai-input=yes");
+  assert.deepEqual(expectations.contentSecurityPolicy.scriptHosts, ["https://static.cloudflareinsights.com"]);
+  assert.deepEqual(expectations.contentSecurityPolicy.connectHosts, ["https://cloudflareinsights.com"]);
+  assert.throws(() => validateExpectations({ ...expectations, robotsTxt: { contentSignal: "Content-Signal: ai-train=no, search=yes, ai-input=no" } }), /AI answers/);
+  assert.throws(() => validateExpectations({ ...expectations, contentSecurityPolicy: { scriptHosts: [], connectHosts: [] } }), /Cloudflare Web Analytics/);
   assert.equal(expectations.appStore.baseUrl, "https://apps.apple.com/us/app/journeydeck/id6806502526");
   assert.equal(expectations.appStore.providerToken, "129344416");
   assert.equal(expectations.appStore.mediaType, "8");
@@ -117,6 +125,8 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("$39.99/year"));
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie."));
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Neither one shows a Tesla drive."));
+  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Keep your Tesla drives and charging history on your iPhone."));
+  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Try the free trial of JourneyDeck Plus, then $39.99 a year."));
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
   assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "private_journal");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-journal-app"], "road_trip");
@@ -201,11 +211,16 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.launchBadge.imageHeight, "52");
   assert.equal(expectations.launchBadge.mcpHref, "https://launchmcp.co/?utm_source=badge&utm_medium=referral");
   assert.equal(expectations.launchBadge.mcpText, "Launch MCP");
+  assert.deepEqual(expectations.pageSnippets["/"], [
+    'id="templates"',
+    'data-umami-event="templates-click" href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink"'
+  ]);
   assert.deepEqual(expectations.pageSnippets["/terms"], [
     'id="studio-products"',
     "within 7 days of purchase and I’ll refund you."
   ]);
   assert.throws(() => validateExpectations({ ...expectations, pageSnippets: { "/terms": ["hello"] } }), /7-day refund line/);
+  assert.throws(() => validateExpectations({ ...expectations, pageSnippets: { ...expectations.pageSnippets, "/": ['id="templates"'] } }), /templates section/);
   assert.throws(() => validateExpectations({}), /publicPages/);
   assert.throws(() => validateExpectations({ ...expectations, launchBadge: {} }), /launchBadge is incomplete/);
   assert.equal(expectations.footerLinks.forbiddenHref, "/login");
@@ -222,16 +237,17 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
 test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial terms", () => {
   const html = `<!doctype html><html><head>
     <title>JourneyDeck: Take the road. Keep the story.</title>
-    <meta name="description" content="A private journal.">
+    <meta name="description" content="Your private journal.">
     <link rel="canonical" href="https://journeydeck.me/">
     <meta property="og:title" content="JourneyDeck: Take the road. Keep the story.">
-    <meta property="og:description" content="A private journal.">
+    <meta property="og:description" content="Your private journal.">
     <meta property="og:url" content="https://journeydeck.me/">
     <meta property="og:image" content="https://journeydeck.me/assets/beta/share-card.png?v=1">
     <script defer src="https://cloud.umami.is/script.js" data-website-id="a5f66e11-ec7d-4133-8e1a-f8e6c08593af" data-domains="journeydeck.me"></script>
     <script type="application/ld+json">{"@type":"Organization","name":"JourneyDeck"}</script>
   </head><body>
     <h1 id="hero-title">Take the road.<br><span class="gold">Keep the story.</span></h1>
+    <section id="templates"><a data-umami-event="templates-click" href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">See the templates</a></section>
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=home&mt=8">Get the app</a>
     <a href="https://apps.apple.com/us/app/journeydeck/id6806502526?see-all=reviews&pt=129344416&ct=home&mt=8">Reviews</a>
     <p>Available products, price, billing period, trial terms, and included features are shown before purchase.</p>
@@ -272,7 +288,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   const checks = evaluatePublicPageHtml(html, "/", expectations, 200);
   assert.ok(checks.every((check) => check.pass), checks.filter((check) => !check.pass).map((check) => check.name).join(","));
   const longDescription = "x".repeat(156);
-  const longHtml = html.replace('name="description" content="A private journal."', `name="description" content="${longDescription}"`);
+  const longHtml = html.replace('name="description" content="Your private journal."', `name="description" content="${longDescription}"`);
   const longChecks = evaluatePublicPageHtml(longHtml, "/", expectations, 200);
   assert.equal(longChecks.find((check) => check.name === "page:/ meta-description")?.pass, false);
   assert.equal(canonicalUrlForPath("/", expectations), "https://journeydeck.me/");
@@ -293,6 +309,44 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   const withLogin = html.replace("</footer>", '<a href="/login">Sign in</a></footer>');
   const loginFooter = evaluatePublicPageHtml(withLogin, "/", expectations, 200);
   assert.equal(loginFooter.find((check) => check.name === "page:/ no-footer-login")?.pass, false);
+  assert.equal(checks.find((check) => check.name === "page:/ description-voice")?.pass, true);
+  assert.equal(checks.find((check) => check.name === "page:/ snippets")?.pass, true);
+});
+
+test("offer schema requires the annual unit price, the page App Store url, and in-stock availability", () => {
+  const url = `${APP_STORE}?pt=${expectations.appStore.providerToken}&ct=home&mt=${expectations.appStore.mediaType}`;
+  const offer = {
+    "@context": "https://schema.org",
+    "@type": "Offer",
+    url,
+    price: "39.99",
+    priceCurrency: "USD",
+    availability: "https://schema.org/InStock",
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      price: "39.99",
+      priceCurrency: "USD",
+      billingDuration: "P1Y"
+    }
+  };
+  const wrap = (value: unknown) => `<script type="application/ld+json">${JSON.stringify(value)}</script>`;
+  const check = evaluateOfferSchema(wrap(offer), "/", expectations);
+  assert.equal(check?.pass, true, JSON.stringify(check?.observed));
+  const monthly = structuredClone(offer);
+  monthly.priceSpecification.billingDuration = "P1M";
+  const monthlyCheck = evaluateOfferSchema(wrap(monthly), "/", expectations);
+  assert.equal(monthlyCheck?.pass, false);
+  assert.ok((monthlyCheck?.observed as { problems: string[] }).problems.includes("billingDuration"));
+  const wrongUrl = evaluateOfferSchema(wrap({ ...offer, url: "https://example.com/plus" }), "/", expectations);
+  assert.equal(wrongUrl?.pass, false);
+  assert.ok((wrongUrl?.observed as { problems: string[] }).problems.includes("url"));
+  assert.equal(evaluateOfferSchema("<html></html>", "/", expectations), null);
+  const robots = evaluateRobotsTxt("User-agent: *\nContent-Signal: ai-train=no, search=yes, ai-input=yes\nAllow: /\n", 200, expectations);
+  assert.equal(robots.pass, true);
+  assert.equal(evaluateRobotsTxt("Content-Signal: ai-train=no, search=yes, ai-input=no\n", 200, expectations).pass, false);
+  const csp = "script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com";
+  assert.equal(evaluateInsightsCsp(csp, expectations).pass, true);
+  assert.equal(evaluateInsightsCsp("script-src 'self'; connect-src 'self'", expectations).pass, false);
 });
 
 test("App Store href assertions keep campaign tokens, reviews, and the served static hrefs", () => {
@@ -453,6 +507,13 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
       const page = await runtime.app.inject({ method: "GET", url: pathname });
       const checks = evaluatePublicPageHtml(page.body, pathname, expectations, page.statusCode);
       assert.ok(checks.every((check) => check.pass), `${pathname}: ${checks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; ")}`);
+      if (pathname === "/") {
+        const csp = evaluateInsightsCsp(page.headers["content-security-policy"], expectations);
+        assert.equal(csp.pass, true, JSON.stringify(csp.observed));
+        assert.equal(checks.find((check) => check.name === "page:/ snippets")?.pass, true);
+        assert.equal(checks.find((check) => check.name === "page:/ description-voice")?.pass, true);
+        assert.equal(checks.find((check) => check.name === "page:/ offer")?.pass, true);
+      }
       if (pathname === "/terms") {
         assert.match(page.body, /id="studio-products"/);
         assert.match(page.body, /within 7 days of purchase and I’ll refund you/);
@@ -460,6 +521,9 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
         assert.equal(snippets?.pass, true, JSON.stringify(snippets?.observed));
       }
     }
+    const robots = await runtime.app.inject({ method: "GET", url: "/robots.txt" });
+    const robotsCheck = evaluateRobotsTxt(robots.body, robots.statusCode, expectations);
+    assert.equal(robotsCheck.pass, true, JSON.stringify(robotsCheck.observed));
     const missing = await runtime.app.inject({ method: "GET", url: expectations.appStore.notFoundPath });
     const missingChecks = evaluateNotFoundAppStore(missing.body, expectations, missing.statusCode);
     assert.ok(missingChecks.every((check) => check.pass), missingChecks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; "));

@@ -199,6 +199,8 @@ figure, h1, h2, h3, p { margin: 0; }
 .privacy-copy li { padding-block: 6px; display: flex; gap: 13px; }
 .privacy-copy li:before { content: "✓"; color: var(--gold); }
 .privacy-copy .text-link { color: var(--ivory); font-size: 12px; }
+.templates-section { border-top: 1px solid var(--line); }
+.templates-section .feature-cta { margin-top: 28px; }
 .closing { text-align: center; position: relative; padding-top: 65px; padding-bottom: 100px; }
 .closing-rule { height: 1px; background: linear-gradient(90deg,transparent,var(--gold),transparent); margin-bottom: 78px; opacity: .4; }
 .closing h2 { font-size: clamp(45px,7vw,95px); font-weight: 450; letter-spacing: -.06em; line-height: 1.06; margin-top: 25px; }

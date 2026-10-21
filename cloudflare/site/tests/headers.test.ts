@@ -37,6 +37,8 @@ test("worker headers replace must-revalidate and do not duplicate CSP", () => {
   assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
   assert.equal(response.headers.get("strict-transport-security"), HSTS);
   assert.equal(response.headers.get("content-security-policy"), SECURITY_HEADERS["content-security-policy"]);
+  assert.match(SECURITY_HEADERS["content-security-policy"], /script-src[^;]*https:\/\/static\.cloudflareinsights\.com/);
+  assert.match(SECURITY_HEADERS["content-security-policy"], /connect-src[^;]*https:\/\/cloudflareinsights\.com/);
   let policies = 0;
   response.headers.forEach((_value, name) => { if (name === "content-security-policy") policies += 1; });
   assert.equal(policies, 1);

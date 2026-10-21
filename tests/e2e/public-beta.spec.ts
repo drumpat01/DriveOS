@@ -243,6 +243,35 @@ test('tesla page keeps utm_campaign=tesla on App Store clicks', async ({ page })
   }]);
 });
 
+test('homepage templates and the Tesla Plus trial banner fit at 390 and 1280', async ({ page }) => {
+  for (const { width, height } of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/beta.html');
+    const templates = page.locator('#templates');
+    await templates.scrollIntoViewIfNeeded();
+    await expect(templates).toBeVisible();
+    await expect(templates.locator('.eyebrow')).toHaveText('FROM THE STUDIO');
+    await expect(templates.locator('#templates-title')).toContainText('Plan the next one.');
+    await expect(templates.locator('#templates-title .gold')).toHaveText('Road Trip templates.');
+    const link = templates.getByRole('link', { name: 'See the templates' });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', 'https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink');
+    await expect(link).toHaveAttribute('data-umami-event', 'templates-click');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `home overflow at ${width}`).toBe(true);
+
+    await page.goto('/tesla-drive-journal.html');
+    const banner = page.locator('.plus-trial-banner');
+    await banner.scrollIntoViewIfNeeded();
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8');
+    await expect(banner).toHaveAttribute('data-umami-event', 'plus-trial-click');
+    await expect(banner).toContainText('Try the free trial of JourneyDeck Plus, then $39.99 a year.');
+    await expect(banner.locator('span[aria-hidden="true"]')).toHaveText('↗');
+    await expect(banner).toHaveCSS('border-top-color', 'rgb(212, 177, 90)');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `tesla overflow at ${width}`).toBe(true);
+  }
+});
+
 test('the page remains readable without JavaScript', async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 320, height: 740 } });
   const page = await context.newPage();

@@ -2,28 +2,30 @@
 
 ## Current objective
 
-Open one pull request against main for the public site: robots `ai-input=yes`, Plus at `$39.99/yr`, `llms.txt`, and meta descriptions of 155 characters or fewer. Do not merge and do not deploy.
+Open one ready pull request against main for the public site. Do not merge and do not deploy.
 
 ## Checkout
 
-- Branch `cursor/site-plus-price-llms-7cea`, based on main `c957167`. Feature commit `19e2d3e`.
-- Pull request: https://github.com/drumpat01/DriveOS/pull/318 (draft).
+- Branch `cursor/site-offer-templates-trial-61e1`, based on main `9a886cb` (`Publish the annual Plus price and an llms.txt summary (#318)`).
 - Public home is `web/beta.html` at `GET /`. The site Worker serves `web/`.
 
 ## Material changes
 
-- `web/robots.txt`: `Content-Signal` is `ai-train=no, search=yes, ai-input=yes`. The other robots lines are unchanged.
-- Public pages, including `/support`, say Plus is `$39.99/yr`. Offer JSON-LD stays `price` `39.99` and `priceCurrency` `USD`. No weekly price, no `$24.99`, and no 3-day trial. Existing 7-day trial wording stays. Support's check date is October 20, 2026.
-- `web/llms.txt` is served at `/llms.txt` as `text/plain; charset=utf-8` by site Worker route `R438`. It is not in the sitemap. The sitemap still lists HTML pages only.
-- Meta descriptions, `og:description`, and `twitter:description` are 155 characters or fewer.
+- Every Plus `Offer` keeps `price` `39.99` and `priceCurrency` `USD`, and adds `url` (the page App Store link), `availability` `https://schema.org/InStock`, and `priceSpecification` (`UnitPriceSpecification`, `billingDuration` `P1Y`).
+- Copy: "unlocks" is "adds" on the driving-history and support pages. `landing.html` and `404.html` have no em or en dashes. Meta descriptions speak to you and stay at 155 characters or fewer. The Tesla description includes "drives and charging history".
+- `web/robots.txt` keeps `Content-Signal: ai-train=no, search=yes, ai-input=yes`. The site Worker serves that file and does not rewrite it.
+- CSP already allows `https://static.cloudflareinsights.com` on `script-src` and `https://cloudflareinsights.com` on `connect-src` in `server/src/app.ts` and `cloudflare/site/src/headers.ts`. Tests lock both.
+- Homepage `#templates` says "FROM THE STUDIO" / "Plan the next one." / "Road Trip templates." and links to the studio store with the footer crosslink parameters and `data-umami-event="templates-click"`. The link text is "See the templates".
+- Homepage and road-trip meta descriptions start "Your private journal" and "Your private road trip journal" and stay within 155 characters. `404.html` title is "Page not found | JourneyDeck". `landing.html` titles are "JourneyDeck | Every road has a soundtrack".
+- `/tesla-drive-journal` has a Plus trial banner to the page App Store link (`ct=tesla_page`) with `data-umami-event="plus-trial-click"` and a trailing arrow. The border uses `var(--gold)`. Wording: "Try the free trial of JourneyDeck Plus, then $39.99 a year."
+- `verify:live` checks description voice, offer schema, home snippets, the robots line, and the Cloudflare insights CSP hosts.
 
 ## Verification
 
 - Local Node is v22.23.3. CI validate uses Node 24.
-- `npm run check:server`, `npm run lint:server`, targeted `server/tests` (`api`, `public-copy`, `verify-live`), `npm run check:site`, `npm run test:site`, `npm run predeploy:site`.
-- Playwright `tests/e2e/public-beta.spec.ts` (11 pass).
-- Workerd returns `/llms.txt` as `text/plain` with `cache-control: public, max-age=0` and no `x-robots-tag`.
-- `verify:live` was not run against production. The live site still has the previous copy.
+- `tsc` for `server` and `cloudflare/site`, eslint on the touched tests, `server/tests` (`api`, `public-copy`, `verify-live`, `campaign`), site `headers` and `workerd` tests, Playwright `tests/e2e/public-beta.spec.ts` (12 pass).
+- Homepage after screenshots at 1280 and 390 force `[data-reveal]` visible (`is-visible`, reduced motion) so the Templates section is in the capture. Tesla after shots show the banner arrow. No horizontal overflow.
+- `npm run verify:live` was not run against production. Live HTML will not match the new copy until this is deployed.
 
 ## Unresolved
 
@@ -31,4 +33,4 @@ Open one pull request against main for the public site: robots `ai-input=yes`, P
 
 ## Next steps
 
-1. Review https://github.com/drumpat01/DriveOS/pull/318. Do not merge it from this handoff.
+1. Review the pull request for `cursor/site-offer-templates-trial-61e1`. Do not merge it from this handoff.
