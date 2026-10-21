@@ -217,6 +217,13 @@ export function validateExpectations(raw) {
     || !raw.followxBadge.href.startsWith("https://followx.today/")
     || typeof raw.followxBadge?.imageSrc !== "string"
     || !raw.followxBadge.imageSrc.startsWith("https://followx.today/")
+    || !raw.followxBadge.imageSrc.includes("theme=dark")
+    || typeof raw.followxBadge.imageAlt !== "string"
+    || !raw.followxBadge.imageAlt.trim()
+    || typeof raw.followxBadge.imageWidth !== "string"
+    || !/^\d+$/.test(raw.followxBadge.imageWidth)
+    || typeof raw.followxBadge.imageHeight !== "string"
+    || !/^\d+$/.test(raw.followxBadge.imageHeight)
   ) {
     throw new Error("expectations.followxBadge is incomplete");
   }
@@ -563,10 +570,10 @@ export function evaluateFollowxBadge(html, pathname, expectations) {
   const badge = expectations.followxBadge;
   const footer = footerHtml(html);
   const href = `href="${badge.href}"`;
-  const imageSrc = `src="${badge.imageSrc}"`;
+  const image = `src="${badge.imageSrc}" alt="${badge.imageAlt}" width="${badge.imageWidth}" height="${badge.imageHeight}"`;
   const observed = {
     href: footer.includes(href),
-    imageSrc: footer.includes(imageSrc)
+    imageSrc: footer.includes(image)
   };
   return makeCheck(`page:${pathname} followx-badge`, observed.href && observed.imageSrc, observed);
 }

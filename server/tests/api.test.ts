@@ -96,7 +96,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.doesNotMatch(privacy.body, /tessie/i);
     assert.match(privacy.body, /Questions and answers are not saved and are not sent to JourneyDeck servers/);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
-    assert.match(privacy.body, /\/public-page\.css\?v=perf-1/);
+    assert.match(privacy.body, /\/public-page\.css\?v=perf-2/);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
@@ -458,7 +458,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     for (const rel of ["api-catalog", "service-desc", "service-doc", "describedby"]) assert.match(links, new RegExp(`rel="${rel}"`));
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 4\.0/);
-    assert.match(landing.body, /href="\/beta\.css\?v=followx-1"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=followx-2"/);
     assertStudioNav(landing.body, "/");
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
@@ -587,7 +587,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     const missing = await runtime.app.inject({ method: "GET", url: "/a-page-that-does-not-exist" });
     assert.equal(missing.statusCode, 404, missing.body);
     assert.match(missing.body, /Page not found/i);
-    assert.match(missing.body, /<footer\b[^>]*>[\s\S]*href="https:\/\/followx\.today\/b\/journeydeck\.me"[\s\S]*<\/footer>/);
+    assert.match(missing.body, /<footer\b[^>]*>[\s\S]*src="https:\/\/followx\.today\/api\/badge\/journeydeck\.me\.svg\?theme=dark" alt="Featured on FollowX\.today" width="250" height="54"[\s\S]*<\/footer>/);
     assert.equal(missing.headers["x-robots-tag"], "noindex, nofollow");
     assertStudioNav(missing.body, "404");
     const betaCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-7" });

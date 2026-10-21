@@ -249,7 +249,10 @@
   },
   "followxBadge": {
     "href": "https://followx.today/b/journeydeck.me",
-    "imageSrc": "https://followx.today/api/badge/journeydeck.me.svg?theme=light"
+    "imageSrc": "https://followx.today/api/badge/journeydeck.me.svg?theme=dark",
+    "imageAlt": "Featured on FollowX.today",
+    "imageWidth": "250",
+    "imageHeight": "54"
   },
   "launchBadge": {
     "productHref": "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral",
