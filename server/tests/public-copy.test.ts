@@ -85,6 +85,7 @@ test("every web html description is 155 characters or fewer", () => {
       const content = /\bcontent\s*=\s*"([^"]*)"/i.exec(tag)?.[1] ?? "";
       assert.ok(content.length > 0 && content.length <= 155, `${file} ${name} is ${content.length}`);
       assert.doesNotMatch(content, /[\u2013\u2014]/, `${file} ${name}`);
+      assert.doesNotMatch(content, /tessie/i, `${file} ${name}`);
       assert.match(content, /\b(you|your|yours|yourself)\b/i, `${file} ${name}`);
       assert.doesNotMatch(content, /\b(I|we|us|our|ours|my|mine)\b/, `${file} ${name}`);
     }

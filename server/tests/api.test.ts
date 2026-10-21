@@ -92,7 +92,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(privacy.body, /Connecting an AI assistant/);
     assert.match(privacy.body, /never writes to iCloud/);
     assert.match(privacy.body, /both your app-wide setting and that assistant’s setting allow it/);
-    assert.match(privacy.body, /Optional Tessie connection/);
+    assert.match(privacy.body, /Optional Tesla connection/);
+    assert.doesNotMatch(privacy.body, /tessie/i);
     assert.match(privacy.body, /Questions and answers are not saved and are not sent to JourneyDeck servers/);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-4/);
@@ -284,11 +285,11 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(teslaJournal.body, /Then you can replay the whole trip\. iPhone only\./);
     assert.match(teslaJournal.body, /the iPhone's GPS detects the drives/);
     assert.match(teslaJournal.body, /imports the car's drives and charging history from the last 30 days/);
-    assert.match(teslaJournal.body, /Music &amp; Connections, and tap Connect Tessie/);
+    assert.match(teslaJournal.body, /Music &amp; Connections, and tap Connect on the Tesla card/);
     assert.match(teslaJournal.body, /Generate Access Token/);
-    assert.match(teslaJournal.body, /Tessie access token field/);
+    assert.match(teslaJournal.body, /access token field/);
     assert.match(teslaJournal.body, /One tap or Siri\. Those are the Start Journey and Stop Journey shortcuts\./);
-    assert.match(teslaJournal.body, /<p class="step-note">Tessie is a separate service, and any Tessie fees are separate\. The token stays in this iPhone's Keychain\.<\/p>/);
+    assert.match(teslaJournal.body, /<p class="step-note">That service is separate, and any fees for it are separate\. The token stays in this iPhone's Keychain\.<\/p>/);
     assert.match(teslaJournal.body, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers\./);
     assert.match(teslaJournal.body, /<h2>What's free<\/h2>/);
     assert.match(teslaJournal.body, /Manual drive recording and route viewing/);
@@ -322,7 +323,8 @@ test("public information and discovery pages are accessible without an authentic
     const teslaVisible = teslaJournal.body.replace(/<head[\s\S]*?<\/head>/i, "").replace(/<script[\s\S]*?<\/script>/gi, "");
     assert.equal((teslaVisible.match(/JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers\./g) || []).length, 2);
     assert.equal((teslaVisible.match(/One tap or Siri\. Those are the Start Journey and Stop Journey shortcuts\./g) || []).length, 1);
-    assert.equal((teslaVisible.match(/automatic drive and charging history with Tessie\./g) || []).length, 1);
+    assert.equal((teslaVisible.match(/adds automatic drive and charging history\./g) || []).length, 1);
+    assert.doesNotMatch(teslaJournal.body, /tessie/i);
     assert.doesNotMatch(teslaVisible, /a Plus feature/);
     assert.match(teslaJournal.body, /href="\/privacy"/);
     assert.match(teslaJournal.body, /href="\/apple-music-soundtrack"/);
@@ -501,7 +503,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /class="feature-cta" href="\/driving-history-app">See the driving history app/);
     assert.match(landing.body, /<h1 id="hero-title">A road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
     assert.match(landing.body, /Your journal lives on your device\. No account required\./);
-    assert.match(landing.body, /Your drives, and the music you played\. Tesla owners can connect Tessie with Plus so drives and charging record automatically\./);
+    assert.match(landing.body, /Your drives, and the music you played\. Tesla owners with Plus can bring drives and charging in automatically\./);
+    assert.doesNotMatch(landing.body, /tessie/i);
     assert.match(landing.body, /class="feature-cta" href="\/tesla-drive-journal">See the Tesla drive journal/);
     assert.match(landing.body, /Ask JourneyDeck/);
     assert.match(landing.body, /Journey Markers/);
@@ -751,12 +754,16 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       assert.equal(speaksToYou(description), true, `${page.url} description voice`);
       assert.equal(speaksToYou(ogDescription), true, `${page.url} og voice`);
       if (twitterDescription) assert.equal(speaksToYou(twitterDescription), true, `${page.url} twitter voice`);
+      assert.doesNotMatch(description, /tessie/i, `${page.url} description`);
+      assert.doesNotMatch(ogDescription, /tessie/i, `${page.url} og:description`);
+      if (twitterDescription) assert.doesNotMatch(twitterDescription, /tessie/i, `${page.url} twitter:description`);
+      assert.doesNotMatch(html, /tessie/i, `${page.url} copy`);
       if (page.url === "/") assert.match(description, /^Your private journal/, `${page.url} description`);
       if (page.url === "/road-trip-journal-app") assert.match(description, /^Your private road trip journal/, `${page.url} description`);
       if (page.url === "/tesla-drive-journal") {
         assert.match(description, /drives and charging history/, `${page.url} description`);
         assert.match(html, /data-umami-event="plus-trial-click"/);
-        assert.match(html, /Try the free trial of JourneyDeck Plus, then \$39\.99 a year\. <span aria-hidden="true">↗<\/span>/);
+        assert.match(html, /Try the free trial of JourneyDeck Plus, then \$39\.99\/yr\. <span aria-hidden="true">↗<\/span>/);
         assert.match(html, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers/, `${page.url} price`);
         assert.doesNotMatch(html, /\$39\.99\/year/, `${page.url} old annual wording`);
       } else {

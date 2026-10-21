@@ -367,7 +367,7 @@ test("served public pages embed Apple campaign tokens and load the first-party c
     const home = await runtime.app.inject({ method: "GET", url: "/" });
     assert.match(home.body, /<h1 id="hero-title">A road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
     assert.match(home.body, /Your journal lives on your device\. No account required\./);
-    assert.match(home.body, /Your drives, and the music you played\. Tesla owners can connect Tessie with Plus so drives and charging record automatically\./);
+    assert.match(home.body, /Your drives, and the music you played\. Tesla owners with Plus can bring drives and charging in automatically\./);
     assert.doesNotMatch(home.body, /Keep the drive/);
     assert.match(home.body, /href="https:\/\/tools\.launchllama\.co\/products\/journeydeck\?utm_source=badge&utm_medium=referral"/);
     assert.match(home.body, /src="https:\/\/tools\.launchllama\.co\/featured-badge-white\.jpg\?v=5"/);

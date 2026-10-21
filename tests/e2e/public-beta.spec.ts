@@ -28,7 +28,7 @@ test('homepage and Tesla page show annual Plus pricing', async ({ page }) => {
     await page.goto('/tesla-drive-journal.html');
     const plusCard = page.locator('article.card').filter({ has: page.getByRole('heading', { level: 2, name: 'Plus' }) });
     await expect(plusCard).toContainText('JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers.');
-    await expect(plusCard).toContainText('Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie.');
+    await expect(plusCard).toContainText('Plus keeps your full history and Atlas, and adds automatic drive and charging history.');
     await expect(page.locator('h1')).toHaveText('The trip, later');
     await expect(page.locator('main')).not.toContainText('$39.99/year');
     await expect(page.locator('main')).not.toContainText('0.99');
@@ -265,7 +265,7 @@ test('homepage templates and the Tesla Plus trial banner fit at 390 and 1280', a
     await expect(banner).toBeVisible();
     await expect(banner).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8');
     await expect(banner).toHaveAttribute('data-umami-event', 'plus-trial-click');
-    await expect(banner).toContainText('Try the free trial of JourneyDeck Plus, then $39.99 a year.');
+    await expect(banner).toContainText('Try the free trial of JourneyDeck Plus, then $39.99/yr.');
     await expect(banner.locator('span[aria-hidden="true"]')).toHaveText('↗');
     await expect(banner).toHaveCSS('border-top-color', 'rgb(212, 177, 90)');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `tesla overflow at ${width}`).toBe(true);
