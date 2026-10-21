@@ -272,6 +272,47 @@ test('homepage templates and the Tesla Plus trial banner fit at 390 and 1280', a
   }
 });
 
+test('every public footer links the FollowX badge without overflowing', async ({ page }) => {
+  const href = 'https://followx.today/b/journeydeck.me';
+  const paths = [...liveExpectations.publicPages.map(staticHtmlPath), '/404.html'];
+  for (const path of paths) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(path);
+    const link = page.locator(`footer a[href="${href}"]`);
+    await expect(link, path).toHaveCount(1);
+    await expect(link, path).toHaveAttribute('rel', 'noopener');
+    await expect(link, path).toHaveAttribute('target', '_blank');
+    const img = link.locator('img');
+    await expect(img, path).toHaveAttribute('src', 'https://followx.today/api/badge/journeydeck.me.svg?theme=light');
+    await expect(img, path).toHaveAttribute('alt', 'Featured on FollowX.today');
+    await expect(img, path).toHaveAttribute('width', '250');
+    await expect(img, path).toHaveAttribute('height', '54');
+    await expect(img, path).toHaveAttribute('loading', 'lazy');
+  }
+  for (const path of ['/beta.html', '/tesla-drive-journal.html']) {
+    for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto(path);
+      const badge = page.locator('footer .followx-badge');
+      await badge.scrollIntoViewIfNeeded();
+      const badgeBox = await badge.boundingBox();
+      const footerBox = await page.locator('footer').boundingBox();
+      const imgBox = await badge.locator('img').boundingBox();
+      expect(badgeBox, `${path} ${viewport.width}`).toBeTruthy();
+      expect(footerBox, `${path} ${viewport.width}`).toBeTruthy();
+      expect(imgBox, `${path} ${viewport.width}`).toBeTruthy();
+      expect(imgBox.x).toBeGreaterThanOrEqual(-1);
+      expect(imgBox.x + imgBox.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(imgBox.width).toBeLessThanOrEqual(250.5);
+      expect(imgBox.width).toBeGreaterThan(120);
+      const imageCenter = imgBox.x + (imgBox.width / 2);
+      const footerCenter = footerBox.x + (footerBox.width / 2);
+      expect(Math.abs(imageCenter - footerCenter), `${path} ${viewport.width}`).toBeLessThan(12);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${path} ${viewport.width}`).toBe(true);
+    }
+  }
+});
+
 test('the page remains readable without JavaScript', async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 320, height: 740 } });
   const page = await context.newPage();

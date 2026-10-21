@@ -86,6 +86,12 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 - Checks, at `390x844` and `1280x800`: `browser <viewport> campaign headline`, `browser <viewport> campaign app-store-hrefs`, `browser <viewport> default headline`, `browser <viewport> default app-store-hrefs`.
 - Checks: `page:<path> app-store` on each public page, plus `page:<notFoundPath> status` and `page:<notFoundPath> app-store`.
 
+## FollowX badge
+
+- Owner: the site footer in every public HTML page, including `web/404.html`. The 410 notice in `cloudflare/site/src/retired.ts` has no site footer.
+- The footer contains `expectations.followxBadge.href` (`https://followx.today/b/journeydeck.me`) and `expectations.followxBadge.imageSrc`.
+- Checks: `page:<path> followx-badge` on every public page and on the 404 path.
+
 ## Launch Llama badge
 
 - Owner: the homepage footer in `web/beta.html`. The product href, image `src`, `alt`, `width`, `height`, and Launch MCP link must match `expectations.launchBadge` exactly.
@@ -114,10 +120,10 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 
 ## Content Security Policy
 
-- Owner: `securityHeaders` in `server/src/app.ts` and `SECURITY_HEADERS` in `cloudflare/site/src/headers.ts`. `script-src` allows `https://cloud.umami.is` and `https://static.cloudflareinsights.com`. `connect-src` allows `https://gateway.umami.is` and `https://cloudflareinsights.com`, and does not allow `https://cloud.umami.is`. `img-src` allows `https://tools.launchllama.co` for the homepage Launch Llama badge and does not add that host to other directives. The beacon script is not in the HTML. The zone injects it.
+- Owner: `securityHeaders` in `server/src/app.ts` and `SECURITY_HEADERS` in `cloudflare/site/src/headers.ts`. `script-src` allows `https://cloud.umami.is` and `https://static.cloudflareinsights.com`. `connect-src` allows `https://gateway.umami.is` and `https://cloudflareinsights.com`, and does not allow `https://cloud.umami.is`. `img-src` allows `https://tools.launchllama.co` for the homepage Launch Llama badge and `https://followx.today` for the FollowX badge, and does not add those hosts to other directives. The beacon script is not in the HTML. The zone injects it.
 - The verifier lets `cloud.umami.is/script.js` load so the policy is actually exercised. It aborts `gateway.umami.is` so a run never sends analytics. It also aborts navigations to `apps.apple.com`.
 - The aborted gateway request is expected to appear as `net::ERR_FAILED`. That must not fail the run. It is listed as `blocked by verifier`.
-- Checks: `csp console` (no console errors that mention Content Security Policy, and no `securitypolicyviolation` events). `csp cloudflare-insights` reads the homepage `Content-Security-Policy` header and requires both Cloudflare insights hosts.
+- Checks: `csp console` (no console errors that mention Content Security Policy, and no `securitypolicyviolation` events). `csp cloudflare-insights` reads the homepage `Content-Security-Policy` header and requires both Cloudflare insights hosts. `csp followx` requires `img-src` to allow `https://followx.today`.
 
 ## robots.txt
 

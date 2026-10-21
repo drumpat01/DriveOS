@@ -96,6 +96,9 @@
     ],
     "connectHosts": [
       "https://cloudflareinsights.com"
+    ],
+    "imgHosts": [
+      "https://followx.today"
     ]
   },
   "appStore": {
@@ -243,6 +246,10 @@
       "/": "/assets/v4/05-soundtrack-sample.webp",
       "/apple-music-soundtrack": "/assets/v2/soundtrack-sample.webp?v=1"
     }
+  },
+  "followxBadge": {
+    "href": "https://followx.today/b/journeydeck.me",
+    "imageSrc": "https://followx.today/api/badge/journeydeck.me.svg?theme=light"
   },
   "launchBadge": {
     "productHref": "https://tools.launchllama.co/products/journeydeck?utm_source=badge&utm_medium=referral",

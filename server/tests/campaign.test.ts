@@ -362,6 +362,9 @@ test("served public pages embed Apple campaign tokens and load the first-party c
       assert.doesNotMatch(String(page.headers["content-security-policy"]), /connect-src[^;]*https:\/\/cloud\.umami\.is/, url);
       assert.match(String(page.headers["content-security-policy"]), /img-src[^;]*https:\/\/tools\.launchllama\.co/, url);
       assert.doesNotMatch(String(page.headers["content-security-policy"]), /(?:script-src|connect-src)[^;]*https:\/\/tools\.launchllama\.co/, url);
+      assert.match(String(page.headers["content-security-policy"]), /img-src[^;]*https:\/\/followx\.today/, url);
+      assert.doesNotMatch(String(page.headers["content-security-policy"]), /(?:script-src|connect-src)[^;]*https:\/\/followx\.today/, url);
+      assert.match(page.body, /<footer\b[^>]*>[\s\S]*href="https:\/\/followx\.today\/b\/journeydeck\.me"[\s\S]*<\/footer>/, url);
     }
 
     const home = await runtime.app.inject({ method: "GET", url: "/" });

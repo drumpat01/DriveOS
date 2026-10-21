@@ -7,6 +7,7 @@ import {
   classifyConsoleError,
   errorMessage,
   evaluateLoginUmami,
+  evaluateFollowxCsp,
   evaluateInsightsCsp,
   evaluateNotFoundAppStore,
   evaluatePublicPageHtml,
@@ -401,6 +402,7 @@ async function run() {
       recordCheck(evaluateRobotsTxt(robots.text, robots.status, expectations));
     }
     recordCheck(evaluateInsightsCsp(homeCsp, expectations));
+    recordCheck(evaluateFollowxCsp(homeCsp, expectations));
 
     await runBrowserChecks(servedHomeHrefs);
     evaluateCspCheck();

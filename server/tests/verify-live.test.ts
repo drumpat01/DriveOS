@@ -10,6 +10,8 @@ import {
   assertDefaultAppStoreHrefs,
   canonicalUrlForPath,
   classifyConsoleError,
+  evaluateFollowxBadge,
+  evaluateFollowxCsp,
   evaluateLaunchBadge,
   evaluateLoginUmami,
   evaluateSiteHealth,
@@ -108,8 +110,19 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.robotsTxt.contentSignal, "Content-Signal: ai-train=no, search=yes, ai-input=yes");
   assert.deepEqual(expectations.contentSecurityPolicy.scriptHosts, ["https://static.cloudflareinsights.com"]);
   assert.deepEqual(expectations.contentSecurityPolicy.connectHosts, ["https://cloudflareinsights.com"]);
+  assert.deepEqual(expectations.contentSecurityPolicy.imgHosts, ["https://followx.today"]);
+  assert.equal(expectations.followxBadge.href, "https://followx.today/b/journeydeck.me");
+  assert.equal(expectations.followxBadge.imageSrc, "https://followx.today/api/badge/journeydeck.me.svg?theme=light");
   assert.throws(() => validateExpectations({ ...expectations, robotsTxt: { contentSignal: "Content-Signal: ai-train=no, search=yes, ai-input=no" } }), /AI answers/);
   assert.throws(() => validateExpectations({ ...expectations, contentSecurityPolicy: { scriptHosts: [], connectHosts: [] } }), /Cloudflare Web Analytics/);
+  assert.throws(() => validateExpectations({
+    ...expectations,
+    contentSecurityPolicy: {
+      scriptHosts: expectations.contentSecurityPolicy.scriptHosts,
+      connectHosts: expectations.contentSecurityPolicy.connectHosts
+    }
+  }), /followx\.today/);
+  assert.throws(() => validateExpectations({ ...expectations, followxBadge: {} }), /followxBadge is incomplete/);
   assert.equal(expectations.appStore.baseUrl, "https://apps.apple.com/us/app/journeydeck/id6806502526");
   assert.equal(expectations.appStore.providerToken, "129344416");
   assert.equal(expectations.appStore.mediaType, "8");
@@ -260,7 +273,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
     width="200" height="52" style="display:block;border:0;" />
 </a>
   <a href="https://launchmcp.co/?utm_source=badge&utm_medium=referral" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:-2px;padding-top:0;font-size:7px;font-weight:600;color:#888;text-decoration:none;line-height:1;letter-spacing:0.02em;">Launch MCP</a>
-</span><a href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">From the studio: Road Trip templates</a></footer>
+</span><a href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">From the studio: Road Trip templates</a><div class="followx-badge"><a href="https://followx.today/b/journeydeck.me" target="_blank" rel="noopener"><img src="https://followx.today/api/badge/journeydeck.me.svg?theme=light" alt="Featured on FollowX.today" width="250" height="54" loading="lazy" /></a></div></footer>
   </body></html>`;
   const title = extractDocumentTitle(html);
   assert.equal(title.count, 1);
@@ -301,7 +314,11 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   assert.equal(badgeCheck?.pass, true);
   assert.equal(evaluateLaunchBadge("<footer></footer>", expectations).pass, false);
   assert.equal(evaluateLaunchBadge(html, expectations).pass, true);
+  assert.equal(checks.find((check) => check.name === "page:/ followx-badge")?.pass, true);
+  assert.equal(evaluateFollowxBadge("<footer></footer>", "/", expectations).pass, false);
+  assert.equal(evaluateFollowxBadge(html.replace("followx.today/b/journeydeck.me", "https://example.com"), "/", expectations).pass, false);
   const supportChecks = evaluatePublicPageHtml(html, "/support", expectations, 200);
+  assert.equal(supportChecks.find((check) => check.name === "page:/support followx-badge")?.pass, true);
   assert.equal(supportChecks.some((check) => check.name === "page:/support launch-badge"), false);
   assert.equal(checks.find((check) => check.name === "page:/ studio-link")?.pass, true);
   assert.equal(checks.find((check) => check.name === "page:/ no-footer-login")?.pass, true);
@@ -352,9 +369,11 @@ test("offer schema requires the annual unit price, the page App Store url, and i
   const robots = evaluateRobotsTxt("User-agent: *\nContent-Signal: ai-train=no, search=yes, ai-input=yes\nAllow: /\n", 200, expectations);
   assert.equal(robots.pass, true);
   assert.equal(evaluateRobotsTxt("Content-Signal: ai-train=no, search=yes, ai-input=no\n", 200, expectations).pass, false);
-  const csp = "script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com";
+  const csp = "script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; img-src 'self' https://followx.today";
   assert.equal(evaluateInsightsCsp(csp, expectations).pass, true);
   assert.equal(evaluateInsightsCsp("script-src 'self'; connect-src 'self'", expectations).pass, false);
+  assert.equal(evaluateFollowxCsp(csp, expectations).pass, true);
+  assert.equal(evaluateFollowxCsp("img-src 'self' https://tools.launchllama.co", expectations).pass, false);
 });
 
 test("App Store href assertions keep campaign tokens, reviews, and the served static hrefs", () => {
@@ -515,9 +534,13 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
       const page = await runtime.app.inject({ method: "GET", url: pathname });
       const checks = evaluatePublicPageHtml(page.body, pathname, expectations, page.statusCode);
       assert.ok(checks.every((check) => check.pass), `${pathname}: ${checks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; ")}`);
+      const followx = checks.find((check) => check.name === `page:${pathname} followx-badge`);
+      assert.equal(followx?.pass, true, `${pathname} ${JSON.stringify(followx?.observed)}`);
       if (pathname === "/") {
         const csp = evaluateInsightsCsp(page.headers["content-security-policy"], expectations);
         assert.equal(csp.pass, true, JSON.stringify(csp.observed));
+        const followxCsp = evaluateFollowxCsp(page.headers["content-security-policy"], expectations);
+        assert.equal(followxCsp.pass, true, JSON.stringify(followxCsp.observed));
         assert.equal(checks.find((check) => check.name === "page:/ snippets")?.pass, true);
         assert.equal(checks.find((check) => check.name === "page:/ description-voice")?.pass, true);
         assert.equal(checks.find((check) => check.name === "page:/ offer")?.pass, true);
@@ -535,6 +558,7 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
     const missing = await runtime.app.inject({ method: "GET", url: expectations.appStore.notFoundPath });
     const missingChecks = evaluateNotFoundAppStore(missing.body, expectations, missing.statusCode);
     assert.ok(missingChecks.every((check) => check.pass), missingChecks.filter((check) => !check.pass).map((check) => `${check.name} ${JSON.stringify(check.observed)}`).join("; "));
+    assert.equal(missingChecks.find((check) => check.name === `page:${expectations.appStore.notFoundPath} followx-badge`)?.pass, true);
   } finally {
     await runtime.app.close();
     fixture.cleanup();

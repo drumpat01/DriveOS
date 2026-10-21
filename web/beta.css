@@ -214,6 +214,9 @@ figure, h1, h2, h3, p { margin: 0; }
 .footer-bottom a:hover { color: var(--ivory); }
 .footer-badge { display: flex; justify-content: center; width: 100%; margin-top: 28px; text-align: center; }
 .footer-badge img { max-width: none; }
+.followx-badge { display: block; width: min(250px, 100%); margin: 18px auto 0; aspect-ratio: 250 / 54; }
+.followx-badge a { display: block; width: 100%; max-width: 100%; line-height: 0; text-decoration: none; }
+.followx-badge img { display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 250 / 54; }
 
 @media (prefers-reduced-motion: no-preference) {
   html.motion-ready [data-reveal] { opacity: 0; transform: perspective(1400px) translateY(38px) rotateX(5deg); transition: opacity .85s var(--ease), transform 1.05s var(--ease); transition-delay: var(--reveal-delay,0ms); }

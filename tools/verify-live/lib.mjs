@@ -209,6 +209,17 @@ export function validateExpectations(raw) {
   if (!Array.isArray(csp?.scriptHosts) || !csp.scriptHosts.includes("https://static.cloudflareinsights.com") || !Array.isArray(csp?.connectHosts) || !csp.connectHosts.includes("https://cloudflareinsights.com")) {
     throw new Error("expectations.contentSecurityPolicy must allow the Cloudflare Web Analytics beacon");
   }
+  if (!Array.isArray(csp.imgHosts) || !csp.imgHosts.includes("https://followx.today")) {
+    throw new Error("expectations.contentSecurityPolicy must allow https://followx.today images");
+  }
+  if (
+    typeof raw.followxBadge?.href !== "string"
+    || !raw.followxBadge.href.startsWith("https://followx.today/")
+    || typeof raw.followxBadge?.imageSrc !== "string"
+    || !raw.followxBadge.imageSrc.startsWith("https://followx.today/")
+  ) {
+    throw new Error("expectations.followxBadge is incomplete");
+  }
   const homeSnippets = raw.pageSnippets?.["/"];
   if (!Array.isArray(homeSnippets) || !homeSnippets.includes('id="templates"') || !homeSnippets.some((snippet) => snippet.includes("templates-click"))) {
     throw new Error("expectations.pageSnippets./ must include the templates section");
@@ -543,6 +554,27 @@ export function evaluateFooterLinks(html, pathname, expectations) {
   return checks;
 }
 
+export function evaluateFollowxBadge(html, pathname, expectations) {
+  const badge = expectations.followxBadge;
+  const footer = footerHtml(html);
+  const href = `href="${badge.href}"`;
+  const imageSrc = `src="${badge.imageSrc}"`;
+  const observed = {
+    href: footer.includes(href),
+    imageSrc: footer.includes(imageSrc)
+  };
+  return makeCheck(`page:${pathname} followx-badge`, observed.href && observed.imageSrc, observed);
+}
+
+export function evaluateFollowxCsp(csp, expectations) {
+  const value = String(csp || "");
+  const directive = (name) => value.split(";").map((part) => part.trim()).find((part) => part.startsWith(name)) || "";
+  const imgHosts = expectations.contentSecurityPolicy?.imgHosts || [];
+  const imgSrc = directive("img-src");
+  const imgOk = imgHosts.length > 0 && imgHosts.every((host) => imgSrc.includes(host));
+  return makeCheck("csp followx", imgOk, { imgOk });
+}
+
 export function evaluateLaunchBadge(html, expectations) {
   const badge = expectations.launchBadge;
   const footer = html.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/i)?.[0] ?? "";
@@ -703,6 +735,7 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     const badge = evaluateLaunchBadge(html, expectations);
     checks.push(makeCheck(`page:${pathname} launch-badge`, badge.pass, badge.observed));
   }
+  checks.push(evaluateFollowxBadge(html, pathname, expectations));
   checks.push(...evaluateFooterLinks(html, pathname, expectations));
   if (pageCopy?.headline) {
     const headline = extractFirstHeading(html);
@@ -809,7 +842,8 @@ export function evaluateNotFoundAppStore(html, expectations, statusCode) {
   const appStore = assertStaticAppStoreCampaign(hrefs, expectedCt, expectations);
   return [
     makeCheck(`page:${pathname} status`, statusCode === 404, statusCode),
-    makeCheck(`page:${pathname} app-store`, appStore.pass, { problems: appStore.problems, hrefs })
+    makeCheck(`page:${pathname} app-store`, appStore.pass, { problems: appStore.problems, hrefs }),
+    evaluateFollowxBadge(html, pathname, expectations)
   ];
 }
 
