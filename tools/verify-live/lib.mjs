@@ -563,6 +563,11 @@ export function evaluateLaunchBadge(html, expectations) {
 
 const SECOND_PERSON = /\b(you|your|yours|yourself)\b/i;
 const FIRST_PERSON = /\b(I|we|us|our|ours|my|mine)\b/;
+const TESSIE_NAME = /tessie/i;
+
+export function descriptionMentionsTessie(value) {
+  return typeof value === "string" && TESSIE_NAME.test(value);
+}
 
 export function descriptionSpeaksToYou(value) {
   return typeof value === "string" && value.length > 0 && SECOND_PERSON.test(value) && !FIRST_PERSON.test(value);
@@ -666,6 +671,11 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} canonical`, canonical.count === 1 && canonical.value === expectedCanonical, { ...canonical, expected: expectedCanonical }),
     makeCheck(`page:${pathname} og:title`, ogTitle.count === 1 && Boolean(ogTitle.value), ogTitle),
     makeCheck(`page:${pathname} og:description`, descriptionFits(ogDescription), { ...ogDescription, max: maxDescription }),
+    makeCheck(`page:${pathname} no-tessie-description`, !descriptionMentionsTessie(description.value) && !descriptionMentionsTessie(ogDescription.value) && !descriptionMentionsTessie(twitterDescription.value), {
+      description: description.value,
+      ogDescription: ogDescription.value,
+      twitterDescription: twitterDescription.value
+    }),
     makeCheck(`page:${pathname} og:url`, ogUrl.count === 1 && ogUrl.value === expectedCanonical, { ...ogUrl, expected: expectedCanonical }),
     makeCheck(`page:${pathname} og:image`, ogImage.count === 1 && Boolean(ogImage.value), ogImage),
     ...(twitterDescription.count > 0

@@ -194,14 +194,14 @@
         "last 30 days",
         "One tap or Siri. Those are the Start Journey and Stop Journey shortcuts.",
         "Manual drive recording and route viewing.",
-        "You start each drive yourself, with one tap or Siri. Automatic history needs Plus and Tessie.",
-        "With Plus and Tessie, the iPhone's GPS detects your drives automatically",
-        "Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie.",
+        "You start each drive yourself, with one tap or Siri. Automatic history needs Plus.",
+        "With Plus, the iPhone's GPS detects your drives automatically and imports the car's drives and charging history from the last 30 days.",
+        "Plus keeps your full history and Atlas, and adds automatic drive and charging history.",
         "Keep your Tesla drives and charging history on your iPhone.",
-        "Try the free trial of JourneyDeck Plus, then $39.99 a year.",
+        "Try the free trial of JourneyDeck Plus, then $39.99/yr.",
         "Music &amp; Connections",
         "Generate Access Token",
-        "Tessie access token",
+        "access token field",
         "Neither one shows a Tesla drive.",
         "A trip replay in JourneyDeck. Not a Tesla drive.",
         "Atlas in JourneyDeck. Not Tesla data."
@@ -219,7 +219,8 @@
         "Bluetooth",
         "motion trigger",
         "the car records",
-        "navigation app"
+        "navigation app",
+        "Tessie"
       ]
     }
   },

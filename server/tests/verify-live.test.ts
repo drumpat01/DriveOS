@@ -123,10 +123,11 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("2.99"));
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("monthly"));
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("$39.99/year"));
-  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Plus keeps your full history and Atlas, and adds automatic drive and charging history with Tessie."));
+  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Plus keeps your full history and Atlas, and adds automatic drive and charging history."));
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Neither one shows a Tesla drive."));
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Keep your Tesla drives and charging history on your iPhone."));
-  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Try the free trial of JourneyDeck Plus, then $39.99 a year."));
+  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Try the free trial of JourneyDeck Plus, then $39.99/yr."));
+  assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("Tessie"));
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
   assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "private_journal");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-journal-app"], "road_trip");
@@ -310,6 +311,13 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   const loginFooter = evaluatePublicPageHtml(withLogin, "/", expectations, 200);
   assert.equal(loginFooter.find((check) => check.name === "page:/ no-footer-login")?.pass, false);
   assert.equal(checks.find((check) => check.name === "page:/ description-voice")?.pass, true);
+  assert.equal(checks.find((check) => check.name === "page:/ no-tessie-description")?.pass, true);
+  const tessieDescription = html.replace('name="description" content="Your private journal."', 'name="description" content="Your private journal, with Tessie."');
+  assert.equal(evaluatePublicPageHtml(tessieDescription, "/", expectations, 200).find((check) => check.name === "page:/ no-tessie-description")?.pass, false);
+  const tessieOg = html.replace('property="og:description" content="Your private journal."', 'property="og:description" content="Your private journal, with Tessie."');
+  assert.equal(evaluatePublicPageHtml(tessieOg, "/", expectations, 200).find((check) => check.name === "page:/ no-tessie-description")?.pass, false);
+  const tessieTwitter = html.replace('property="og:description" content="Your private journal."', 'property="og:description" content="Your private journal."><meta name="twitter:description" content="Your private Tessie journal."');
+  assert.equal(evaluatePublicPageHtml(tessieTwitter, "/", expectations, 200).find((check) => check.name === "page:/ no-tessie-description")?.pass, false);
   assert.equal(checks.find((check) => check.name === "page:/ snippets")?.pass, true);
 });
 
