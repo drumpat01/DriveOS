@@ -27,6 +27,9 @@ test("workerd serves phase-one assets", async () => {
     const homeCsp = home.headers.get("content-security-policy") || "";
     assert.match(homeCsp, /script-src[^;]*https:\/\/static\.cloudflareinsights\.com/);
     assert.match(homeCsp, /connect-src[^;]*https:\/\/cloudflareinsights\.com/);
+    assert.match(homeCsp, /img-src[^;]*https:\/\/followx\.today/);
+    assert.doesNotMatch(homeCsp, /(?:script-src|connect-src)[^;]*https:\/\/followx\.today/);
+    assert.match(homeHtml, /<footer\b[^>]*>[\s\S]*href="https:\/\/followx\.today\/b\/journeydeck\.me"[\s\S]*<\/footer>/);
 
     const robots = await worker.fetch("https://journeydeck.me/robots.txt");
     assert.equal(robots.status, 200);
