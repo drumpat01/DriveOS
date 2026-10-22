@@ -87,6 +87,18 @@
     "7-day free trial"
   ],
   "maxMetaDescriptionLength": 155,
+  "thirdPartyAppNames": [
+    "Tessie",
+    "TeslaFi",
+    "TeslaMate",
+    "Spotify",
+    "Last.fm",
+    "Shazam",
+    "Foursquare",
+    "YouTube Music",
+    "Google Maps",
+    "Waze"
+  ],
   "robotsTxt": {
     "contentSignal": "Content-Signal: ai-train=no, search=yes, ai-input=yes"
   },
