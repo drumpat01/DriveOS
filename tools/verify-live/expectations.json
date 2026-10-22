@@ -201,7 +201,6 @@
         "With Plus, the iPhone's GPS detects your drives automatically and imports the car's drives and charging history from the last 30 days.",
         "Plus keeps your full history and Atlas, and adds automatic drive and charging history.",
         "Keep your Tesla drives and charging history on your iPhone.",
-        "Try the free trial of JourneyDeck Plus, then $39.99/yr.",
         "Music &amp; Connections",
         "Generate Access Token",
         "access token field",
@@ -284,7 +283,7 @@
       "/driving-history-app": "driving-history-app"
     },
     "requiredPhrases": [
-      "I can keep recording for free and view today's journeys.",
+      "You can keep recording for free and view today’s journeys.",
       "Plus adds full history, Atlas, Ask JourneyDeck, premium themes and icons, Tesla drive and charging history, and AI assistant connections.",
       "Plus is $39.99/yr."
     ],

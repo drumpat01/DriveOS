@@ -61,7 +61,7 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 
 - Owner: public HTML, including visible copy and JSON-LD offers. Privacy and terms meta descriptions do not pitch the price. Plus is $39.99/yr, with a 7-day free trial. Meta descriptions, Open Graph descriptions, and Twitter descriptions stay at 155 characters or fewer.
 - Required phrases: `$39.99/yr`, `7-day free trial`. `$39.99/year` is forbidden.
-- `/tesla-drive-journal` replaces that required price line with `expectations.pages["/tesla-drive-journal"].requiredPricingPhrases`: `JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers`. Its `headline` check expects `The trip, later`. Its `copy` check requires `Keep your Tesla drives and charging history on your iPhone.`, `Try the free trial of JourneyDeck Plus, then $39.99/yr.`, `iPhone only.`, the one shortcut explanation, and `Neither one shows a Tesla drive.` It forbids `2.99`, `monthly`, `$39.99/year`, `CarPlay`, `Bluetooth`, `motion trigger`, `the car records`, `navigation app`, and `Tessie`, plus the global price and trial bans. The trial banner links to the page App Store URL and uses `data-umami-event="plus-trial-click"`.
+- `/tesla-drive-journal` replaces that required price line with `expectations.pages["/tesla-drive-journal"].requiredPricingPhrases`: `JourneyDeck Plus, $39.99/yr, 7-day free trial for new subscribers`. Its `headline` check expects `The trip, later`. Its `copy` check requires `Keep your Tesla drives and charging history on your iPhone.`, `iPhone only.`, the one shortcut explanation, and `Neither one shows a Tesla drive.` It forbids `2.99`, `monthly`, `$39.99/year`, `CarPlay`, `Bluetooth`, `motion trigger`, `the car records`, `navigation app`, and `Tessie`, plus the global price and trial bans. The hero does not repeat the trial and price. The Plus annual block under the hero is the one pitch in that area.
 - Forbidden price phrases (case-insensitive): `0.99`, `24.99`, `per week`, `weekly`.
 - Free recording stays available.
 - Checks: `page:<path> pricing`.
@@ -69,9 +69,9 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 ## JourneyDeck Plus annual block
 
 - Owner: `web/beta.html` (`GET /`), `web/tesla-drive-journal.html`, and `web/driving-history-app.html`. The block is `section#plus-annual`.
-- The heading is `JourneyDeck Plus annual`. The copy names only Plus additions already described on the site, and the price line is `Plus is $39.99/yr.` The block does not state a trial length, a weekly price, or a third-party app name.
-- The primary control reads `Start your free trial` and uses `data-umami-event="plus-annual-click"`. Its href is that page's App Store URL (`pt`, the page `ct`, and `mt`) plus `utm_source=journeydeck.me`, `utm_medium=site`, `utm_campaign=plus_annual`, and `utm_content` set to the page slug (`home`, `tesla-drive-journal`, or `driving-history-app`).
-- Styles live in the stylesheets those pages already load (`web/beta.css` and `web/public-page.css`). Cache-bust tokens are `beta.css?v=plus-annual-1` and `public-page.css?v=plus-annual-1`. `web/api-docs.html` and the retired notice stay on `public-page.css?v=perf-1`.
+- The heading is `JourneyDeck Plus annual`. The copy matches the Support answer in the second person (`You can keep recording for free and view today’s journeys.`) and names only Plus additions already described on the site. The price line is `Plus is $39.99/yr.` The block does not state a trial length, a weekly price, or a third-party app name.
+- The primary control reads `Start your free trial` and uses `data-umami-event="plus-annual-click"`. Its href is that page's App Store URL (`pt`, the page `ct`, and `mt`) plus `utm_source=journeydeck.me`, `utm_medium=site`, `utm_campaign=plus_annual`, and `utm_content` set to the page slug (`home`, `tesla-drive-journal`, or `driving-history-app`). At 620px and below the control is full width, and the label and arrow stay together in the center.
+- Styles live in the stylesheets those pages already load (`web/beta.css` and `web/public-page.css`). Cache-bust tokens are `beta.css?v=plus-annual-2` and `public-page.css?v=plus-annual-2`. `web/api-docs.html` and the retired notice stay on `public-page.css?v=perf-1`.
 - Checks: `page:/ plus-annual`, `page:/tesla-drive-journal plus-annual`, `page:/driving-history-app plus-annual`.
 
 ## Terms Studio products
@@ -99,7 +99,7 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 - Owner: the site footer in every public HTML page, including `web/404.html`. The 410 notice in `cloudflare/site/src/retired.ts` has no site footer.
 - The footer contains `expectations.followxBadge.href` (`https://followx.today/b/journeydeck.me`) and the dark badge `expectations.followxBadge.imageSrc` (`theme=dark`).
 - That image keeps explicit `imageWidth` and `imageHeight` (`250` and `54`, the SVG's own size) so the lazy image reserves its box and layout shift stays at 0.
-- `web/beta.css` and `web/public-page.css` draw the badge at 200px wide, the same width as the Launch Llama badge (`expectations.launchBadge.imageWidth`). Those stylesheets currently cache-bust as `beta.css?v=plus-annual-1` and `public-page.css?v=plus-annual-1`.
+- `web/beta.css` and `web/public-page.css` draw the badge at 200px wide, the same width as the Launch Llama badge (`expectations.launchBadge.imageWidth`). Those stylesheets currently cache-bust as `beta.css?v=plus-annual-2` and `public-page.css?v=plus-annual-2`.
 - Checks: `page:<path> followx-badge` on every public page and on the 404 path.
 
 ## Launch Llama badge

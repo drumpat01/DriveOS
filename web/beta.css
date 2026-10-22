@@ -329,7 +329,7 @@ figure, h1, h2, h3, p { margin: 0; }
   .atlas-art { min-height: 250px; margin-inline: 22px; } .device-grid article { grid-template-columns: 90px 1fr; column-gap: 15px; } .device-grid svg { width: 90px; } .device-grid h3 { font-size: 19px; }
 }
 @media (max-width: 620px) {
-  .plus-annual .button { width: 100%; }
+  .plus-annual .button { width: 100%; justify-content: center; gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root { scroll-behavior: auto; } *, *:before, *:after { animation: none !important; transition: none !important; }

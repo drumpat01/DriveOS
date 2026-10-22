@@ -96,7 +96,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.doesNotMatch(privacy.body, /tessie/i);
     assert.match(privacy.body, /Questions and answers are not saved and are not sent to JourneyDeck servers/);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
-    assert.match(privacy.body, /\/public-page\.css\?v=plus-annual-1/);
+    assert.match(privacy.body, /\/public-page\.css\?v=plus-annual-2/);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
@@ -458,7 +458,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     for (const rel of ["api-catalog", "service-desc", "service-doc", "describedby"]) assert.match(links, new RegExp(`rel="${rel}"`));
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 4\.0/);
-    assert.match(landing.body, /href="\/beta\.css\?v=plus-annual-1"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=plus-annual-2"/);
     assertStudioNav(landing.body, "/");
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
@@ -772,8 +772,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       if (page.url === "/road-trip-journal-app") assert.match(description, /^Your private road trip journal/, `${page.url} description`);
       if (page.url === "/tesla-drive-journal") {
         assert.match(description, /drives and charging history/, `${page.url} description`);
-        assert.match(html, /data-umami-event="plus-trial-click"/);
-        assert.match(html, /Try the free trial of JourneyDeck Plus, then \$39\.99\/yr\. <span aria-hidden="true">↗<\/span>/);
+        assert.doesNotMatch(html, /plus-trial-banner|plus-trial-click|Try the free trial of JourneyDeck Plus, then \$39\.99\/yr\./);
         assert.match(html, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers/, `${page.url} price`);
         assert.doesNotMatch(html, /\$39\.99\/year/, `${page.url} old annual wording`);
       } else {
@@ -785,7 +784,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       const plusAnnualBlock = html.match(/<section\b[^>]*\bid="plus-annual"[^>]*>[\s\S]*?<\/section>/i)?.[0] ?? "";
       if (plusAnnual) {
         assert.match(plusAnnualBlock, /<h2\b[^>]*>JourneyDeck Plus annual<\/h2>/, page.url);
-        assert.match(plusAnnualBlock, /I can keep recording for free and view today's journeys\./, page.url);
+        assert.match(plusAnnualBlock, /You can keep recording for free and view today’s journeys\./, page.url);
         assert.match(plusAnnualBlock, /Plus is \$39\.99\/yr\./, page.url);
         assert.match(plusAnnualBlock, /data-umami-event="plus-annual-click"/, page.url);
         assert.match(plusAnnualBlock, /Start your free trial/, page.url);

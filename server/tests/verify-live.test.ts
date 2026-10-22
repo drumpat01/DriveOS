@@ -158,7 +158,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Plus keeps your full history and Atlas, and adds automatic drive and charging history."));
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Neither one shows a Tesla drive."));
   assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Keep your Tesla drives and charging history on your iPhone."));
-  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Try the free trial of JourneyDeck Plus, then $39.99/yr."));
+  assert.equal(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Try the free trial of JourneyDeck Plus, then $39.99/yr."), false);
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("Tessie"));
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
   assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "private_journal");
@@ -295,7 +295,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
 </span><a href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">From the studio: Road Trip templates</a><div class="followx-badge"><a href="https://followx.today/b/journeydeck.me" target="_blank" rel="noopener"><img src="https://followx.today/api/badge/journeydeck.me.svg?theme=dark" alt="Featured on FollowX.today" width="250" height="54" loading="lazy" /></a></div></footer>
     <section class="plus-annual" id="plus-annual" aria-labelledby="plus-annual-title">
       <h2 id="plus-annual-title">JourneyDeck Plus annual</h2>
-      <p>I can keep recording for free and view today's journeys. Plus adds full history, Atlas, Ask JourneyDeck, premium themes and icons, Tesla drive and charging history, and AI assistant connections.</p>
+      <p>You can keep recording for free and view today’s journeys. Plus adds full history, Atlas, Ask JourneyDeck, premium themes and icons, Tesla drive and charging history, and AI assistant connections.</p>
       <p class="plus-annual-price">Plus is $39.99/yr.</p>
       <a class="button" data-umami-event="plus-annual-click" href="https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=home&mt=8&utm_source=journeydeck.me&utm_medium=site&utm_campaign=plus_annual&utm_content=home">Start your free trial <span aria-hidden="true">↗</span></a>
     </section>

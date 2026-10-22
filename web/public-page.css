@@ -57,9 +57,6 @@ strong { color: var(--ivory); }
 .followx-badge { display: block; width: 200px; max-width: 100%; margin: 18px auto 0; aspect-ratio: 250 / 54; }
 .footer .followx-badge a { display: block; width: 200px; max-width: 100%; height: auto; aspect-ratio: 250 / 54; min-height: 0; padding: 0; line-height: 0; text-decoration: none; }
 .followx-badge img { display: block; width: 200px; max-width: 100%; height: auto; aspect-ratio: 250 / 54; }
-.plus-trial-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; max-width: 34rem; margin-top: 22px; padding: 16px 18px; border: 1px solid var(--gold); border-radius: 12px; background: #d4b15a18; color: var(--ivory); font-size: 1.02rem; font-weight: 650; line-height: 1.45; text-decoration: none; }
-.plus-trial-banner span[aria-hidden="true"] { flex: none; font-size: 1.15rem; line-height: 1; }
-.plus-trial-banner:hover { background: var(--gold); color: var(--navy); }
 .plus-annual { margin-top: 20px; padding: 22px 24px 24px; border: 1px solid #d4b15a99; border-radius: 12px; background: #d4b15a0b; }
 .plus-annual h2 { margin: 0 0 12px; color: var(--ivory); font-size: clamp(1.35rem, 2.2vw, 1.7rem); font-weight: 550; letter-spacing: -.035em; line-height: 1.2; }
 .plus-annual p { margin: 0 0 12px; max-width: 40rem; color: var(--muted); font-size: 1rem; line-height: 1.7; }
@@ -81,7 +78,8 @@ strong { color: var(--ivory); }
   .hero.has-photo { background: #081832; }
   .hero.has-photo::before { background: linear-gradient(90deg, #081832f5, #081832c9); }
   .hero-photo { object-position: center; }
-  .contact, .secondary-action, .plus-trial-banner, .plus-annual .button { width: 100%; }
+  .contact, .secondary-action { width: 100%; }
+  .plus-annual .button { width: 100%; justify-content: center; gap: 0; }
 }
 @media (max-width: 1000px) { .site-header { padding-inline: 36px; } .desktop-nav { gap: 17px; } }
 @media (max-width: 800px) { .site-header { min-height: 72px; padding: 13px 24px; } .desktop-nav { display: none; } .brand { font-size: 19px; } .brand img { width: 32px; height: 32px; } .header-actions { gap: 9px; } .button-small { min-height: 40px; padding: 10px 14px; font-size: 11px; } }
