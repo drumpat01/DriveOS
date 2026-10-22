@@ -1,0 +1,53 @@
+{
+ "style": "hype",
+ "transition": 0.14,
+ "scenes": [
+  {
+   "type": "hook",
+   "text": "Road trip *coming up?*",
+   "sub": "Use code ROADTRIP30 at checkout",
+   "duration": 2.6
+  },
+  {
+   "type": "screen",
+   "image": "img/road-trip-banner-16x9.png",
+   "caption": "24 road trip *Canva designs*",
+   "motion": "zoom_in",
+   "duration": 2.5
+  },
+  {
+   "type": "text",
+   "text": "Use code *ROADTRIP30*",
+   "sub": "at checkout on studio.journeydeck.me",
+   "duration": 2.1
+  },
+  {
+   "type": "screen",
+   "image": "img/01-today.webp",
+   "caption": "JourneyDeck keeps *every drive*",
+   "motion": "spin",
+   "duration": 2.1
+  },
+  {
+   "type": "screen",
+   "image": "img/02-journey-screen.webp",
+   "caption": "The route *and the songs*",
+   "motion": "tilt",
+   "duration": 2.0
+  },
+  {
+   "type": "screen",
+   "image": "img/all-trips-bundle-banner-16x9.png",
+   "caption": "Or get *all four packs*",
+   "motion": "slide_left",
+   "duration": 2.3
+  },
+  {
+   "type": "cta",
+   "text": "Code ROADTRIP30",
+   "button": "Shop the trip packs",
+   "sub": "studio.journeydeck.me",
+   "duration": 3.4
+  }
+ ]
+}

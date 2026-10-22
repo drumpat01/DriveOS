@@ -9,8 +9,9 @@ Video assets for the All Trips Bundle and the JourneyDeck app. No code changes.
 | `variants/JourneyDeck-promo-v1-bundle.mp4` | 4 trip packs. $25. Save $17 with the All Trips Bundle | 17.1s |
 | `variants/JourneyDeck-promo-v2-ev.mp4` | EV road trip this fall? | 15.9s |
 | `variants/JourneyDeck-promo-v3-camping.mp4` | Camping trip coming up? | 15.8s |
+| `variants/JourneyDeck-promo-v4-roadtrip30.mp4` | Road trip coming up? Use code ROADTRIP30 at checkout | 16.2s |
 
-Each is 1080x1920 (9:16) H.264 with AAC audio at about -14 LUFS, with a matching post caption in the `.txt` next to it. All on-screen text is burned in. Every cut ends on the All Trips Bundle card: "4 packs for $25", "Save $17 at studio.journeydeck.me".
+Each is 1080x1920 (9:16) H.264 with AAC audio at about -14 LUFS, with a matching post caption in the `.txt` next to it. All on-screen text is burned in. The bundle, EV and camping cuts end on the All Trips Bundle card: "4 packs for $25", "Save $17 at studio.journeydeck.me". The ROADTRIP30 cut ends on "Code ROADTRIP30", "Shop the trip packs", "studio.journeydeck.me". It names the code but not the discount amount.
 
 ## Sources
 
