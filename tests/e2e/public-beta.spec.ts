@@ -316,6 +316,23 @@ test('every public footer links the FollowX badge without overflowing', async ({
   }
 });
 
+test('the Tesla footer leaves the same space above the FollowX badge as a plain public footer', async ({ page }) => {
+  const gapAboveBadge = () => page.evaluate(() => {
+    const links = [...document.querySelectorAll('footer > a')];
+    const range = document.createRange();
+    range.selectNodeContents(links[links.length - 1]);
+    return document.querySelector('footer .followx-badge').getBoundingClientRect().top - range.getBoundingClientRect().bottom;
+  });
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/driving-history-app.html');
+    const plain = await gapAboveBadge();
+    await page.goto('/tesla-drive-journal.html');
+    const tesla = await gapAboveBadge();
+    expect(Math.abs(tesla - plain), `tesla ${tesla} plain ${plain} at ${viewport.width}`).toBeLessThan(2);
+  }
+});
+
 test('Plus annual block keeps the page App Store link and fits at 390 and 1280', async ({ page }) => {
   const pages = [
     { path: '/beta.html', ct: 'home', content: 'home' },
