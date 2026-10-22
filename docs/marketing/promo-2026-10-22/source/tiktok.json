@@ -1,0 +1,59 @@
+{
+ "style": "hype",
+ "transition": 0.14,
+ "scenes": [
+  {
+   "type": "hook",
+   "text": "4 trip packs. *$25.*",
+   "sub": "Save $17 with the All Trips Bundle",
+   "duration": 2.4
+  },
+  {
+   "type": "screen",
+   "image": "img/all-trips-bundle-banner-16x9.png",
+   "caption": "Road Trip, EV, Camping, *Holiday*",
+   "motion": "zoom_in",
+   "duration": 2.5
+  },
+  {
+   "type": "screen",
+   "image": "img/road-trip-banner-16x9.png",
+   "caption": "Edit in *free Canva*",
+   "motion": "slide_left",
+   "duration": 2.2
+  },
+  {
+   "type": "text",
+   "text": "Then *hit the road*",
+   "duration": 1.5
+  },
+  {
+   "type": "screen",
+   "image": "img/01-today.webp",
+   "caption": "JourneyDeck keeps *every drive*",
+   "motion": "spin",
+   "duration": 2.1
+  },
+  {
+   "type": "screen",
+   "image": "img/02-journey-screen.webp",
+   "caption": "The route *and the songs*",
+   "motion": "tilt",
+   "duration": 2.0
+  },
+  {
+   "type": "screen",
+   "image": "img/05-soundtrack-sample.webp",
+   "caption": "Your monthly *road anthem*",
+   "motion": "zoom_in",
+   "duration": 2.0
+  },
+  {
+   "type": "cta",
+   "text": "All Trips Bundle",
+   "button": "4 packs for $25",
+   "sub": "Save $17 at studio.journeydeck.me",
+   "duration": 3.4
+  }
+ ]
+}
