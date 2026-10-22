@@ -281,7 +281,7 @@ test('every public footer links the FollowX badge without overflowing', async ({
     await expect(link, path).toHaveAttribute('rel', 'noopener');
     await expect(link, path).toHaveAttribute('target', '_blank');
     const img = link.locator('img');
-    await expect(img, path).toHaveAttribute('src', 'https://followx.today/api/badge/journeydeck.me.svg?theme=dark');
+    await expect(img, path).toHaveAttribute('src', 'https://followx.today/api/badge/journeydeck.me.svg?theme=dark&v=live');
     await expect(img, path).toHaveAttribute('alt', 'Featured on FollowX.today');
     await expect(img, path).toHaveAttribute('width', '250');
     await expect(img, path).toHaveAttribute('height', '54');

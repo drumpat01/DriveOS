@@ -248,7 +248,7 @@
   },
   "followxBadge": {
     "href": "https://followx.today/b/journeydeck.me",
-    "imageSrc": "https://followx.today/api/badge/journeydeck.me.svg?theme=dark",
+    "imageSrc": "https://followx.today/api/badge/journeydeck.me.svg?theme=dark&v=live",
     "imageAlt": "Featured on FollowX.today",
     "imageWidth": "250",
     "imageHeight": "54"
