@@ -16,7 +16,7 @@ new iPad has an empty library. To let App Review see every screen on either devi
 - Never uploaded: every row is written as already synced, `syncPrivateCloud` pauses for sandbox profiles, and the profile is
   kept prepared when the user leaves it. The user's own profile is not touched.
 - Onboarding is skipped inside the sample.
-- There is no free trial of Plus. A new member who closes the plans screen during setup without buying opens the sample library
+- Annual Plus includes a 7-day free trial (introductory offer) for new subscribers. A new member who closes the plans screen during setup without buying opens the sample library
   automatically, so the app is never empty or locked on first look.
 
 ## Where reviewers find it
@@ -33,7 +33,7 @@ new iPad has an empty library. To let App Review see every screen on either devi
 > Memories with photos) with full access to every JourneyDeck Plus feature, including Atlas and Ask JourneyDeck. It is stored only on
 > the device and never uploaded. Tap the x to hide the "You're viewing sample data" bar, or Leave to return to your own data.
 >
-> JourneyDeck has no free trial. A new install that does not purchase from the plans screen opens this sample library automatically.
+> Annual Plus includes a 7-day free trial (introductory offer) for new subscribers. A new install that does not purchase from the plans screen opens this sample library automatically.
 > The JourneyDeck Plus purchase can be reviewed outside the sample: open Settings > Membership or any Plus badge, and use
 > your sandbox Apple Account. Restore Purchases is in Settings > Membership.
 
