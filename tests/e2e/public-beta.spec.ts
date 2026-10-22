@@ -357,7 +357,7 @@ test('Plus annual block keeps the page App Store link and fits at 390 and 1280',
             sideDelta: Math.abs((textBox.left - buttonBox.left) - (buttonBox.right - arrowBox.right))
           };
         });
-        expect(arrowFit.between, `${item.path} arrow gap`).toBeGreaterThanOrEqual(-1);
+        expect(arrowFit.between, `${item.path} arrow gap`).toBeGreaterThanOrEqual(5);
         expect(arrowFit.between, `${item.path} arrow gap`).toBeLessThan(12);
         expect(arrowFit.sideDelta, `${item.path} arrow centering`).toBeLessThan(8);
       }
