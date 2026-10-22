@@ -28,6 +28,7 @@ import {
   evaluateSamplePublicImages,
   evaluateUmamiScripts,
   extractAppStoreHrefs,
+  findAppNames,
   extractDocumentTitle,
   findForbiddenTrialPhrases,
   findUmamiScripts,
@@ -357,13 +358,21 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   const loginFooter = evaluatePublicPageHtml(withLogin, "/", expectations, 200);
   assert.equal(loginFooter.find((check) => check.name === "page:/ no-footer-login")?.pass, false);
   assert.equal(checks.find((check) => check.name === "page:/ description-voice")?.pass, true);
-  assert.equal(checks.find((check) => check.name === "page:/ no-tessie-description")?.pass, true);
+  const appNameCheck = (source) => evaluatePublicPageHtml(source, "/", expectations, 200).find((check) => check.name === "page:/ no-app-name-description");
+  assert.equal(appNameCheck(html)?.pass, true);
   const tessieDescription = html.replace('name="description" content="Your private journal."', 'name="description" content="Your private journal, with Tessie."');
-  assert.equal(evaluatePublicPageHtml(tessieDescription, "/", expectations, 200).find((check) => check.name === "page:/ no-tessie-description")?.pass, false);
+  assert.equal(appNameCheck(tessieDescription)?.pass, false);
+  assert.deepEqual(appNameCheck(tessieDescription)?.observed.found, ["Tessie"]);
   const tessieOg = html.replace('property="og:description" content="Your private journal."', 'property="og:description" content="Your private journal, with Tessie."');
-  assert.equal(evaluatePublicPageHtml(tessieOg, "/", expectations, 200).find((check) => check.name === "page:/ no-tessie-description")?.pass, false);
+  assert.equal(appNameCheck(tessieOg)?.pass, false);
   const tessieTwitter = html.replace('property="og:description" content="Your private journal."', 'property="og:description" content="Your private journal."><meta name="twitter:description" content="Your private Tessie journal."');
-  assert.equal(evaluatePublicPageHtml(tessieTwitter, "/", expectations, 200).find((check) => check.name === "page:/ no-tessie-description")?.pass, false);
+  assert.equal(appNameCheck(tessieTwitter)?.pass, false);
+  for (const name of expectations.thirdPartyAppNames) {
+    const named = html.replace('name="description" content="Your private journal."', `name="description" content="Your private journal, with ${name.toLowerCase()}."`);
+    assert.deepEqual(appNameCheck(named)?.observed.found, [name], name);
+  }
+  const spotifyOg = html.replace('property="og:description" content="Your private journal."', 'property="og:description" content="Your private journal and Spotify."');
+  assert.deepEqual(appNameCheck(spotifyOg)?.observed.found, ["Spotify"]);
   assert.equal(checks.find((check) => check.name === "page:/ snippets")?.pass, true);
 });
 
@@ -592,4 +601,15 @@ test("in-process web app HTML satisfies the verify-live public page checks", asy
     await runtime.app.close();
     fixture.cleanup();
   }
+});
+
+test("the app-name check reads one list and matches whole names only", () => {
+  const names = expectations.thirdPartyAppNames;
+  assert.ok(names.includes("Tessie"));
+  assert.deepEqual(findAppNames("Keep your Tesla drives and charging history on your iPhone.", names), []);
+  assert.deepEqual(findAppNames("Tap Identify Song to recognize it with ShazamKit.", names), []);
+  assert.deepEqual(findAppNames("Import from TESSIE or last.fm.", names), ["Tessie", "Last.fm"]);
+  assert.deepEqual(findAppNames(undefined, names), []);
+  assert.throws(() => validateExpectations({ ...expectations, thirdPartyAppNames: [] }), /thirdPartyAppNames/);
+  assert.throws(() => validateExpectations({ ...expectations, thirdPartyAppNames: ["Tessie", " "] }), /thirdPartyAppNames/);
 });

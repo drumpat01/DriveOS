@@ -88,6 +88,10 @@ export function validateExpectations(raw) {
     if (raw.publicPages.includes(path)) throw new Error(`expectations.retiredPages path ${path} is a public page`);
   }
   if (!Array.isArray(raw.redirects)) throw new Error("expectations.redirects must be an array");
+  if (!Array.isArray(raw.thirdPartyAppNames) || raw.thirdPartyAppNames.length === 0
+    || !raw.thirdPartyAppNames.every((name) => typeof name === "string" && name.trim() === name && name.length > 0)) {
+    throw new Error("expectations.thirdPartyAppNames must be a non-empty array of names");
+  }
   for (const redirect of raw.redirects) {
     if (!redirect || typeof redirect !== "object") throw new Error("expectations.redirects entries must be objects");
     if (typeof redirect.path !== "string" || !redirect.path.startsWith("/")) throw new Error("expectations.redirects path must start with /");
@@ -644,10 +648,10 @@ export function evaluateLaunchBadge(html, expectations) {
 
 const SECOND_PERSON = /\b(you|your|yours|yourself)\b/i;
 const FIRST_PERSON = /\b(I|we|us|our|ours|my|mine)\b/;
-const TESSIE_NAME = /tessie/i;
 
-export function descriptionMentionsTessie(value) {
-  return typeof value === "string" && TESSIE_NAME.test(value);
+export function findAppNames(value, names) {
+  if (typeof value !== "string") return [];
+  return names.filter((name) => new RegExp(`(?<![\\w.])${escapeRegExp(name)}(?![\\w])`, "i").test(value));
 }
 
 export function descriptionSpeaksToYou(value) {
@@ -785,6 +789,8 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     && extracted.value.length > 0
     && extracted.value.length <= maxDescription;
   const voiceOk = (extracted) => extracted.count === 1 && descriptionSpeaksToYou(extracted.value);
+  const descriptionAppNames = [...new Set([description, ogDescription, twitterDescription]
+    .flatMap((extracted) => findAppNames(extracted.value, expectations.thirdPartyAppNames)))];
   const checks = [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
     makeCheck(`page:${pathname} title`, title.count === 1 && Boolean(title.value), title),
@@ -797,7 +803,8 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     makeCheck(`page:${pathname} canonical`, canonical.count === 1 && canonical.value === expectedCanonical, { ...canonical, expected: expectedCanonical }),
     makeCheck(`page:${pathname} og:title`, ogTitle.count === 1 && Boolean(ogTitle.value), ogTitle),
     makeCheck(`page:${pathname} og:description`, descriptionFits(ogDescription), { ...ogDescription, max: maxDescription }),
-    makeCheck(`page:${pathname} no-tessie-description`, !descriptionMentionsTessie(description.value) && !descriptionMentionsTessie(ogDescription.value) && !descriptionMentionsTessie(twitterDescription.value), {
+    makeCheck(`page:${pathname} no-app-name-description`, descriptionAppNames.length === 0, {
+      found: descriptionAppNames,
       description: description.value,
       ogDescription: ogDescription.value,
       twitterDescription: twitterDescription.value
