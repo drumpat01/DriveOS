@@ -6,7 +6,8 @@ Draft pull request adding a compact JourneyDeck Plus annual block to `/`, `/tesl
 
 ## Checkout
 
-- Branch `cursor/plus-annual-block-0859`, based on main `486030b` (`Use the dark FollowX badge at the Launch Llama width. (#323)`).
+- Branch `cursor/plus-annual-block-0859` at `93c9b95`, based on main `486030b` (`Use the dark FollowX badge at the Launch Llama width. (#323)`).
+- Draft pull request: https://github.com/drumpat01/DriveOS/pull/324
 - Public home is `web/beta.html` at `GET /`. The site Worker in `cloudflare/site` serves `web/`.
 
 ## Material changes
@@ -30,4 +31,4 @@ Draft pull request adding a compact JourneyDeck Plus annual block to `/`, `/tesl
 
 ## Next steps
 
-1. Review the draft pull request for `cursor/plus-annual-block-0859`. Do not merge it from this handoff.
+1. Review https://github.com/drumpat01/DriveOS/pull/324. Do not merge it from this handoff.
