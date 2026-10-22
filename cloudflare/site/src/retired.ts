@@ -25,7 +25,7 @@ export function retiredPageHtml() {
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon.png?v=app-logo-1">
   <link rel="apple-touch-icon" href="/assets/journeydeck-cinematic-180.png">
   <link rel="stylesheet" href="/public-page.css?v=perf-1">
-  <link rel="stylesheet" href="/public-a11y.css?v=3">
+  <link rel="stylesheet" href="/public-a11y.css?v=4">
   <title>The old web app has been retired · JourneyDeck</title>
 </head>
 <body>

@@ -301,7 +301,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(teslaJournal.body, /<nav class="desktop-nav" aria-label="Main navigation"><a href="\/">Home<\/a><a href="\/tesla-drive-journal" aria-current="page">Tesla<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
     assert.match(teslaJournal.body, /aria-label="Mobile navigation"><a href="\/">Home<\/a><a href="\/tesla-drive-journal" aria-current="page">Tesla<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
     assert.doesNotMatch(teslaJournal.body, /Tesla journal/);
-    assert.match(teslaJournal.body, /href="\/public-a11y\.css\?v=3"/);
+    assert.match(teslaJournal.body, /href="\/public-a11y\.css\?v=4"/);
     assert.match(teslaJournal.body, /06-atlas-400\.webp\?v=1 400w[\s\S]{0,180}sizes="\(max-width: 700px\) 228px, 300px"/);
     assert.match(teslaJournal.body, /alt="A trip replay in JourneyDeck\. Not a Tesla drive\."/);
     assert.match(teslaJournal.body, /<figcaption>A trip replay in JourneyDeck\. Not a Tesla drive\.<\/figcaption>/);

@@ -5,6 +5,7 @@
 .header-actions .button { white-space: nowrap; flex-shrink: 0; }
 .desktop-nav a { display: inline-flex; align-items: center; min-height: 24px; padding: 6px 2px; }
 .footer a, .footer-bottom a { display: inline-flex; align-items: center; min-height: 24px; padding: 4px 2px; }
+.footer .followx-badge { margin-top: 14px; }
 .page-actions { gap: 16px; }
 .contact, .secondary-action { min-height: 52px; }
 .tour-dots button { min-width: 24px; width: 24px; }
