@@ -1,0 +1,52 @@
+{
+ "style": "hype",
+ "transition": 0.14,
+ "scenes": [
+  {
+   "type": "hook",
+   "text": "EV road trip *this fall?*",
+   "sub": "Plan the stops. Keep the memories.",
+   "duration": 2.6
+  },
+  {
+   "type": "screen",
+   "image": "img/ev-road-trip-templates-banner-16x9.png",
+   "caption": "12 EV trip *templates*",
+   "motion": "zoom_in",
+   "duration": 2.5
+  },
+  {
+   "type": "text",
+   "text": "Stories and posts, *ready to share*",
+   "duration": 1.8
+  },
+  {
+   "type": "screen",
+   "image": "img/02-journey-screen.webp",
+   "caption": "JourneyDeck logs *the route*",
+   "motion": "spin",
+   "duration": 2.1
+  },
+  {
+   "type": "screen",
+   "image": "img/05-soundtrack-sample.webp",
+   "caption": "And *the songs* you played",
+   "motion": "tilt",
+   "duration": 2.0
+  },
+  {
+   "type": "screen",
+   "image": "img/all-trips-bundle-banner-16x9.png",
+   "caption": "Or get *all four packs*",
+   "motion": "slide_left",
+   "duration": 2.3
+  },
+  {
+   "type": "cta",
+   "text": "All Trips Bundle",
+   "button": "4 packs for $25",
+   "sub": "Save $17 at studio.journeydeck.me",
+   "duration": 3.4
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+{
+ "style": "hype",
+ "transition": 0.14,
+ "scenes": [
+  {
+   "type": "hook",
+   "text": "Camping trip *coming up?*",
+   "sub": "Plan it. Share it. Remember it.",
+   "duration": 2.6
+  },
+  {
+   "type": "screen",
+   "image": "img/camping-trip-templates-banner-16x9.png",
+   "caption": "12 camping trip *templates*",
+   "motion": "zoom_in",
+   "duration": 2.5
+  },
+  {
+   "type": "text",
+   "text": "Campfire recipes *to share*",
+   "duration": 1.7
+  },
+  {
+   "type": "screen",
+   "image": "img/03-memories.webp",
+   "caption": "Your trip *in Memories*",
+   "motion": "spin",
+   "duration": 2.1
+  },
+  {
+   "type": "screen",
+   "image": "img/02-journey-screen.webp",
+   "caption": "The route *and the songs*",
+   "motion": "tilt",
+   "duration": 2.0
+  },
+  {
+   "type": "screen",
+   "image": "img/all-trips-bundle-banner-16x9.png",
+   "caption": "Or get *all four packs*",
+   "motion": "slide_left",
+   "duration": 2.3
+  },
+  {
+   "type": "cta",
+   "text": "All Trips Bundle",
+   "button": "4 packs for $25",
+   "sub": "Save $17 at studio.journeydeck.me",
+   "duration": 3.4
+  }
+ ]
+}
