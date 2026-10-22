@@ -318,6 +318,38 @@ test('every public footer links the FollowX badge without overflowing', async ({
   }
 });
 
+test('Plus annual block keeps the page App Store link and fits at 390 and 1280', async ({ page }) => {
+  const pages = [
+    { path: '/beta.html', ct: 'home', content: 'home' },
+    { path: '/tesla-drive-journal.html', ct: 'tesla_page', content: 'tesla-drive-journal' },
+    { path: '/driving-history-app.html', ct: 'driving_history', content: 'driving-history-app' }
+  ];
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    for (const item of pages) {
+      await page.goto(item.path);
+      const block = page.locator('#plus-annual');
+      await block.scrollIntoViewIfNeeded();
+      await expect(block).toBeVisible();
+      await expect(block.locator('h2')).toHaveText('JourneyDeck Plus annual');
+      await expect(block).toContainText("I can keep recording for free and view today's journeys.");
+      await expect(block).toContainText('Plus is $39.99/yr.');
+      await expect(block).not.toContainText('7-day');
+      await expect(block).not.toContainText('3-day');
+      await expect(block).not.toContainText('weekly');
+      const cta = block.getByRole('link', { name: 'Start your free trial' });
+      await expect(cta).toHaveAttribute('data-umami-event', 'plus-annual-click');
+      await expect(cta).toHaveClass(/button/);
+      await expect(cta).toHaveAttribute('href', `https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=${item.ct}&mt=8&utm_source=journeydeck.me&utm_medium=site&utm_campaign=plus_annual&utm_content=${item.content}`);
+      const box = await cta.boundingBox();
+      expect(box, `${item.path} ${viewport.width}`).toBeTruthy();
+      expect(box.x).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${item.path} ${viewport.width}`).toBe(true);
+    }
+  }
+});
+
 test('the page remains readable without JavaScript', async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 320, height: 740 } });
   const page = await context.newPage();

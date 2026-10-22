@@ -267,5 +267,37 @@
     "forbiddenHref": "/login",
     "homeStudioHref": "https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink",
     "homeStudioText": "From the studio: Road Trip templates"
+  },
+  "plusAnnual": {
+    "heading": "JourneyDeck Plus annual",
+    "price": "$39.99/yr",
+    "cta": "Start your free trial",
+    "event": "plus-annual-click",
+    "utm": {
+      "source": "journeydeck.me",
+      "medium": "site",
+      "campaign": "plus_annual"
+    },
+    "pages": {
+      "/": "home",
+      "/tesla-drive-journal": "tesla-drive-journal",
+      "/driving-history-app": "driving-history-app"
+    },
+    "requiredPhrases": [
+      "I can keep recording for free and view today's journeys.",
+      "Plus adds full history, Atlas, Ask JourneyDeck, premium themes and icons, Tesla drive and charging history, and AI assistant connections.",
+      "Plus is $39.99/yr."
+    ],
+    "forbiddenPhrases": [
+      "3-day",
+      "7-day",
+      "per week",
+      "weekly",
+      "0.99",
+      "$39.99/year",
+      "Tessie",
+      "Spotify",
+      "Shazam"
+    ]
   }
 }

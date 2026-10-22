@@ -217,6 +217,11 @@ figure, h1, h2, h3, p { margin: 0; }
 .followx-badge { display: block; width: 200px; max-width: 100%; margin: 18px auto 0; aspect-ratio: 250 / 54; }
 .followx-badge a { display: block; width: 200px; max-width: 100%; height: auto; aspect-ratio: 250 / 54; line-height: 0; text-decoration: none; }
 .followx-badge img { display: block; width: 200px; max-width: 100%; height: auto; aspect-ratio: 250 / 54; }
+.plus-annual { margin-top: 36px; padding: 22px 24px 24px; border: 1px solid #d4b15a99; border-radius: 12px; background: #d4b15a0b; }
+.plus-annual h2 { margin: 0 0 12px; color: var(--ivory); font-size: clamp(1.35rem, 2.2vw, 1.7rem); font-weight: 550; letter-spacing: -.035em; line-height: 1.2; }
+.plus-annual p { margin: 0 0 12px; max-width: 40rem; color: var(--muted); font-size: 1rem; line-height: 1.7; }
+.plus-annual p.plus-annual-price { color: var(--ivory); font-weight: 650; margin-bottom: 16px; }
+.plus-annual .button { margin-top: 0; max-width: 100%; text-decoration: none; }
 
 @media (prefers-reduced-motion: no-preference) {
   html.motion-ready [data-reveal] { opacity: 0; transform: perspective(1400px) translateY(38px) rotateX(5deg); transition: opacity .85s var(--ease), transform 1.05s var(--ease); transition-delay: var(--reveal-delay,0ms); }
@@ -322,6 +327,9 @@ figure, h1, h2, h3, p { margin: 0; }
   .tour-dots button { width: 20px; } .tour-play { font-size: 9px; padding-inline: 6px; } .round-button { margin-left: 3px; width: 42px; }
   .feature-card { grid-template-columns: 1fr 85px; padding: 22px; } .feature-card h3 { font-size: 24px; } .feature-icon, .photo-symbol { width: 85px; }
   .atlas-art { min-height: 250px; margin-inline: 22px; } .device-grid article { grid-template-columns: 90px 1fr; column-gap: 15px; } .device-grid svg { width: 90px; } .device-grid h3 { font-size: 19px; }
+}
+@media (max-width: 620px) {
+  .plus-annual .button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root { scroll-behavior: auto; } *, *:before, *:after { animation: none !important; transition: none !important; }
