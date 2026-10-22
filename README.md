@@ -107,6 +107,12 @@ node tools/capture-readme-screenshots.mjs
 
 Architecture and migration notes live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
+## Who works on this repo
+
+- Code changes are made by Claude Duet through pull requests.
+- Quinn (Grok Bot team) tests each pull request before it is merged.
+- Design comes from Iris (Grok Bot team).
+
 ## Privacy and project status
 
 - JourneyDeck contains sensitive location history and should remain behind strong authentication.
