@@ -79,7 +79,7 @@ strong { color: var(--ivory); }
   .hero.has-photo::before { background: linear-gradient(90deg, #081832f5, #081832c9); }
   .hero-photo { object-position: center; }
   .contact, .secondary-action { width: 100%; }
-  .plus-annual .button { width: 100%; justify-content: center; gap: 0; }
+  .plus-annual .button { width: 100%; justify-content: center; gap: 6px; }
 }
 @media (max-width: 1000px) { .site-header { padding-inline: 36px; } .desktop-nav { gap: 17px; } }
 @media (max-width: 800px) { .site-header { min-height: 72px; padding: 13px 24px; } .desktop-nav { display: none; } .brand { font-size: 19px; } .brand img { width: 32px; height: 32px; } .header-actions { gap: 9px; } .button-small { min-height: 40px; padding: 10px 14px; font-size: 11px; } }
