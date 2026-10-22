@@ -587,7 +587,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     const missing = await runtime.app.inject({ method: "GET", url: "/a-page-that-does-not-exist" });
     assert.equal(missing.statusCode, 404, missing.body);
     assert.match(missing.body, /Page not found/i);
-    assert.match(missing.body, /<footer\b[^>]*>[\s\S]*src="https:\/\/followx\.today\/api\/badge\/journeydeck\.me\.svg\?theme=dark" alt="Featured on FollowX\.today" width="250" height="54"[\s\S]*<\/footer>/);
+    assert.match(missing.body, /<footer\b[^>]*>[\s\S]*src="https:\/\/followx\.today\/api\/badge\/journeydeck\.me\.svg\?theme=dark&v=live" alt="Featured on FollowX\.today" width="250" height="54"[\s\S]*<\/footer>/);
     assert.equal(missing.headers["x-robots-tag"], "noindex, nofollow");
     assertStudioNav(missing.body, "404");
     const betaCss = await runtime.app.inject({ method: "GET", url: "/beta.css?v=grand-tour-7" });

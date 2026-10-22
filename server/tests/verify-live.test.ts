@@ -129,7 +129,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.deepEqual(expectations.contentSecurityPolicy.connectHosts, ["https://cloudflareinsights.com"]);
   assert.deepEqual(expectations.contentSecurityPolicy.imgHosts, ["https://followx.today"]);
   assert.equal(expectations.followxBadge.href, "https://followx.today/b/journeydeck.me");
-  assert.equal(expectations.followxBadge.imageSrc, "https://followx.today/api/badge/journeydeck.me.svg?theme=dark");
+  assert.equal(expectations.followxBadge.imageSrc, "https://followx.today/api/badge/journeydeck.me.svg?theme=dark&v=live");
   assert.equal(expectations.followxBadge.imageAlt, "Featured on FollowX.today");
   assert.equal(expectations.followxBadge.imageWidth, "250");
   assert.equal(expectations.followxBadge.imageHeight, "54");
@@ -293,7 +293,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
     width="200" height="52" style="display:block;border:0;" />
 </a>
   <a href="https://launchmcp.co/?utm_source=badge&utm_medium=referral" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:-2px;padding-top:0;font-size:7px;font-weight:600;color:#888;text-decoration:none;line-height:1;letter-spacing:0.02em;">Launch MCP</a>
-</span><a href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">From the studio: Road Trip templates</a><div class="followx-badge"><a href="https://followx.today/b/journeydeck.me" target="_blank" rel="noopener"><img src="https://followx.today/api/badge/journeydeck.me.svg?theme=dark" alt="Featured on FollowX.today" width="250" height="54" loading="lazy" /></a></div></footer>
+</span><a href="https://studio.journeydeck.me/?utm_source=journeydeck&utm_medium=referral&utm_campaign=crosslink">From the studio: Road Trip templates</a><div class="followx-badge"><a href="https://followx.today/b/journeydeck.me" target="_blank" rel="noopener"><img src="https://followx.today/api/badge/journeydeck.me.svg?theme=dark&v=live" alt="Featured on FollowX.today" width="250" height="54" loading="lazy" /></a></div></footer>
     <section class="plus-annual" id="plus-annual" aria-labelledby="plus-annual-title">
       <h2 id="plus-annual-title">JourneyDeck Plus annual</h2>
       <p>You can keep recording for free and view today’s journeys. Plus adds full history, Atlas, Ask JourneyDeck, premium themes and icons, Tesla drive and charging history, and AI assistant connections.</p>

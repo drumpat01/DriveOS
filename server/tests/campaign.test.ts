@@ -365,7 +365,7 @@ test("served public pages embed Apple campaign tokens and load the first-party c
       assert.match(String(page.headers["content-security-policy"]), /img-src[^;]*https:\/\/followx\.today/, url);
       assert.doesNotMatch(String(page.headers["content-security-policy"]), /(?:script-src|connect-src)[^;]*https:\/\/followx\.today/, url);
       assert.match(page.body, /<footer\b[^>]*>[\s\S]*href="https:\/\/followx\.today\/b\/journeydeck\.me"[\s\S]*<\/footer>/, url);
-      assert.match(page.body, /src="https:\/\/followx\.today\/api\/badge\/journeydeck\.me\.svg\?theme=dark" alt="Featured on FollowX\.today" width="250" height="54"/, url);
+      assert.match(page.body, /src="https:\/\/followx\.today\/api\/badge\/journeydeck\.me\.svg\?theme=dark&v=live" alt="Featured on FollowX\.today" width="250" height="54"/, url);
       assert.doesNotMatch(page.body, /theme=light/, url);
     }
 
