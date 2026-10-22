@@ -283,7 +283,7 @@ test('every public footer links the FollowX badge without overflowing', async ({
     await expect(link, path).toHaveAttribute('rel', 'noopener');
     await expect(link, path).toHaveAttribute('target', '_blank');
     const img = link.locator('img');
-    await expect(img, path).toHaveAttribute('src', 'https://followx.today/api/badge/journeydeck.me.svg?theme=light');
+    await expect(img, path).toHaveAttribute('src', 'https://followx.today/api/badge/journeydeck.me.svg?theme=dark');
     await expect(img, path).toHaveAttribute('alt', 'Featured on FollowX.today');
     await expect(img, path).toHaveAttribute('width', '250');
     await expect(img, path).toHaveAttribute('height', '54');
@@ -303,8 +303,13 @@ test('every public footer links the FollowX badge without overflowing', async ({
       expect(imgBox, `${path} ${viewport.width}`).toBeTruthy();
       expect(imgBox.x).toBeGreaterThanOrEqual(-1);
       expect(imgBox.x + imgBox.width).toBeLessThanOrEqual(viewport.width + 1);
-      expect(imgBox.width).toBeLessThanOrEqual(250.5);
-      expect(imgBox.width).toBeGreaterThan(120);
+      expect(Math.abs(imgBox.width - 200), `${path} ${viewport.width}`).toBeLessThan(1);
+      expect(Math.abs(imgBox.height - (200 * 54 / 250)), `${path} ${viewport.width}`).toBeLessThan(1);
+      if (path === '/beta.html') {
+        const launchBox = await page.locator('footer img[alt="Featured on Launch"]').boundingBox();
+        expect(launchBox, `${path} ${viewport.width}`).toBeTruthy();
+        expect(Math.abs(imgBox.width - launchBox.width), `${path} ${viewport.width}`).toBeLessThan(1);
+      }
       const imageCenter = imgBox.x + (imgBox.width / 2);
       const footerCenter = footerBox.x + (footerBox.width / 2);
       expect(Math.abs(imageCenter - footerCenter), `${path} ${viewport.width}`).toBeLessThan(12);

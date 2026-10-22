@@ -89,7 +89,9 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 ## FollowX badge
 
 - Owner: the site footer in every public HTML page, including `web/404.html`. The 410 notice in `cloudflare/site/src/retired.ts` has no site footer.
-- The footer contains `expectations.followxBadge.href` (`https://followx.today/b/journeydeck.me`) and `expectations.followxBadge.imageSrc`.
+- The footer contains `expectations.followxBadge.href` (`https://followx.today/b/journeydeck.me`) and the dark badge `expectations.followxBadge.imageSrc` (`theme=dark`).
+- That image keeps explicit `imageWidth` and `imageHeight` (`250` and `54`, the SVG's own size) so the lazy image reserves its box and layout shift stays at 0.
+- `web/beta.css` and `web/public-page.css` draw the badge at 200px wide, the same width as the Launch Llama badge (`expectations.launchBadge.imageWidth`). The cache-bust query is `followx-2` on `beta.css` and `perf-2` on `public-page.css`.
 - Checks: `page:<path> followx-badge` on every public page and on the 404 path.
 
 ## Launch Llama badge
