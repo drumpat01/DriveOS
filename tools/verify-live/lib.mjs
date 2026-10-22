@@ -231,7 +231,44 @@ export function validateExpectations(raw) {
   if (!Array.isArray(homeSnippets) || !homeSnippets.includes('id="templates"') || !homeSnippets.some((snippet) => snippet.includes("templates-click"))) {
     throw new Error("expectations.pageSnippets./ must include the templates section");
   }
+  validatePlusAnnual(raw);
   return raw;
+}
+
+function validatePlusAnnual(raw) {
+  const annual = raw.plusAnnual;
+  if (!annual || typeof annual !== "object" || Array.isArray(annual)) throw new Error("expectations.plusAnnual is incomplete");
+  if (annual.heading !== "JourneyDeck Plus annual") throw new Error("expectations.plusAnnual.heading must be JourneyDeck Plus annual");
+  if (annual.price !== "$39.99/yr") throw new Error("expectations.plusAnnual.price must be $39.99/yr");
+  if (annual.cta !== "Start your free trial") throw new Error("expectations.plusAnnual.cta must be Start your free trial");
+  if (annual.event !== "plus-annual-click") throw new Error("expectations.plusAnnual.event must be plus-annual-click");
+  const utm = annual.utm;
+  if (!utm || utm.source !== "journeydeck.me" || utm.medium !== "site" || utm.campaign !== "plus_annual") {
+    throw new Error("expectations.plusAnnual.utm must be journeydeck.me / site / plus_annual");
+  }
+  const pages = annual.pages;
+  if (
+    !pages
+    || pages["/"] !== "home"
+    || pages["/tesla-drive-journal"] !== "tesla-drive-journal"
+    || pages["/driving-history-app"] !== "driving-history-app"
+    || Object.keys(pages).length !== 3
+  ) {
+    throw new Error("expectations.plusAnnual.pages must name the three page slugs");
+  }
+  if (!Array.isArray(annual.requiredPhrases) || annual.requiredPhrases.length === 0) {
+    throw new Error("expectations.plusAnnual.requiredPhrases is required");
+  }
+  for (const phrase of annual.requiredPhrases) {
+    if (typeof phrase !== "string" || !phrase.trim() || /[\u2013\u2014]/.test(phrase)) {
+      throw new Error("expectations.plusAnnual.requiredPhrases must be text without dashes");
+    }
+  }
+  const forbidden = annual.forbiddenPhrases;
+  if (!Array.isArray(forbidden)) throw new Error("expectations.plusAnnual.forbiddenPhrases is required");
+  for (const phrase of ["3-day", "7-day", "per week", "weekly", "0.99", "$39.99/year"]) {
+    if (!forbidden.includes(phrase)) throw new Error(`expectations.plusAnnual.forbiddenPhrases must include ${phrase}`);
+  }
 }
 
 export function canonicalUrlForPath(pathname, expectations) {
@@ -678,6 +715,51 @@ export function evaluateInsightsCsp(csp, expectations) {
   return makeCheck("csp cloudflare-insights", scriptOk && connectOk, { scriptOk, connectOk });
 }
 
+export function plusAnnualHref(pathname, expectations) {
+  const base = appStoreOfferUrl(pathname, expectations);
+  const annual = expectations.plusAnnual;
+  const slug = annual?.pages?.[pathname];
+  if (!base || typeof slug !== "string" || !annual?.utm) return null;
+  return `${base}&utm_source=${annual.utm.source}&utm_medium=${annual.utm.medium}&utm_campaign=${annual.utm.campaign}&utm_content=${slug}`;
+}
+
+export function extractPlusAnnualSections(html) {
+  return [...String(html).matchAll(/<section\b[^>]*\bid=["']plus-annual["'][^>]*>[\s\S]*?<\/section>/gi)].map((match) => match[0]);
+}
+
+export function evaluatePlusAnnual(html, pathname, expectations) {
+  const annual = expectations.plusAnnual;
+  if (!annual?.pages || !Object.prototype.hasOwnProperty.call(annual.pages, pathname)) return null;
+  const sections = extractPlusAnnualSections(html);
+  const problems = [];
+  if (sections.length !== 1) problems.push(`expected one plus-annual block, found ${sections.length}`);
+  const block = sections[0] || "";
+  const heading = block.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
+  const headingText = String(heading?.[1] || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  if (headingText !== annual.heading) problems.push(`heading ${headingText}`);
+  const missing = findMissingRequiredPhrases(block, annual.requiredPhrases || []);
+  if (!block.includes(annual.price)) missing.push(annual.price);
+  if (missing.length > 0) problems.push(`missing ${missing.join(" | ")}`);
+  const forbidden = findForbiddenTrialPhrases(block, annual.forbiddenPhrases || []);
+  if (forbidden.length > 0) problems.push(`forbidden ${forbidden.join(" | ")}`);
+  if (/[\u2013\u2014]/.test(block)) problems.push("dash");
+  if (/\d+\s*-?\s*day/i.test(block)) problems.push("trial length");
+  const expectedHref = plusAnnualHref(pathname, expectations);
+  const anchors = [...block.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/gi)].map((match) => match[0]);
+  const cta = anchors.find((anchor) => anchor.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").includes(annual.cta));
+  if (!cta) {
+    problems.push("missing cta");
+  } else {
+    const href = attrValue(cta, "href");
+    const eventName = attrValue(cta, "data-umami-event");
+    const className = attrValue(cta, "class") || "";
+    if (href !== expectedHref) problems.push(`href ${href ?? ""}`);
+    if (eventName !== annual.event) problems.push(`umami ${eventName ?? ""}`);
+    if (!className.split(/\s+/).includes("button")) problems.push("cta class");
+  }
+  return makeCheck(`page:${pathname} plus-annual`, problems.length === 0, { problems, href: expectedHref });
+}
+
 export function evaluatePublicPageHtml(html, pathname, expectations, statusCode) {
   const expectedCanonical = canonicalUrlForPath(pathname, expectations);
   const title = extractDocumentTitle(html);
@@ -762,6 +844,8 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     const missing = findMissingRequiredPhrases(html, pageCopy.requiredPhrases || []);
     checks.push(makeCheck(`page:${pathname} copy`, forbidden.length === 0 && missing.length === 0, { forbidden, missing }));
   }
+  const plusAnnual = evaluatePlusAnnual(html, pathname, expectations);
+  if (plusAnnual) checks.push(plusAnnual);
   return checks;
 }
 

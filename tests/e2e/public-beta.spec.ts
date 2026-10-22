@@ -243,7 +243,7 @@ test('tesla page keeps utm_campaign=tesla on App Store clicks', async ({ page })
   }]);
 });
 
-test('homepage templates and the Tesla Plus trial banner fit at 390 and 1280', async ({ page }) => {
+test('homepage templates fit at 390 and 1280, and Tesla pitches Plus once', async ({ page }) => {
   for (const { width, height } of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize({ width, height });
     await page.goto('/beta.html');
@@ -260,14 +260,12 @@ test('homepage templates and the Tesla Plus trial banner fit at 390 and 1280', a
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `home overflow at ${width}`).toBe(true);
 
     await page.goto('/tesla-drive-journal.html');
-    const banner = page.locator('.plus-trial-banner');
-    await banner.scrollIntoViewIfNeeded();
-    await expect(banner).toBeVisible();
-    await expect(banner).toHaveAttribute('href', 'https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8');
-    await expect(banner).toHaveAttribute('data-umami-event', 'plus-trial-click');
-    await expect(banner).toContainText('Try the free trial of JourneyDeck Plus, then $39.99/yr.');
-    await expect(banner.locator('span[aria-hidden="true"]')).toHaveText('↗');
-    await expect(banner).toHaveCSS('border-top-color', 'rgb(212, 177, 90)');
+    await expect(page.locator('.plus-trial-banner')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText('Try the free trial of JourneyDeck Plus, then $39.99/yr.');
+    const annual = page.locator('#plus-annual');
+    await annual.scrollIntoViewIfNeeded();
+    await expect(annual).toContainText('Plus is $39.99/yr.');
+    await expect(annual.getByRole('link', { name: 'Start your free trial' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `tesla overflow at ${width}`).toBe(true);
   }
 });
@@ -314,6 +312,56 @@ test('every public footer links the FollowX badge without overflowing', async ({
       const footerCenter = footerBox.x + (footerBox.width / 2);
       expect(Math.abs(imageCenter - footerCenter), `${path} ${viewport.width}`).toBeLessThan(12);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${path} ${viewport.width}`).toBe(true);
+    }
+  }
+});
+
+test('Plus annual block keeps the page App Store link and fits at 390 and 1280', async ({ page }) => {
+  const pages = [
+    { path: '/beta.html', ct: 'home', content: 'home' },
+    { path: '/tesla-drive-journal.html', ct: 'tesla_page', content: 'tesla-drive-journal' },
+    { path: '/driving-history-app.html', ct: 'driving_history', content: 'driving-history-app' }
+  ];
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    for (const item of pages) {
+      await page.goto(item.path);
+      const block = page.locator('#plus-annual');
+      await block.scrollIntoViewIfNeeded();
+      await expect(block).toBeVisible();
+      await expect(block.locator('h2')).toHaveText('JourneyDeck Plus annual');
+      await expect(block).toContainText('You can keep recording for free and view today’s journeys.');
+      await expect(block).toContainText('Plus is $39.99/yr.');
+      await expect(block).not.toContainText('7-day');
+      await expect(block).not.toContainText('3-day');
+      await expect(block).not.toContainText('weekly');
+      const cta = block.getByRole('link', { name: 'Start your free trial' });
+      await expect(cta).toHaveAttribute('data-umami-event', 'plus-annual-click');
+      await expect(cta).toHaveClass(/button/);
+      await expect(cta).toHaveAttribute('href', `https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=${item.ct}&mt=8&utm_source=journeydeck.me&utm_medium=site&utm_campaign=plus_annual&utm_content=${item.content}`);
+      const box = await cta.boundingBox();
+      expect(box, `${item.path} ${viewport.width}`).toBeTruthy();
+      expect(box.x).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+      if (viewport.width === 390) {
+        const arrowFit = await cta.evaluate((el) => {
+          const span = el.querySelector('span[aria-hidden="true"]');
+          const range = document.createRange();
+          range.setStart(el, 0);
+          range.setEndBefore(span);
+          const textBox = range.getBoundingClientRect();
+          const arrowBox = span.getBoundingClientRect();
+          const buttonBox = el.getBoundingClientRect();
+          return {
+            between: arrowBox.left - textBox.right,
+            sideDelta: Math.abs((textBox.left - buttonBox.left) - (buttonBox.right - arrowBox.right))
+          };
+        });
+        expect(arrowFit.between, `${item.path} arrow gap`).toBeGreaterThanOrEqual(-1);
+        expect(arrowFit.between, `${item.path} arrow gap`).toBeLessThan(12);
+        expect(arrowFit.sideDelta, `${item.path} arrow centering`).toBeLessThan(8);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${item.path} ${viewport.width}`).toBe(true);
     }
   }
 });
