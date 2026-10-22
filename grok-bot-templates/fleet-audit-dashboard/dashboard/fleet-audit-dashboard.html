@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<meta name="referrer" content="no-referrer">
+<title>Fleet audit</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --border: #d9dee6;
+    --text: #111827;
+    --text-2: #4b5563;
+    --text-3: #6b7280;
+    --ok: #15803d;
+    --ok-bg: #dcfce7;
+    --warn: #a16207;
+    --warn-bg: #fef3c7;
+    --bad: #b91c1c;
+    --bad-bg: #fee2e2;
+    --idle: #475569;
+    --idle-bg: #e2e8f0;
+    --accent: #1d4ed8;
+    --radius: 14px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0d10;
+      --surface: #14171c;
+      --surface-2: #1c2027;
+      --border: #2a3039;
+      --text: #f3f4f6;
+      --text-2: #c2c8d0;
+      --text-3: #8b94a1;
+      --ok: #4ade80;
+      --ok-bg: #12301f;
+      --warn: #fbbf24;
+      --warn-bg: #33270b;
+      --bad: #f87171;
+      --bad-bg: #3a1414;
+      --idle: #a5b0bf;
+      --idle-bg: #232a33;
+      --accent: #93b4ff;
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  main { width: min(1080px, calc(100% - 32px)); margin: 28px auto 48px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; }
+  .eyebrow { margin: 0 0 4px; font-size: 12px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); }
+  h1 { margin: 0; font-size: clamp(24px, 4vw, 32px); line-height: 1.15; letter-spacing: -.02em; overflow-wrap: anywhere; }
+  .meta { margin: 6px 0 0; color: var(--text-2); font-size: 14px; }
+  h2 { margin: 32px 0 12px; font-size: 13px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+  .load { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 16px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+  .load:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .load input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .tile .label { margin: 0; font-size: 13px; color: var(--text-2); }
+  .tile .value { margin: 2px 0 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .tile .note { margin: 2px 0 0; font-size: 13px; color: var(--text-3); }
+  .tile.bad .value { color: var(--bad); }
+  .tile.good .value { color: var(--ok); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .first { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .first li { display: grid; grid-template-columns: 32px 1fr; gap: 12px; align-items: start; }
+  .rank { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--surface-2); font-weight: 700; }
+  .first p { margin: 0; }
+  .sub { color: var(--text-2); font-size: 14px; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 650; white-space: nowrap; }
+  .pill.ok { color: var(--ok); background: var(--ok-bg); }
+  .pill.warn { color: var(--warn); background: var(--warn-bg); }
+  .pill.bad { color: var(--bad); background: var(--bad-bg); }
+  .pill.idle { color: var(--idle); background: var(--idle-bg); }
+  .findings { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .finding { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .finding h3 { margin: 6px 0 4px; font-size: 16px; line-height: 1.35; }
+  .finding dl { margin: 8px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 14px; }
+  .finding dt { color: var(--text-3); }
+  .finding dd { margin: 0; overflow-wrap: anywhere; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .error { border-color: var(--bad); color: var(--bad); }
+  .error ul { margin: 8px 0 0; padding-left: 20px; }
+  .empty { color: var(--text-2); }
+  footer { margin-top: 36px; color: var(--text-3); font-size: 13px; }
+  @media (max-width: 520px) {
+    main { width: calc(100% - 32px); margin-top: 20px; }
+    .tile .value { font-size: 24px; }
+    .finding dl { grid-template-columns: 1fr; }
+    .finding dt { margin-top: 4px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <p class="eyebrow">Fleet audit</p>
+      <h1 id="fleet-name">Fleet audit</h1>
+      <p class="meta" id="fleet-meta"></p>
+    </div>
+    <label class="load">Open another audit file<input type="file" id="file-input" accept=".json,application/json"></label>
+  </header>
+  <div id="error" class="card error" hidden></div>
+  <div id="report">
+    <section aria-labelledby="h-summary">
+      <h2 id="h-summary">Summary</h2>
+      <div class="tiles" id="tiles"></div>
+    </section>
+    <section aria-labelledby="h-first">
+      <h2 id="h-first">Fix first</h2>
+      <div class="card"><ol class="first" id="fix-first"></ol></div>
+    </section>
+    <section aria-labelledby="h-routines">
+      <h2 id="h-routines">Routines</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Bot</th><th scope="col">Routine</th><th scope="col">Schedule</th><th scope="col">Runs a day</th><th scope="col">Last run</th><th scope="col">Status</th><th scope="col">Evidence</th></tr></thead>
+          <tbody id="routines"></tbody>
+        </table>
+      </div>
+    </section>
+    <section aria-labelledby="h-findings">
+      <h2 id="h-findings">All findings</h2>
+      <ul class="findings" id="findings"></ul>
+    </section>
+  </div>
+  <footer>This page reads only the data saved inside it, or a file you open. It makes no internet requests.</footer>
+</main>
+
+<!-- The Fleet Auditor bot replaces everything inside this block with its latest fleet-audit.json. -->
+<script type="application/json" id="fleet-data">
+{
+  "schemaVersion": 1,
+  "fleet": "Acme Notes bots (sample)",
+  "generatedAt": "2026-10-19T09:07:00-05:00",
+  "period": { "from": "2026-10-12", "to": "2026-10-19" },
+  "runBudgetPerDay": 40,
+  "bots": [
+    {
+      "id": "chief",
+      "name": "Harbor",
+      "role": "Chief of staff",
+      "routines": [
+        {
+          "id": "morning-brief",
+          "name": "Morning brief",
+          "schedule": "Every day 7:03 AM",
+          "runsPerDay": 1,
+          "lastRun": "2026-10-19T07:03:00-05:00",
+          "status": "ok",
+          "evidence": "Brief sent to owner at 7:04 AM"
+        },
+        {
+          "id": "inbox-sweep",
+          "name": "Inbox sweep",
+          "schedule": "Every 30 minutes, 8 AM to 10 PM",
+          "runsPerDay": 29,
+          "lastRun": "2026-10-19T08:30:00-05:00",
+          "status": "ok",
+          "evidence": "Last 3 runs found no new mail; 2 handoffs in 7 days"
+        }
+      ]
+    },
+    {
+      "id": "site-ops",
+      "name": "Lumen",
+      "role": "Site ops",
+      "routines": [
+        {
+          "id": "weekly-site-audit",
+          "name": "Weekly site audit",
+          "schedule": "Mondays 9:07 AM",
+          "runsPerDay": 0.14,
+          "lastRun": "2026-10-13T09:07:00-05:00",
+          "status": "silent-failure",
+          "evidence": "Run says saved, but audits/site-audit-2026-10-13.md is empty"
+        },
+        {
+          "id": "verify-after-ci",
+          "name": "Verify after CI on main",
+          "schedule": "When CI passes on main",
+          "runsPerDay": 2,
+          "lastRun": "2026-10-18T16:41:00-05:00",
+          "status": "ok",
+          "evidence": "Live page checked after deploy at 4:43 PM"
+        }
+      ]
+    },
+    {
+      "id": "growth",
+      "name": "Echo",
+      "role": "Growth and social",
+      "routines": [
+        {
+          "id": "post-scheduler",
+          "name": "Post scheduler",
+          "schedule": "Every day 11:17 AM",
+          "runsPerDay": 1,
+          "lastRun": "2026-10-18T11:17:00-05:00",
+          "status": "no-proof",
+          "evidence": "Run says posted; no link to the live post"
+        },
+        {
+          "id": "mentions-check",
+          "name": "Mentions check",
+          "schedule": "Every hour, 8 AM to 10 PM",
+          "runsPerDay": 15,
+          "lastRun": "2026-10-19T08:00:00-05:00",
+          "status": "ok",
+          "evidence": "3 mentions logged this week"
+        }
+      ]
+    },
+    {
+      "id": "tester",
+      "name": "Scout",
+      "role": "App tester",
+      "routines": [
+        {
+          "id": "nightly-smoke-test",
+          "name": "Nightly smoke test",
+          "schedule": "Every day 2:13 AM",
+          "runsPerDay": 1,
+          "lastRun": "2026-10-16T02:13:00-05:00",
+          "status": "missed",
+          "evidence": "No run since Oct 16; schedule still on"
+        },
+        {
+          "id": "release-check",
+          "name": "Release check",
+          "schedule": "Paused",
+          "runsPerDay": 0,
+          "lastRun": null,
+          "status": "paused",
+          "evidence": "Paused by owner until the next release"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "high",
+      "kind": "missed-run",
+      "bot": "tester",
+      "routine": "nightly-smoke-test",
+      "summary": "The nightly smoke test hasn't run for three nights.",
+      "evidence": "Last run Oct 16 at 2:13 AM; no runs Oct 17 to 19",
+      "fix": "Ask the owner to turn the routine back on and check the tester bot's app sign-in.",
+      "runsSavedPerDay": 0
+    },
+    {
+      "id": "F2",
+      "severity": "high",
+      "kind": "silent-failure",
+      "bot": "site-ops",
+      "routine": "weekly-site-audit",
+      "summary": "The weekly site audit reported success but saved an empty file.",
+      "evidence": "audits/site-audit-2026-10-13.md is 0 bytes",
+      "fix": "Add a step that reads the file back before reporting, using Proof before Done.",
+      "runsSavedPerDay": 0
+    },
+    {
+      "id": "F3",
+      "severity": "medium",
+      "kind": "waste",
+      "bot": "chief",
+      "routine": "inbox-sweep",
+      "summary": "The inbox sweep runs every 30 minutes but found new mail twice in a week.",
+      "evidence": "29 runs a day, 2 handoffs in 7 days",
+      "fix": "Run it every 2 hours from 8 AM to 10 PM instead.",
+      "runsSavedPerDay": 21
+    },
+    {
+      "id": "F4",
+      "severity": "medium",
+      "kind": "no-proof",
+      "bot": "growth",
+      "routine": "post-scheduler",
+      "summary": "The post scheduler says it posted with no link to the live post.",
+      "evidence": "Run log for Oct 18 has no post link",
+      "fix": "Make the routine open the live post and include its link before reporting.",
+      "runsSavedPerDay": 0
+    },
+    {
+      "id": "F5",
+      "severity": "low",
+      "kind": "drift",
+      "bot": "growth",
+      "summary": "The growth bot's description still lists a channel the team stopped using.",
+      "evidence": "Description line 4 names the old channel",
+      "fix": "Remove the old channel from the description.",
+      "runsSavedPerDay": 0
+    }
+  ],
+  "topThree": ["F1", "F2", "F3"]
+}
+</script>
+
+<script>
+"use strict";
+
+var STATUSES = {
+  "ok": { label: "OK", tone: "ok" },
+  "silent-failure": { label: "Silent failure", tone: "bad" },
+  "missed": { label: "Missed", tone: "bad" },
+  "failed": { label: "Failed", tone: "bad" },
+  "no-proof": { label: "No proof", tone: "warn" },
+  "paused": { label: "Paused", tone: "idle" },
+  "unverified": { label: "Unverified", tone: "warn" }
+};
+var SEVERITIES = {
+  "high": { label: "High", tone: "bad", rank: 0 },
+  "medium": { label: "Medium", tone: "warn", rank: 1 },
+  "low": { label: "Low", tone: "idle", rank: 2 }
+};
+var KINDS = {
+  "silent-failure": "Silent failure",
+  "missed-run": "Missed run",
+  "no-proof": "No proof",
+  "overlap": "Overlap",
+  "waste": "Waste",
+  "drift": "Drift",
+  "exposed-credential": "Exposed credential"
+};
+
+function isText(value) { return typeof value === "string" && value.trim().length > 0; }
+function isCount(value) { return typeof value === "number" && isFinite(value) && value >= 0; }
+function isTime(value) { return typeof value === "string" && !isNaN(Date.parse(value)); }
+
+function validateAudit(data) {
+  var errors = [];
+  if (!data || typeof data !== "object" || Array.isArray(data)) return ["The file isn't a fleet audit object."];
+  if (data.schemaVersion !== 1) errors.push("schemaVersion must be 1.");
+  if (!isText(data.fleet)) errors.push("fleet needs a name.");
+  if (!isTime(data.generatedAt)) errors.push("generatedAt must be a date and time.");
+  if (!data.period || !isTime(data.period.from) || !isTime(data.period.to)) errors.push("period needs a from and a to date.");
+  if (data.runBudgetPerDay !== null && !isCount(data.runBudgetPerDay)) errors.push("runBudgetPerDay must be a number or null.");
+  var routineKeys = {};
+  var botIds = {};
+  if (!Array.isArray(data.bots)) {
+    errors.push("bots must be a list.");
+  } else {
+    data.bots.forEach(function (bot, b) {
+      var where = "bots[" + b + "]";
+      if (!bot || typeof bot !== "object") { errors.push(where + " isn't an object."); return; }
+      if (!isText(bot.id)) errors.push(where + " needs an id.");
+      else if (botIds[bot.id]) errors.push("Bot id " + bot.id + " is used twice.");
+      else botIds[bot.id] = true;
+      if (!isText(bot.name)) errors.push(where + " needs a name.");
+      if (typeof bot.role !== "string") errors.push(where + " needs a role.");
+      if (!Array.isArray(bot.routines)) { errors.push(where + ".routines must be a list."); return; }
+      bot.routines.forEach(function (routine, r) {
+        var at = where + ".routines[" + r + "]";
+        if (!routine || typeof routine !== "object") { errors.push(at + " isn't an object."); return; }
+        if (!isText(routine.id)) errors.push(at + " needs an id.");
+        else routineKeys[bot.id + "/" + routine.id] = true;
+        if (!isText(routine.name)) errors.push(at + " needs a name.");
+        if (typeof routine.schedule !== "string") errors.push(at + " needs a schedule.");
+        if (!isCount(routine.runsPerDay)) errors.push(at + ".runsPerDay must be a number of 0 or more.");
+        if (routine.lastRun !== null && !isTime(routine.lastRun)) errors.push(at + ".lastRun must be a date and time or null.");
+        if (!Object.prototype.hasOwnProperty.call(STATUSES, routine.status)) errors.push(at + ".status isn't one of " + Object.keys(STATUSES).join(", ") + ".");
+        if (typeof routine.evidence !== "string") errors.push(at + " needs evidence.");
+      });
+    });
+  }
+  var findingIds = {};
+  if (!Array.isArray(data.findings)) {
+    errors.push("findings must be a list.");
+  } else {
+    data.findings.forEach(function (finding, f) {
+      var at = "findings[" + f + "]";
+      if (!finding || typeof finding !== "object") { errors.push(at + " isn't an object."); return; }
+      if (!isText(finding.id)) errors.push(at + " needs an id.");
+      else if (findingIds[finding.id]) errors.push("Finding id " + finding.id + " is used twice.");
+      else findingIds[finding.id] = true;
+      if (!Object.prototype.hasOwnProperty.call(SEVERITIES, finding.severity)) errors.push(at + ".severity must be high, medium or low.");
+      if (!Object.prototype.hasOwnProperty.call(KINDS, finding.kind)) errors.push(at + ".kind isn't one of " + Object.keys(KINDS).join(", ") + ".");
+      if (!isText(finding.bot) || !botIds[finding.bot]) errors.push(at + ".bot must be one of the bot ids.");
+      if (finding.routine !== undefined && !routineKeys[finding.bot + "/" + finding.routine]) errors.push(at + ".routine must be one of that bot's routine ids.");
+      ["summary", "evidence", "fix"].forEach(function (field) {
+        if (!isText(finding[field])) errors.push(at + " needs " + field + ".");
+      });
+      if (!isCount(finding.runsSavedPerDay)) errors.push(at + ".runsSavedPerDay must be a number of 0 or more.");
+    });
+  }
+  if (!Array.isArray(data.topThree) || data.topThree.length > 3) {
+    errors.push("topThree must be a list of up to three finding ids.");
+  } else {
+    data.topThree.forEach(function (id) {
+      if (!findingIds[id]) errors.push("topThree names " + String(id) + ", which isn't a finding.");
+    });
+  }
+  return errors;
+}
+
+function roundTo(value, places) {
+  var factor = Math.pow(10, places);
+  return Math.round(value * factor) / factor;
+}
+
+function summarizeAudit(data) {
+  var statusCounts = {};
+  Object.keys(STATUSES).forEach(function (key) { statusCounts[key] = 0; });
+  var severityCounts = { high: 0, medium: 0, low: 0 };
+  var routines = [];
+  var runsPerDay = 0;
+  data.bots.forEach(function (bot) {
+    bot.routines.forEach(function (routine) {
+      routines.push({ bot: bot, routine: routine });
+      statusCounts[routine.status] += 1;
+      runsPerDay += routine.runsPerDay;
+    });
+  });
+  var runsSaved = 0;
+  data.findings.forEach(function (finding) {
+    severityCounts[finding.severity] += 1;
+    runsSaved += finding.runsSavedPerDay;
+  });
+  var byId = {};
+  data.findings.forEach(function (finding) { byId[finding.id] = finding; });
+  var budget = data.runBudgetPerDay;
+  var problems = statusCounts["silent-failure"] + statusCounts["missed"] + statusCounts["failed"] + statusCounts["no-proof"];
+  return {
+    bots: data.bots.length,
+    routines: routines.length,
+    runsPerDay: roundTo(runsPerDay, 1),
+    budget: budget,
+    overBudget: budget !== null && runsPerDay > budget,
+    runsSaved: roundTo(runsSaved, 1),
+    statusCounts: statusCounts,
+    severityCounts: severityCounts,
+    problemRoutines: problems,
+    rows: routines,
+    topThree: data.topThree.map(function (id) { return byId[id]; }),
+    findings: data.findings.slice().sort(function (a, b) {
+      return SEVERITIES[a.severity].rank - SEVERITIES[b.severity].rank;
+    })
+  };
+}
+
+function formatTime(value) {
+  if (value === null) return "Never";
+  var date = new Date(value);
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function formatDate(value) {
+  var date = new Date(value + "T12:00:00");
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function el(tag, className, text) {
+  var node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function pill(tone, text) { return el("span", "pill " + tone, text); }
+
+function tile(label, value, note, tone) {
+  var node = el("div", "tile" + (tone ? " " + tone : ""));
+  node.appendChild(el("p", "label", label));
+  node.appendChild(el("p", "value", String(value)));
+  if (note) node.appendChild(el("p", "note", note));
+  return node;
+}
+
+function botName(data, id) {
+  for (var i = 0; i < data.bots.length; i += 1) if (data.bots[i].id === id) return data.bots[i].name;
+  return id;
+}
+
+function routineName(data, botId, routineId) {
+  for (var i = 0; i < data.bots.length; i += 1) {
+    if (data.bots[i].id !== botId) continue;
+    for (var j = 0; j < data.bots[i].routines.length; j += 1) {
+      if (data.bots[i].routines[j].id === routineId) return data.bots[i].routines[j].name;
+    }
+  }
+  return routineId;
+}
+
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+function showErrors(title, errors) {
+  var box = document.getElementById("error");
+  clear(box);
+  box.appendChild(el("strong", "", title));
+  var list = el("ul");
+  errors.slice(0, 20).forEach(function (message) { list.appendChild(el("li", "", message)); });
+  if (errors.length > 20) list.appendChild(el("li", "", (errors.length - 20) + " more."));
+  box.appendChild(list);
+  box.hidden = false;
+  document.getElementById("report").hidden = true;
+}
+
+function render(data) {
+  var summary = summarizeAudit(data);
+  document.getElementById("error").hidden = true;
+  document.getElementById("report").hidden = false;
+  document.title = "Fleet audit: " + data.fleet;
+  document.getElementById("fleet-name").textContent = data.fleet;
+  document.getElementById("fleet-meta").textContent =
+    formatDate(data.period.from) + " to " + formatDate(data.period.to) + ". Updated " + formatTime(data.generatedAt) + ".";
+
+  var tiles = document.getElementById("tiles");
+  clear(tiles);
+  tiles.appendChild(tile("Bots", summary.bots, summary.routines + " routines"));
+  tiles.appendChild(tile("Runs a day", summary.runsPerDay,
+    summary.budget === null ? "No budget set" : "Budget " + summary.budget + (summary.overBudget ? ", over" : ""),
+    summary.overBudget ? "bad" : ""));
+  tiles.appendChild(tile("Routines with problems", summary.problemRoutines,
+    summary.statusCounts["ok"] + " OK, " + summary.statusCounts["paused"] + " paused",
+    summary.problemRoutines > 0 ? "bad" : "good"));
+  tiles.appendChild(tile("Findings", summary.findings.length,
+    summary.severityCounts.high + " high, " + summary.severityCounts.medium + " medium, " + summary.severityCounts.low + " low",
+    summary.severityCounts.high > 0 ? "bad" : ""));
+  tiles.appendChild(tile("Runs saved a day", summary.runsSaved, "If every fix is made"));
+
+  var first = document.getElementById("fix-first");
+  clear(first);
+  if (summary.topThree.length === 0) first.appendChild(el("li", "empty", "Nothing to fix this time."));
+  summary.topThree.forEach(function (finding, index) {
+    var item = el("li");
+    item.appendChild(el("span", "rank", String(index + 1)));
+    var body = el("div");
+    body.appendChild(el("p", "", finding.summary));
+    body.appendChild(el("p", "sub", "Fix: " + finding.fix));
+    item.appendChild(body);
+    first.appendChild(item);
+  });
+
+  var rows = document.getElementById("routines");
+  clear(rows);
+  summary.rows.forEach(function (entry) {
+    var row = el("tr");
+    var status = STATUSES[entry.routine.status];
+    row.appendChild(el("td", "", entry.bot.name + (entry.bot.role ? " (" + entry.bot.role + ")" : "")));
+    row.appendChild(el("td", "", entry.routine.name));
+    row.appendChild(el("td", "", entry.routine.schedule));
+    row.appendChild(el("td", "num", String(entry.routine.runsPerDay)));
+    row.appendChild(el("td", "num", formatTime(entry.routine.lastRun)));
+    var cell = el("td");
+    cell.appendChild(pill(status.tone, status.label));
+    row.appendChild(cell);
+    row.appendChild(el("td", "", entry.routine.evidence));
+    rows.appendChild(row);
+  });
+
+  var list = document.getElementById("findings");
+  clear(list);
+  if (summary.findings.length === 0) list.appendChild(el("li", "finding empty", "No findings. Every routine ran and has proof."));
+  summary.findings.forEach(function (finding) {
+    var severity = SEVERITIES[finding.severity];
+    var item = el("li", "finding");
+    var tags = el("div", "tags");
+    tags.appendChild(pill(severity.tone, severity.label));
+    tags.appendChild(pill("idle", KINDS[finding.kind]));
+    tags.appendChild(el("span", "sub", finding.id));
+    item.appendChild(tags);
+    item.appendChild(el("h3", "", finding.summary));
+    var details = el("dl");
+    var where = botName(data, finding.bot) + (finding.routine ? ", " + routineName(data, finding.bot, finding.routine) : "");
+    [["Where", where], ["Evidence", finding.evidence], ["Fix", finding.fix]].forEach(function (pair) {
+      details.appendChild(el("dt", "", pair[0]));
+      details.appendChild(el("dd", "", pair[1]));
+    });
+    if (finding.runsSavedPerDay > 0) {
+      details.appendChild(el("dt", "", "Saves"));
+      details.appendChild(el("dd", "", finding.runsSavedPerDay + " runs a day"));
+    }
+    item.appendChild(details);
+    list.appendChild(item);
+  });
+}
+
+function load(text, source) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    showErrors("The " + source + " isn't valid JSON.", [String(error && error.message || error)]);
+    return;
+  }
+  var errors = validateAudit(data);
+  if (errors.length > 0) {
+    showErrors("The " + source + " doesn't match the fleet audit format.", errors);
+    return;
+  }
+  render(data);
+}
+
+function boot() {
+  load(document.getElementById("fleet-data").textContent, "saved audit data");
+  var input = document.getElementById("file-input");
+  input.addEventListener("change", function () {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () { load(String(reader.result), "file " + file.name); };
+    reader.readAsText(file);
+  });
+  document.addEventListener("dragover", function (event) { event.preventDefault(); });
+  document.addEventListener("drop", function (event) {
+    event.preventDefault();
+    var file = event.dataTransfer && event.dataTransfer.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () { load(String(reader.result), "file " + file.name); };
+    reader.readAsText(file);
+  });
+}
+
+if (typeof document !== "undefined") boot();
+</script>
+</body>
+</html>
