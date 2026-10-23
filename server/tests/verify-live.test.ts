@@ -338,7 +338,7 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   const shortPath = "/apple-music-soundtrack";
   const titleLength = (source) => evaluatePublicPageHtml(source, shortPath, expectations, 200).find((check) => check.name === `page:${shortPath} title-length`);
   assert.equal(titleLength(html)?.pass, true);
-  assert.equal(titleLength(html.replace("<title>JourneyDeck</title>", `<title>${"x".repeat(56)}</title>`))?.pass, false);
+  assert.equal(titleLength(html.replace("<title>JourneyDeck: Take the road. Keep the story.</title>", `<title>${"x".repeat(56)}</title>`))?.pass, false);
   assert.equal(evaluatePublicPageHtml(html, "/", expectations, 200).some((check) => check.name === "page:/ title-length"), false);
   assert.equal(canonicalUrlForPath("/", expectations), "https://journeydeck.me/");
   assert.equal(canonicalUrlForPath("/support", expectations), "https://journeydeck.me/support");
