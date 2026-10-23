@@ -335,6 +335,11 @@ test("HTML helpers parse metadata, Umami, JSON-LD, and ignore generic trial term
   const longHtml = html.replace('name="description" content="Your private journal."', `name="description" content="${longDescription}"`);
   const longChecks = evaluatePublicPageHtml(longHtml, "/", expectations, 200);
   assert.equal(longChecks.find((check) => check.name === "page:/ meta-description")?.pass, false);
+  const shortPath = "/apple-music-soundtrack";
+  const titleLength = (source) => evaluatePublicPageHtml(source, shortPath, expectations, 200).find((check) => check.name === `page:${shortPath} title-length`);
+  assert.equal(titleLength(html)?.pass, true);
+  assert.equal(titleLength(html.replace("<title>JourneyDeck: Take the road. Keep the story.</title>", `<title>${"x".repeat(56)}</title>`))?.pass, false);
+  assert.equal(evaluatePublicPageHtml(html, "/", expectations, 200).some((check) => check.name === "page:/ title-length"), false);
   assert.equal(canonicalUrlForPath("/", expectations), "https://journeydeck.me/");
   assert.equal(canonicalUrlForPath("/support", expectations), "https://journeydeck.me/support");
   assert.equal(headlineMatches("A road trip journal\nfor your iPhone.", expectations.headlines.default), true);
