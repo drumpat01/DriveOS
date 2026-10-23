@@ -177,6 +177,18 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(roadTripTracker.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(roadTripTracker.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-tracker-app"/);
     assert.doesNotMatch(roadTripTracker.body, /[\u2013\u2014]/);
+    const planner = await runtime.app.inject({ method: "GET", url: "/road-trip-planner-and-tracker" });
+    assert.equal(planner.statusCode, 200, planner.body);
+    assert.match(String(planner.headers["content-type"]), /text\/html/);
+    assert.match(planner.body, /<title>Road Trip Planner and Tracker: Plan It, Then Record It<\/title>/);
+    assert.match(planner.body, /<h1>Plan Your Road Trip, Then Track It<\/h1>/);
+    assert.match(planner.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-planner-and-tracker"/);
+    assert.match(planner.body, /class="contact" href="https:\/\/apps\.apple\.com\/app\/id6806502526">Get JourneyDeck on the App Store/);
+    assert.ok(documentTitle(planner.body).length <= 60);
+    assert.ok(metaNameContent(planner.body, "description").length <= 155);
+    const plannerFaq = JSON.parse(planner.body.match(/<script type="application\/ld\+json">\s*(\{[^<]*"FAQPage"[^<]*\})\s*<\/script>/)![1]);
+    assert.deepEqual(plannerFaq.mainEntity.map((q: { name: string }) => q.name), ["Is JourneyDeck free?", "Does JourneyDeck record drives automatically?", "What is the best app to track a road trip?"]);
+    assert.doesNotMatch(planner.body, /[\u2013\u2014]/);
     const travelPhotos = await runtime.app.inject({ method: "GET", url: "/travel-journal-app-with-photos" });
     assert.equal(travelPhotos.statusCode, 200, travelPhotos.body);
     assert.match(String(travelPhotos.headers["content-type"]), /text\/html/);
@@ -416,6 +428,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/private-driving-journal<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-journal-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-tracker-app<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-planner-and-tracker<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-with-photos<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/driving-history-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/route-66-road-trip-journal<\/loc>/i);
