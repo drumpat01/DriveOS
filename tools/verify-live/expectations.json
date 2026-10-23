@@ -240,6 +240,48 @@
         "last 30 days",
         "Atlas"
       ]
+    },
+    "/": {
+      "requiredPhrases": [
+        "If you own a Tesla, JourneyDeck can detect your drives automatically."
+      ],
+      "forbiddenPhrases": [
+        "Atlas",
+        "Ask JourneyDeck",
+        "themes",
+        "charging history",
+        "import",
+        "Apple Watch",
+        "widget",
+        "offline",
+        "photos and notes",
+        "your own photos",
+        "photo suggestions",
+        "places, photos",
+        "Siri",
+        "AI assistant"
+      ]
+    },
+    "/driving-history-app": {
+      "requiredPhrases": [
+        "The only exception is for Tesla owners: JourneyDeck can detect Tesla drives automatically."
+      ],
+      "forbiddenPhrases": [
+        "Atlas",
+        "Ask JourneyDeck",
+        "themes",
+        "charging history",
+        "import",
+        "Apple Watch",
+        "widget",
+        "offline",
+        "photos and notes",
+        "your own photos",
+        "photo suggestions",
+        "places, photos",
+        "Siri",
+        "AI assistant"
+      ]
     }
   },
   "samplePublicImages": {
@@ -298,8 +340,8 @@
       "/driving-history-app": "driving-history-app"
     },
     "requiredPhrases": [
-      "You can keep recording for free and view today’s journeys.",
-      "Plus adds full history, Atlas, Ask JourneyDeck, premium themes and icons, Tesla drive and charging history, and AI assistant connections.",
+      "Recording is free. JourneyDeck Plus is an optional annual membership.",
+      "You can see what Plus includes in the app before you subscribe.",
       "Plus is $39.99/yr."
     ],
     "forbiddenPhrases": [
