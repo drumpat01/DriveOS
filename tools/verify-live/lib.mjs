@@ -254,11 +254,10 @@ function validatePlusAnnual(raw) {
   if (
     !pages
     || pages["/"] !== "home"
-    || pages["/tesla-drive-journal"] !== "tesla-drive-journal"
     || pages["/driving-history-app"] !== "driving-history-app"
-    || Object.keys(pages).length !== 3
+    || Object.keys(pages).length !== 2
   ) {
-    throw new Error("expectations.plusAnnual.pages must name the three page slugs");
+    throw new Error("expectations.plusAnnual.pages must name the two page slugs");
   }
   if (!Array.isArray(annual.requiredPhrases) || annual.requiredPhrases.length === 0) {
     throw new Error("expectations.plusAnnual.requiredPhrases is required");
