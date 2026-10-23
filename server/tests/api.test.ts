@@ -233,7 +233,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.doesNotMatch(drivingHistory.body, /ATLAS \/ JOURNEYDECK PLUS/);
     assert.match(drivingHistory.body, /JourneyDeck is a personal drive journal, not a DMV driving record, not an insurance report, and not a mileage tax log/);
     assert.match(drivingHistory.body, /<h2>Frequently asked questions<\/h2>/);
-    assert.match(drivingHistory.body, /Is this the same as Apple Maps drive history\?/);
+    assert.match(drivingHistory.body, /Is this the same as my phone's built-in location history\?/);
     assert.match(drivingHistory.body, /href="\/privacy"/);
     assert.match(drivingHistory.body, /href="\/apple-music-soundtrack"/);
     assert.match(drivingHistory.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
