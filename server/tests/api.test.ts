@@ -177,6 +177,19 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(roadTripTracker.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(roadTripTracker.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-tracker-app"/);
     assert.doesNotMatch(roadTripTracker.body, /[\u2013\u2014]/);
+    const travelIphone = await runtime.app.inject({ method: "GET", url: "/travel-journal-app-iphone" });
+    assert.equal(travelIphone.statusCode, 200, travelIphone.body);
+    assert.match(String(travelIphone.headers["content-type"]), /text\/html/);
+    assert.match(travelIphone.body, /<title>Travel Journal App for iPhone: Record Every Drive<\/title>/);
+    assert.match(travelIphone.body, /<h1>A Travel Journal App for iPhone, Built for the Road<\/h1>/);
+    assert.match(travelIphone.body, /rel="canonical" href="https:\/\/journeydeck\.me\/travel-journal-app-iphone"/);
+    assert.ok(documentTitle(travelIphone.body).length <= 60);
+    assert.ok(metaNameContent(travelIphone.body, "description").length <= 155);
+    assert.match(travelIphone.body, /href="https:\/\/apps\.apple\.com\/app\/id6806502526">Get JourneyDeck on the App Store/);
+    const travelIphoneFaq = JSON.parse(travelIphone.body.match(/<script type="application\/ld\+json">\s*(\{[^<]*"FAQPage"[^<]*\})\s*<\/script>/)![1]);
+    assert.equal(travelIphoneFaq.mainEntity.length, 4);
+    for (const item of travelIphoneFaq.mainEntity) assert.ok(travelIphone.body.includes(`<h3>${item.name}</h3>`) && travelIphone.body.includes(item.acceptedAnswer.text.replaceAll('"', "&quot;")), item.name);
+    assert.doesNotMatch(travelIphone.body, /[–—]/);
     const travelPhotos = await runtime.app.inject({ method: "GET", url: "/travel-journal-app-with-photos" });
     assert.equal(travelPhotos.statusCode, 200, travelPhotos.body);
     assert.match(String(travelPhotos.headers["content-type"]), /text\/html/);
@@ -383,6 +396,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(googleRobotsAllowed(robots.body, "/road-trip-journal-app"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/road-trip-tracker-app"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/travel-journal-app-with-photos"), true);
+    assert.equal(googleRobotsAllowed(robots.body, "/travel-journal-app-iphone"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/driving-history-app"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/route-66-road-trip-journal"), true);
     assert.equal(googleRobotsAllowed(robots.body, "/pacific-coast-highway-road-trip-journal"), true);
@@ -417,6 +431,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-journal-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-tracker-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-with-photos<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-iphone<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/driving-history-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/route-66-road-trip-journal<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/pacific-coast-highway-road-trip-journal<\/loc>/i);
@@ -688,6 +703,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/road-trip-journal-app", canonical: "https://journeydeck.me/road-trip-journal-app" },
     { url: "/road-trip-tracker-app", canonical: "https://journeydeck.me/road-trip-tracker-app" },
     { url: "/travel-journal-app-with-photos", canonical: "https://journeydeck.me/travel-journal-app-with-photos" },
+    { url: "/travel-journal-app-iphone", canonical: "https://journeydeck.me/travel-journal-app-iphone" },
     { url: "/driving-history-app", canonical: "https://journeydeck.me/driving-history-app" },
     { url: "/route-66-road-trip-journal", canonical: "https://journeydeck.me/route-66-road-trip-journal" },
     { url: "/pacific-coast-highway-road-trip-journal", canonical: "https://journeydeck.me/pacific-coast-highway-road-trip-journal" },
@@ -698,7 +714,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/privacy", canonical: "https://journeydeck.me/privacy" },
     { url: "/terms", canonical: "https://journeydeck.me/terms" }
   ] as const;
-  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal"]);
+  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/travel-journal-app-iphone", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal"]);
   const plusAnnualPages: Record<string, { ct: string; slug: string }> = {
     "/": { ct: "home", slug: "home" },
     "/tesla-drive-journal": { ct: "tesla_page", slug: "tesla-drive-journal" },
@@ -736,6 +752,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
           return;
         }
         const record = node as { "@type"?: unknown };
+        if (record["@type"] === "SoftwareApplication" && (record as { offers?: { price?: unknown } }).offers?.price === "0") return;
         if (record["@type"] === "Offer") offers.push(record as { price?: unknown; priceCurrency?: unknown; url?: unknown; availability?: unknown; priceSpecification?: { "@type"?: unknown; price?: unknown; priceCurrency?: unknown; billingDuration?: unknown } });
         Object.values(record).forEach(visitJson);
       };
