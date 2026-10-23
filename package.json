@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:application && npm run test:e2e && npm run check:powershell && npm run check:secrets && npm run check:vulnerabilities",
-    "test:application": "npm run check:server && npm run lint:server && npm run test:server && npm run test:atlas-performance",
+    "test:application": "npm run check:server && npm run lint:server && npm run test:server && npm run test:site:routes && npm run test:atlas-performance",
     "test:e2e": "playwright test",
     "check:powershell": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/Test-PSScriptAnalyzer.ps1",
     "check:secrets": "gitleaks git --redact --no-banner --exit-code 1 .",
@@ -25,6 +25,7 @@
     "dev:server": "tsx server/src/index.ts",
     "verify:live": "node tools/verify-live/verify-live.mjs",
     "test:site": "node --test --import tsx --import ./cloudflare/site/tests/register-csv-hook.mjs --test-timeout 180000 cloudflare/site/tests/*.test.ts",
+    "test:site:routes": "node --test --import tsx --import ./cloudflare/site/tests/register-csv-hook.mjs cloudflare/site/tests/routes.test.ts",
     "check:site": "tsc -p cloudflare/site/tsconfig.json --noEmit",
     "parity:site": "node cloudflare/site/parity-check.mjs",
     "predeploy:site": "node cloudflare/site/predeploy-check.mjs",
