@@ -282,49 +282,26 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(teslaJournal.statusCode, 200, teslaJournal.body);
     assert.match(String(teslaJournal.headers["content-type"]), /text\/html/);
     assert.match(teslaJournal.body, /<h1>The trip, later<\/h1>/);
-    assert.match(teslaJournal.body, /Then you can replay the whole trip\. iPhone only\./);
-    assert.match(teslaJournal.body, /the iPhone's GPS detects the drives/);
-    assert.match(teslaJournal.body, /imports the car's drives and charging history from the last 30 days/);
-    assert.match(teslaJournal.body, /Music &amp; Connections, and tap Connect on the Tesla card/);
-    assert.match(teslaJournal.body, /Generate Access Token/);
-    assert.match(teslaJournal.body, /access token field/);
-    assert.match(teslaJournal.body, /One tap or Siri\. Those are the Start Journey and Stop Journey shortcuts\./);
-    assert.match(teslaJournal.body, /<p class="step-note">That service is separate, and any fees for it are separate\. The token stays in this iPhone's Keychain\.<\/p>/);
+    assert.match(teslaJournal.body, /<title>Tesla Drive Journal: Log Your Tesla Drives on iPhone<\/title>/);
+    assert.match(teslaJournal.body, /If you own a Tesla, JourneyDeck can detect your drives automatically\./);
+    assert.match(teslaJournal.body, /<h2>How JourneyDeck works with your Tesla<\/h2>/);
     assert.match(teslaJournal.body, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers\./);
-    assert.match(teslaJournal.body, /<h2>What's free<\/h2>/);
-    assert.match(teslaJournal.body, /Manual drive recording and route viewing/);
-    assert.match(teslaJournal.body, /Today's journeys\./);
     assert.match(teslaJournal.body, /<h2>Frequently asked questions<\/h2>/);
     assert.match(teslaJournal.body, /"@type": "FAQPage"/);
-    assert.match(teslaJournal.body, /What iPhone does it need\?/);
-    assert.match(teslaJournal.body, /iOS 17 or later\./);
+    assert.match(teslaJournal.body, /Automatic drive detection is only for Tesla owners\. Without a Tesla, you start each drive yourself with Start Journey\./);
     assert.match(teslaJournal.body, /<nav class="desktop-nav" aria-label="Main navigation"><a href="\/">Home<\/a><a href="\/tesla-drive-journal" aria-current="page">Tesla<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
     assert.match(teslaJournal.body, /aria-label="Mobile navigation"><a href="\/">Home<\/a><a href="\/tesla-drive-journal" aria-current="page">Tesla<\/a><a href="\/apple-music-soundtrack">Soundtracks<\/a>/);
     assert.doesNotMatch(teslaJournal.body, /Tesla journal/);
     assert.match(teslaJournal.body, /href="\/public-a11y\.css\?v=4"/);
-    assert.match(teslaJournal.body, /06-atlas-400\.webp\?v=1 400w[\s\S]{0,180}sizes="\(max-width: 700px\) 228px, 300px"/);
-    assert.match(teslaJournal.body, /alt="A trip replay in JourneyDeck\. Not a Tesla drive\."/);
-    assert.match(teslaJournal.body, /<figcaption>A trip replay in JourneyDeck\. Not a Tesla drive\.<\/figcaption>/);
-    assert.match(teslaJournal.body, /alt="Atlas in JourneyDeck\. Not Tesla data\."/);
-    assert.match(teslaJournal.body, /<figcaption>Atlas in JourneyDeck\. Not Tesla data\.<\/figcaption>/);
-    assert.match(teslaJournal.body, /srcset="\/assets\/v4\/02-journey-screen-400\.webp\?v=1 400w, \/assets\/v4\/02-journey-screen\.webp\?v=1 516w"/);
-    assert.match(teslaJournal.body, /srcset="\/assets\/v4\/06-atlas-400\.webp\?v=1 400w, \/assets\/v4\/06-atlas\.webp\?v=1 660w"/);
-    assert.match(teslaJournal.body, /width="516" height="1108" loading="lazy"/);
-    assert.match(teslaJournal.body, /width="660" height="1434" loading="lazy"/);
-    assert.doesNotMatch(teslaJournal.body, /route-replay\.jpg|appstore-03/);
-    const teslaFigures = teslaJournal.body.match(/<figure>[\s\S]*?<\/figure>/gi)?.join("\n") ?? "";
-    assert.doesNotMatch(teslaFigures, /tessie/i);
     assert.match(teslaJournal.body, /rel="preload" as="image" href="\/assets\/beta\/grand-touring-home-800\.webp\?v=1"/);
     assert.match(teslaJournal.body, /class="hero has-photo"/);
-    assert.match(teslaJournal.body, /class="hero-photo"/);
-    assert.match(teslaJournal.body, /class="soundtrack-proof soundtrack-proof--pair"/);
     assert.match(teslaJournal.body, /class="lede tesla-lede"/);
-    assert.equal((teslaJournal.body.match(/Start Journey/g) || []).length, 1);
-    assert.equal((teslaJournal.body.match(/Stop Journey/g) || []).length, 1);
     const teslaVisible = teslaJournal.body.replace(/<head[\s\S]*?<\/head>/i, "").replace(/<script[\s\S]*?<\/script>/gi, "");
-    assert.equal((teslaVisible.match(/JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers\./g) || []).length, 2);
-    assert.equal((teslaVisible.match(/One tap or Siri\. Those are the Start Journey and Stop Journey shortcuts\./g) || []).length, 1);
-    assert.equal((teslaVisible.match(/adds automatic drive and charging history\./g) || []).length, 1);
+    // FACTS.md (Oct 23): automatic detection is Tesla-only; Plus features, the 30-day import and charging history stay held.
+    assert.doesNotMatch(teslaJournal.body, /charging history|last 30 days|Atlas|Ask JourneyDeck|AI assistant/i);
+    for (const sentence of teslaVisible.replace(/<[^>]+>/g, " ").split(/(?<=[.?!])\s+/)) {
+      if (/automatic/i.test(sentence) && !sentence.trim().endsWith("?")) assert.match(sentence, /Tesla/, sentence);
+    }
     assert.doesNotMatch(teslaJournal.body, /tessie/i);
     assert.doesNotMatch(teslaVisible, /a Plus feature/);
     assert.match(teslaJournal.body, /href="\/privacy"/);
@@ -701,7 +678,6 @@ test("public marketing pages expose one title, description, canonical, Open Grap
   const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal"]);
   const plusAnnualPages: Record<string, { ct: string; slug: string }> = {
     "/": { ct: "home", slug: "home" },
-    "/tesla-drive-journal": { ct: "tesla_page", slug: "tesla-drive-journal" },
     "/driving-history-app": { ct: "driving_history", slug: "driving-history-app" }
   };
   try {
@@ -771,7 +747,8 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       if (page.url === "/") assert.match(description, /^Your private journal/, `${page.url} description`);
       if (page.url === "/road-trip-journal-app") assert.match(description, /^Your private road trip journal/, `${page.url} description`);
       if (page.url === "/tesla-drive-journal") {
-        assert.match(description, /drives and charging history/, `${page.url} description`);
+        assert.match(description, /automatically only for Tesla owners/, `${page.url} description`);
+        assert.doesNotMatch(description, /charging history/, `${page.url} description`);
         assert.doesNotMatch(html, /plus-trial-banner|plus-trial-click|Try the free trial of JourneyDeck Plus, then \$39\.99\/yr\./);
         assert.match(html, /JourneyDeck Plus, \$39\.99\/yr, 7-day free trial for new subscribers/, `${page.url} price`);
         assert.doesNotMatch(html, /\$39\.99\/year/, `${page.url} old annual wording`);
