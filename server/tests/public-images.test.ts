@@ -102,6 +102,7 @@ test("home page hero and scenic photos use versioned responsive srcset", async (
       "/apple-music-soundtrack",
       "/private-driving-journal",
       "/road-trip-journal-app",
+      "/drive-log-app",
       "/road-trip-planner-and-tracker",
       "/travel-journal-app-iphone",
       "/road-trip-tracker-app",
