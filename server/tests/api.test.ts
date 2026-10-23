@@ -224,7 +224,10 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(drivingHistory.statusCode, 200, drivingHistory.body);
     assert.match(String(drivingHistory.headers["content-type"]), /text\/html/);
     assert.match(drivingHistory.body, /<h1>Driving history app for iPhone<\/h1>/);
-    assert.match(drivingHistory.body, /<p class="lede">A private history of the roads you choose to keep: routes, places, photos and the songs that played. All on your iPhone.<\/p>/);
+    assert.match(drivingHistory.body, /<p class="lede">A private history of the roads you choose to keep: routes, places, and the songs that played. All on your iPhone.<\/p>/);
+    // FACTS.md (Oct 23): Plus feature details, photos, widget, Apple Watch and offline claims stay held.
+    assert.doesNotMatch(drivingHistory.body, /Atlas|Ask JourneyDeck|themes|charging history|Apple Watch|widget|offline|photos and notes|AI assistant/i);
+    assert.match(drivingHistory.body, /The only exception is for Tesla owners: JourneyDeck can detect Tesla drives automatically\./);
     assert.match(drivingHistory.body, /THE ROAD \/ FREE/);
     assert.match(drivingHistory.body, /Manually start a journey on iPhone to save your route, distance, and drive time on your device/);
     assert.doesNotMatch(drivingHistory.body, /ATLAS \/ JOURNEYDECK PLUS/);
@@ -235,8 +238,6 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(drivingHistory.body, /href="\/apple-music-soundtrack"/);
     assert.match(drivingHistory.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(drivingHistory.body, /rel="canonical" href="https:\/\/journeydeck\.me\/driving-history-app"/);
-    assert.match(drivingHistory.body, /JourneyDeck Plus adds Atlas/);
-    assert.doesNotMatch(drivingHistory.body, /unlocks Atlas/);
     assert.doesNotMatch(drivingHistory.body, /[\u2013\u2014]/);
     const route66 = await runtime.app.inject({ method: "GET", url: "/route-66-road-trip-journal" });
     assert.equal(route66.statusCode, 200, route66.body);
@@ -478,14 +479,14 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assertStudioNav(landing.body, "/");
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
-    assert.match(landing.body, /aria-label="1 of 5: Today"/);
+    assert.match(landing.body, /aria-label="1 of 3: Today"/);
     assert.match(landing.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(landing.body, /https:\/\/www\.apple\.com\/legal\/internet-services\/itunes\/dev\/stdeula\//);
     assert.match(landing.body, /IPAD \/ YOUR LIBRARY/);
     assert.match(landing.body, /property="og:image" content="https:\/\/journeydeck\.me\/assets\/beta\/share-card\.png\?v=1"/);
     assert.match(landing.body, /name="twitter:image" content="https:\/\/journeydeck\.me\/assets\/beta\/share-card\.png\?v=1"/);
     assert.match(landing.body, /name="twitter:card" content="summary_large_image"/);
-    assert.match(landing.body, /APPLE WATCH \/ PAIRED IPHONE/);
+    assert.doesNotMatch(landing.body, /APPLE WATCH/);
     assert.match(landing.body, /<meta name="google-site-verification" content="C9F75mNcVf450GCL_J5RBoD5NRkqRig1EwwXUrr0P-w" \/>/);
     assert.match(String(landing.headers["content-security-policy"]), /default-src 'self'/);
     assert.match(String(landing.headers["content-security-policy"]), /script-src[^;]*https:\/\/static\.cloudflareinsights\.com/);
@@ -514,7 +515,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /id="replay"/);
     assert.match(landing.body, /class="feature-cta" href="\/road-trip-tracker-app">See the road trip tracker app/);
     assert.match(landing.body, /id="memories"/);
-    assert.match(landing.body, /class="feature-cta" href="\/travel-journal-app-with-photos">See the travel journal with photos/);
+    assert.match(landing.body, /class="feature-cta" href="\/travel-journal-app-with-photos">See the travel journal app/);
     assert.match(landing.body, /id="templates"/);
     assert.match(landing.body, /FROM THE STUDIO/);
     assert.match(landing.body, /Plan the next one\.<br><span class="gold">Road Trip templates\.<\/span>/);
@@ -523,13 +524,13 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /class="feature-cta" href="\/driving-history-app">See the driving history app/);
     assert.match(landing.body, /<h1 id="hero-title">A road trip journal<br><span class="gold">for your iPhone\.<\/span><\/h1>/);
     assert.match(landing.body, /Your journal lives on your device\. No account required\./);
-    assert.match(landing.body, /Your drives, and the music you played\. Tesla owners with Plus can bring drives and charging in automatically\./);
+    assert.match(landing.body, /Your drives, and the music you played\. Tap Start Journey to record a drive\. If you own a Tesla, JourneyDeck can detect your drives automatically\./);
     assert.doesNotMatch(landing.body, /tessie/i);
     assert.match(landing.body, /class="feature-cta" href="\/tesla-drive-journal">See the Tesla drive journal/);
-    assert.match(landing.body, /Ask JourneyDeck/);
+    // FACTS.md (Oct 23): Plus feature details and unverified features stay held on the home page.
+    assert.doesNotMatch(landing.body, /Atlas|Ask JourneyDeck|charging history|Start a Journey widget|Apple Watch|offline|photos and notes|AI assistant/i);
     assert.match(landing.body, /Journey Markers/);
-    assert.match(landing.body, /Start a Journey widget/);
-    assert.match(landing.body, /Cinematic Dark, Rosewater, Autumn Drive, and Aurora Glass/);
+    assert.doesNotMatch(landing.body, /Autumn Drive|Aurora Glass|themes with matching icons/);
     assert.match(landing.body, /class="mobile-menu"/);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.match(landing.body, /Follow @JourneyDeck on X/i);
@@ -803,7 +804,8 @@ test("public marketing pages expose one title, description, canonical, Open Grap
       const plusAnnualBlock = html.match(/<section\b[^>]*\bid="plus-annual"[^>]*>[\s\S]*?<\/section>/i)?.[0] ?? "";
       if (plusAnnual) {
         assert.match(plusAnnualBlock, /<h2\b[^>]*>JourneyDeck Plus annual<\/h2>/, page.url);
-        assert.match(plusAnnualBlock, /You can keep recording for free and view today’s journeys\./, page.url);
+        assert.match(plusAnnualBlock, /Recording is free\. JourneyDeck Plus is an optional annual membership\./, page.url);
+        assert.doesNotMatch(plusAnnualBlock, /Atlas|Ask JourneyDeck|themes|charging history|AI assistant/, page.url);
         assert.match(plusAnnualBlock, /Plus is \$39\.99\/yr\./, page.url);
         assert.match(plusAnnualBlock, /data-umami-event="plus-annual-click"/, page.url);
         assert.match(plusAnnualBlock, /Start your free trial/, page.url);
