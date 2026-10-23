@@ -259,7 +259,8 @@
         "photo suggestions",
         "places, photos",
         "Siri",
-        "AI assistant"
+        "AI assistant",
+        "iPad"
       ]
     },
     "/driving-history-app": {
@@ -281,6 +282,15 @@
         "places, photos",
         "Siri",
         "AI assistant"
+      ]
+    },
+    "/privacy": {
+      "requiredPhrases": [],
+      "forbiddenPhrases": [
+        "iPad",
+        "Ask JourneyDeck",
+        "Apple Watch",
+        "widget"
       ]
     }
   },
