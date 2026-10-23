@@ -71,7 +71,7 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 - Owner: `web/beta.html` (`GET /`), `web/tesla-drive-journal.html`, and `web/driving-history-app.html`. The block is `section#plus-annual`.
 - The heading is `JourneyDeck Plus annual`. The copy matches the Support answer in the second person (`You can keep recording for free and view today’s journeys.`) and names only Plus additions already described on the site. The price line is `Plus is $39.99/yr.` The block does not state a trial length, a weekly price, or a third-party app name.
 - The primary control reads `Start your free trial` and uses `data-umami-event="plus-annual-click"`. Its href is that page's App Store URL (`pt`, the page `ct`, and `mt`) plus `utm_source=journeydeck.me`, `utm_medium=site`, `utm_campaign=plus_annual`, and `utm_content` set to the page slug (`home`, `tesla-drive-journal`, or `driving-history-app`). At 620px and below the control is full width, and the label and arrow stay together in the center.
-- Styles live in the stylesheets those pages already load (`web/beta.css` and `web/public-page.css`). Cache-bust tokens are `beta.css?v=plus-annual-3` and `public-page.css?v=plus-annual-3`. `web/api-docs.html` and the retired notice stay on `public-page.css?v=perf-1`.
+- Styles live in the stylesheets those pages already load (`web/beta.css` and `web/public-page.css`). Cache-bust tokens are `beta.css?v=faq-1` and `public-page.css?v=plus-annual-3`. `web/api-docs.html` and the retired notice stay on `public-page.css?v=perf-1`.
 - Checks: `page:/ plus-annual`, `page:/tesla-drive-journal plus-annual`, `page:/driving-history-app plus-annual`.
 
 ## Terms Studio products
@@ -99,7 +99,7 @@ When a page contains an `Offer`, `page:<path> offer` requires `price` `39.99`, `
 - Owner: the site footer in every public HTML page, including `web/404.html`. The 410 notice in `cloudflare/site/src/retired.ts` has no site footer.
 - The footer contains `expectations.followxBadge.href` (`https://followx.today/b/journeydeck.me`) and the dark badge `expectations.followxBadge.imageSrc` (`theme=dark`). FollowX draws that badge from its own launch state: it read "Launching on Oct 22" before launch and "Featured on FollowX.today" with the upvote count after. `v=live` is a cache-bust so browsers that kept the launch-day image fetch the current one; change it again if FollowX changes the art.
 - That image keeps explicit `imageWidth` and `imageHeight` (`250` and `54`, the SVG's own size) so the lazy image reserves its box and layout shift stays at 0.
-- `web/beta.css` and `web/public-page.css` draw the badge at 200px wide, the same width as the Launch Llama badge (`expectations.launchBadge.imageWidth`). Those stylesheets currently cache-bust as `beta.css?v=plus-annual-3` and `public-page.css?v=plus-annual-3`.
+- `web/beta.css` and `web/public-page.css` draw the badge at 200px wide, the same width as the Launch Llama badge (`expectations.launchBadge.imageWidth`). Those stylesheets currently cache-bust as `beta.css?v=faq-1` and `public-page.css?v=plus-annual-3`.
 - Checks: `page:<path> followx-badge` on every public page and on the 404 path.
 
 ## Launch Llama badge
