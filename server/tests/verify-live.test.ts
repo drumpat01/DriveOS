@@ -73,6 +73,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/apple-music-soundtrack",
     "/private-driving-journal",
     "/road-trip-journal-app",
+    "/drive-log-app",
     "/road-trip-tracker-app",
     "/travel-journal-app-with-photos",
     "/driving-history-app",
@@ -164,6 +165,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
   assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "private_journal");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-journal-app"], "road_trip");
+  assert.equal(expectations.appStore.pageCampaigns["/drive-log-app"], "drive_log");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-tracker-app"], "road_trip_tracker");
   assert.equal(expectations.appStore.pageCampaigns["/travel-journal-app-with-photos"], "travel_journal");
   assert.equal(expectations.appStore.pageCampaigns["/driving-history-app"], "driving_history");

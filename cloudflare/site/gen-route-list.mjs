@@ -33,6 +33,7 @@ const pages = [
   ["/apple-music-soundtrack", "apple-music-soundtrack.html", ""],
   ["/private-driving-journal", "private-driving-journal.html", ""],
   ["/road-trip-journal-app", "road-trip-journal-app.html", ""],
+  ["/drive-log-app", "drive-log-app.html", ""],
   ["/road-trip-tracker-app", "road-trip-tracker-app.html", ""],
   ["/travel-journal-app-with-photos", "travel-journal-app-with-photos.html", ""],
   ["/driving-history-app", "driving-history-app.html", ""],

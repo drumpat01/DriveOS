@@ -415,6 +415,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/apple-music-soundtrack<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/private-driving-journal<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-journal-app<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/drive-log-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-tracker-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-with-photos<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/driving-history-app<\/loc>/i);
@@ -686,6 +687,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/apple-music-soundtrack", canonical: "https://journeydeck.me/apple-music-soundtrack" },
     { url: "/private-driving-journal", canonical: "https://journeydeck.me/private-driving-journal" },
     { url: "/road-trip-journal-app", canonical: "https://journeydeck.me/road-trip-journal-app" },
+    { url: "/drive-log-app", canonical: "https://journeydeck.me/drive-log-app" },
     { url: "/road-trip-tracker-app", canonical: "https://journeydeck.me/road-trip-tracker-app" },
     { url: "/travel-journal-app-with-photos", canonical: "https://journeydeck.me/travel-journal-app-with-photos" },
     { url: "/driving-history-app", canonical: "https://journeydeck.me/driving-history-app" },
@@ -698,7 +700,7 @@ test("public marketing pages expose one title, description, canonical, Open Grap
     { url: "/privacy", canonical: "https://journeydeck.me/privacy" },
     { url: "/terms", canonical: "https://journeydeck.me/terms" }
   ] as const;
-  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal"]);
+  const rewrittenDescriptions = new Set(["/support", "/privacy", "/private-driving-journal", "/road-trip-journal-app", "/drive-log-app", "/road-trip-tracker-app", "/travel-journal-app-with-photos", "/driving-history-app", "/route-66-road-trip-journal", "/pacific-coast-highway-road-trip-journal", "/national-parks-road-trip-journal", "/texas-hill-country-road-trip-journal", "/tesla-drive-journal"]);
   const plusAnnualPages: Record<string, { ct: string; slug: string }> = {
     "/": { ct: "home", slug: "home" },
     "/tesla-drive-journal": { ct: "tesla_page", slug: "tesla-drive-journal" },
