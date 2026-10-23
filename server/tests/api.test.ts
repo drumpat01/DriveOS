@@ -183,7 +183,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(planner.body, /<title>Road Trip Planner and Tracker: Plan It, Then Record It<\/title>/);
     assert.match(planner.body, /<h1>Plan Your Road Trip, Then Track It<\/h1>/);
     assert.match(planner.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-planner-and-tracker"/);
-    assert.match(planner.body, /class="contact" href="https:\/\/apps\.apple\.com\/app\/id6806502526">Get JourneyDeck on the App Store/);
+    assert.match(planner.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=road_trip_planner&mt=8">Get JourneyDeck on the App Store/);
     assert.ok(documentTitle(planner.body).length <= 60);
     assert.ok(metaNameContent(planner.body, "description").length <= 155);
     const plannerFaq = JSON.parse(planner.body.match(/<script type="application\/ld\+json">\s*(\{[^<]*"FAQPage"[^<]*\})\s*<\/script>/)![1]);
