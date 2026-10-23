@@ -87,6 +87,12 @@
     "7-day free trial"
   ],
   "maxMetaDescriptionLength": 155,
+  "maxTitleLength": 55,
+  "shortTitlePages": [
+    "/texas-hill-country-road-trip-journal",
+    "/pacific-coast-highway-road-trip-journal",
+    "/apple-music-soundtrack"
+  ],
   "thirdPartyAppNames": [
     "Tessie",
     "TeslaFi",

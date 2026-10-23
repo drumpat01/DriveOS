@@ -793,6 +793,9 @@ export function evaluatePublicPageHtml(html, pathname, expectations, statusCode)
     .flatMap((extracted) => findAppNames(extracted.value, expectations.thirdPartyAppNames)))];
   const checks = [
     makeCheck(`page:${pathname} status`, statusCode === 200, statusCode),
+    ...(expectations.shortTitlePages?.includes(pathname)
+      ? [makeCheck(`page:${pathname} title-length`, [title, ogTitle].every((t) => typeof t.value === "string" && t.value.length <= expectations.maxTitleLength), { title: title.value, ogTitle: ogTitle.value, max: expectations.maxTitleLength })]
+      : []),
     makeCheck(`page:${pathname} title`, title.count === 1 && Boolean(title.value), title),
     makeCheck(`page:${pathname} meta-description`, descriptionFits(description), { ...description, max: maxDescription }),
     makeCheck(`page:${pathname} description-voice`, voiceOk(description) && voiceOk(ogDescription) && (twitterDescription.count === 0 || voiceOk(twitterDescription)), {
