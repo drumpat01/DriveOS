@@ -74,6 +74,7 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
     "/private-driving-journal",
     "/road-trip-journal-app",
     "/road-trip-planner-and-tracker",
+    "/travel-journal-app-iphone",
     "/road-trip-tracker-app",
     "/travel-journal-app-with-photos",
     "/driving-history-app",
@@ -117,11 +118,9 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.deepEqual(expectations.plusAnnual.utm, { source: "journeydeck.me", medium: "site", campaign: "plus_annual" });
   assert.deepEqual(expectations.plusAnnual.pages, {
     "/": "home",
-    "/tesla-drive-journal": "tesla-drive-journal",
     "/driving-history-app": "driving-history-app"
   });
   assert.equal(plusAnnualHref("/", expectations), "https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=home&mt=8&utm_source=journeydeck.me&utm_medium=site&utm_campaign=plus_annual&utm_content=home");
-  assert.equal(plusAnnualHref("/tesla-drive-journal", expectations), "https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=tesla_page&mt=8&utm_source=journeydeck.me&utm_medium=site&utm_campaign=plus_annual&utm_content=tesla-drive-journal");
   assert.equal(plusAnnualHref("/driving-history-app", expectations), "https://apps.apple.com/us/app/journeydeck/id6806502526?pt=129344416&ct=driving_history&mt=8&utm_source=journeydeck.me&utm_medium=site&utm_campaign=plus_annual&utm_content=driving-history-app");
   assert.throws(() => validateExpectations({ ...expectations, plusAnnual: { ...expectations.plusAnnual, price: "$39.99/year" } }), /\$39\.99\/yr/);
   assert.equal(expectations.maxMetaDescriptionLength, 155);
@@ -157,15 +156,13 @@ test("expectations loader reads the checked-in file and rejects incomplete objec
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("2.99"));
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("monthly"));
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("$39.99/year"));
-  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Plus keeps your full history and Atlas, and adds automatic drive and charging history."));
-  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Neither one shows a Tesla drive."));
-  assert.ok(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Keep your Tesla drives and charging history on your iPhone."));
   assert.equal(expectations.pages["/tesla-drive-journal"].requiredPhrases.includes("Try the free trial of JourneyDeck Plus, then $39.99/yr."), false);
   assert.ok(expectations.pages["/tesla-drive-journal"].forbiddenPhrases.includes("Tessie"));
   assert.equal(expectations.appStore.pageCampaigns["/apple-music-soundtrack"], "soundtrack");
   assert.equal(expectations.appStore.pageCampaigns["/private-driving-journal"], "private_journal");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-journal-app"], "road_trip");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-planner-and-tracker"], "road_trip_planner");
+  assert.equal(expectations.appStore.pageCampaigns["/travel-journal-app-iphone"], "travel_journal_iphone");
   assert.equal(expectations.appStore.pageCampaigns["/road-trip-tracker-app"], "road_trip_tracker");
   assert.equal(expectations.appStore.pageCampaigns["/travel-journal-app-with-photos"], "travel_journal");
   assert.equal(expectations.appStore.pageCampaigns["/driving-history-app"], "driving_history");
