@@ -185,7 +185,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(travelIphone.body, /rel="canonical" href="https:\/\/journeydeck\.me\/travel-journal-app-iphone"/);
     assert.ok(documentTitle(travelIphone.body).length <= 60);
     assert.ok(metaNameContent(travelIphone.body, "description").length <= 155);
-    assert.match(travelIphone.body, /href="https:\/\/apps\.apple\.com\/app\/id6806502526">Get JourneyDeck on the App Store/);
+    assert.match(travelIphone.body, /href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=travel_journal_iphone&mt=8">Get JourneyDeck on the App Store/);
     const travelIphoneFaq = JSON.parse(travelIphone.body.match(/<script type="application\/ld\+json">\s*(\{[^<]*"FAQPage"[^<]*\})\s*<\/script>/)![1]);
     assert.equal(travelIphoneFaq.mainEntity.length, 4);
     for (const item of travelIphoneFaq.mainEntity) assert.ok(travelIphone.body.includes(`<h3>${item.name}</h3>`) && travelIphone.body.includes(item.acceptedAnswer.text.replaceAll('"', "&quot;")), item.name);
