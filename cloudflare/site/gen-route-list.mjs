@@ -35,6 +35,8 @@ const pages = [
   ["/road-trip-journal-app", "road-trip-journal-app.html", ""],
   ["/road-trip-tracker-app", "road-trip-tracker-app.html", ""],
   ["/travel-journal-app-with-photos", "travel-journal-app-with-photos.html", ""],
+  ["/travel-journal-app-iphone", "travel-journal-app-iphone.html", ""],
+  ["/road-trip-planner-and-tracker", "road-trip-planner-and-tracker.html", ""],
   ["/driving-history-app", "driving-history-app.html", ""],
   ["/route-66-road-trip-journal", "route-66-road-trip-journal.html", ""],
   ["/pacific-coast-highway-road-trip-journal", "pacific-coast-highway-road-trip-journal.html", ""],

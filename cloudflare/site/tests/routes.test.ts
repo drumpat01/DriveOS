@@ -21,8 +21,8 @@ function matched(method: string, path: string) {
 }
 
 test("route list has the phase-one shape", () => {
-  assert.equal(routes.length, 463);
-  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 456);
+  assert.equal(routes.length, 467);
+  assert.equal(routes.filter(route => route.phase1_owner === "worker").length, 460);
   assert.equal(routes.filter(route => route.phase1_owner === "passthrough").length, 0);
   assert.equal(routes.filter(route => route.worker_action === "health").length, 4);
   assert.equal(routes.filter(route => route.target === "RENDER_ORIGIN").length, 0);

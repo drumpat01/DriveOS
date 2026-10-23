@@ -183,6 +183,18 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(roadTripTracker.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(roadTripTracker.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-tracker-app"/);
     assert.doesNotMatch(roadTripTracker.body, /[\u2013\u2014]/);
+    const planner = await runtime.app.inject({ method: "GET", url: "/road-trip-planner-and-tracker" });
+    assert.equal(planner.statusCode, 200, planner.body);
+    assert.match(String(planner.headers["content-type"]), /text\/html/);
+    assert.match(planner.body, /<title>Road Trip Planner and Tracker: Plan It, Then Record It<\/title>/);
+    assert.match(planner.body, /<h1>Plan Your Road Trip, Then Track It<\/h1>/);
+    assert.match(planner.body, /rel="canonical" href="https:\/\/journeydeck\.me\/road-trip-planner-and-tracker"/);
+    assert.match(planner.body, /class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=road_trip_planner&mt=8">Get JourneyDeck on the App Store/);
+    assert.ok(documentTitle(planner.body).length <= 60);
+    assert.ok(metaNameContent(planner.body, "description").length <= 155);
+    const plannerFaq = JSON.parse(planner.body.match(/<script type="application\/ld\+json">\s*(\{[^<]*"FAQPage"[^<]*\})\s*<\/script>/)![1]);
+    assert.deepEqual(plannerFaq.mainEntity.map((q: { name: string }) => q.name), ["Is JourneyDeck free?", "Does JourneyDeck record drives automatically?", "What is the best app to track a road trip?"]);
+    assert.doesNotMatch(planner.body, /[\u2013\u2014]/);
     const travelIphone = await runtime.app.inject({ method: "GET", url: "/travel-journal-app-iphone" });
     assert.equal(travelIphone.statusCode, 200, travelIphone.body);
     assert.match(String(travelIphone.headers["content-type"]), /text\/html/);
@@ -413,6 +425,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/private-driving-journal<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-journal-app<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-tracker-app<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/road-trip-planner-and-tracker<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-with-photos<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/travel-journal-app-iphone<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/driving-history-app<\/loc>/i);
@@ -460,7 +473,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     for (const rel of ["api-catalog", "service-desc", "service-doc", "describedby"]) assert.match(links, new RegExp(`rel="${rel}"`));
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 4\.0/);
-    assert.match(landing.body, /href="\/beta\.css\?v=plus-annual-3"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=faq-1"/);
     assertStudioNav(landing.body, "/");
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
