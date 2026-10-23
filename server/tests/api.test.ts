@@ -94,7 +94,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(privacy.body, /both your app-wide setting and that assistant’s setting allow it/);
     assert.match(privacy.body, /Optional Tesla connection/);
     assert.doesNotMatch(privacy.body, /tessie/i);
-    assert.match(privacy.body, /Questions and answers are not saved and are not sent to JourneyDeck servers/);
+    assert.doesNotMatch(privacy.body, /iPad|Apple Watch|widget|Ask JourneyDeck/i);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.match(privacy.body, /\/public-page\.css\?v=plus-annual-3/);
     assert.equal(support.statusCode, 200, support.body);
@@ -482,7 +482,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /aria-label="1 of 3: Today"/);
     assert.match(landing.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(landing.body, /https:\/\/www\.apple\.com\/legal\/internet-services\/itunes\/dev\/stdeula\//);
-    assert.match(landing.body, /IPAD \/ YOUR LIBRARY/);
+    assert.doesNotMatch(landing.body, /iPad/i);
+    assert.match(landing.body, /JourneyDeck 4\.0 for iPhone\./);
     assert.match(landing.body, /property="og:image" content="https:\/\/journeydeck\.me\/assets\/beta\/share-card\.png\?v=1"/);
     assert.match(landing.body, /name="twitter:image" content="https:\/\/journeydeck\.me\/assets\/beta\/share-card\.png\?v=1"/);
     assert.match(landing.body, /name="twitter:card" content="summary_large_image"/);
