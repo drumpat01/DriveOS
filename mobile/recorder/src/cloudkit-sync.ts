@@ -60,7 +60,7 @@ import {
   isEditorManagedMusic,
   repairPhotoLocalUri,
 } from './local-store';
-import { PRIVATE_PLACE_PREFIX, parsePrivatePlace } from './private-place-record';
+import { PRIVATE_PLACE_PREFIX, tryParsePrivatePlace } from './private-place-record';
 import { resolvePrivatePhotoFile } from './private-photo-file';
 import { resolveVersionedPrivateConflict } from './private-content-conflicts';
 import { parseRouteArchive, ROUTE_ARCHIVE_FORMAT_VERSION, serializeRouteArchive } from './route-archive';
@@ -869,7 +869,8 @@ export class CloudKitSyncEngine {
         let value: unknown = null;
         try { value = JSON.parse(remote.valueJson); } catch { continue; }
         if (remote.key.startsWith(PRIVATE_PLACE_PREFIX)) {
-          const place = parsePrivatePlace(remote.valueJson);
+          const place = tryParsePrivatePlace(remote.valueJson);
+          if (!place) continue;
           if (remote.deletedAt) deletePlace(this.userId, place.id, { fromCloud: true });
           else upsertPlace({ ...place, userId: this.userId }, { fromCloud: true, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
         }
