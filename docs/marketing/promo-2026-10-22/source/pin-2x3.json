@@ -1,0 +1,40 @@
+{
+ "style": "hype",
+ "transition": 0.14,
+ "scenes": [
+  {
+   "type": "hook",
+   "text": "4 trip packs. *$25.*",
+   "sub": "Road Trip, EV, Camping and Holiday",
+   "duration": 2.4
+  },
+  {
+   "type": "screen",
+   "image": "img/all-trips-bundle-banner-16x9.png",
+   "caption": "The All Trips *Bundle*",
+   "motion": "zoom_in",
+   "duration": 2.4
+  },
+  {
+   "type": "screen",
+   "image": "img/ev-road-trip-templates-banner-16x9.png",
+   "caption": "Edit in *free Canva*",
+   "motion": "slide_left",
+   "duration": 2.0
+  },
+  {
+   "type": "screen",
+   "image": "img/camping-trip-templates-banner-16x9.png",
+   "caption": "Stories *and posts*",
+   "motion": "zoom_out",
+   "duration": 2.0
+  },
+  {
+   "type": "cta",
+   "text": "All Trips Bundle",
+   "button": "4 packs for $25",
+   "sub": "Save $17 at studio.journeydeck.me",
+   "duration": 3.4
+  }
+ ]
+}
