@@ -452,6 +452,10 @@ test("hosted root serves the Grand Touring launch page while private routes stay
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
   try {
     const landing = await runtime.app.inject({ method: "GET", url: "/" });
+    assert.match(landing.body, /"@type": "FAQPage"/);
+    assert.match(landing.body, /<h2 id="faq-title">Frequently asked questions<\/h2>/);
+    assert.match(landing.body, /The only exception is for Tesla owners: JourneyDeck can detect Tesla drives automatically\./);
+    assert.doesNotMatch(landing.body, /What do I get with JourneyDeck Plus\?/);
     assert.equal(landing.statusCode, 200, landing.body);
     assert.match(String(landing.headers["content-type"]), /text\/html/);
     const links = String(landing.headers.link);
