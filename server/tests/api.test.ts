@@ -171,11 +171,11 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(roadTripTracker.body, /<title>Road Trip Tracker App for iPhone: JourneyDeck<\/title>/);
     assert.match(roadTripTracker.body, /<meta name="description" content="Track your road trip on iPhone with JourneyDeck\. Tap Start Journey to record each drive\. Free to record, with an optional Plus plan\.">/);
     assert.match(roadTripTracker.body, /<h1>A Road Trip Tracker App You Start With One Tap<\/h1>/);
-    assert.match(roadTripTracker.body, /JourneyDeck is an iPhone app for tracking a road trip\. You tap "Start Journey" when you set off, and nothing records until you do\. It is free to record, and JourneyDeck Plus is \$39\.99 a year with a 7-day free trial for new subscribers\./);
+    assert.match(roadTripTracker.body, /JourneyDeck is an iPhone app for tracking a road trip\. You tap "Start Journey" when you set off, and unless you own a Tesla, nothing records until you do\. It is free to record, and JourneyDeck Plus is \$39\.99 a year with a 7-day free trial for new subscribers\./);
     assert.match(roadTripTracker.body, /<a class="contact" href="https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526\?pt=129344416&ct=road_trip_tracker&mt=8">Get JourneyDeck on the App Store<\/a>/);
     assert.match(roadTripTracker.body, /<h2>FAQ<\/h2>/);
     assert.match(roadTripTracker.body, /<h3>Does JourneyDeck record drives automatically\?<\/h3>/);
-    assert.ok(roadTripTracker.body.includes('"text": "No. You tap \\"Start Journey\\" to begin recording, and nothing records unless you start it."'));
+    assert.ok(roadTripTracker.body.includes('"text": "No, not in general. You tap \\"Start Journey\\" to begin recording, and nothing records unless you start it. The only exception is for Tesla owners: JourneyDeck can detect Tesla drives automatically."'));
     assert.doesNotMatch(roadTripTracker.body, /Is there an iPhone app that tracks your route\?/);
     assert.ok(documentTitle(roadTripTracker.body).length <= 60);
     assert.ok(metaNameContent(roadTripTracker.body, "description").length <= 155);
