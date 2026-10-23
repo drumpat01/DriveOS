@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fleet audit",
+  "description": "The data the Fleet Auditor bot saves as fleet-audit.json and pastes into the dashboard page.",
+  "type": "object",
+  "required": ["schemaVersion", "fleet", "generatedAt", "period", "runBudgetPerDay", "bots", "findings", "topThree"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "fleet": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "period": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "format": "date" },
+        "to": { "type": "string", "format": "date" }
+      }
+    },
+    "runBudgetPerDay": { "type": ["number", "null"], "minimum": 0 },
+    "bots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "role", "routines"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "role": { "type": "string" },
+          "routines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "schedule", "runsPerDay", "lastRun", "status", "evidence"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "schedule": { "type": "string" },
+                "runsPerDay": { "type": "number", "minimum": 0 },
+                "lastRun": { "type": ["string", "null"], "format": "date-time" },
+                "status": { "enum": ["ok", "silent-failure", "missed", "failed", "no-proof", "paused", "unverified"] },
+                "evidence": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "kind", "bot", "summary", "evidence", "fix", "runsSavedPerDay"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["high", "medium", "low"] },
+          "kind": { "enum": ["silent-failure", "missed-run", "no-proof", "overlap", "waste", "drift", "exposed-credential"] },
+          "bot": { "type": "string", "minLength": 1 },
+          "routine": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "fix": { "type": "string", "minLength": 1 },
+          "runsSavedPerDay": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "topThree": {
+      "type": "array",
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    }
+  }
+}

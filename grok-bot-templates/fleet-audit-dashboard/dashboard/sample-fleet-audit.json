@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "fleet": "Acme Notes bots (sample)",
+  "generatedAt": "2026-10-19T09:07:00-05:00",
+  "period": { "from": "2026-10-12", "to": "2026-10-19" },
+  "runBudgetPerDay": 40,
+  "bots": [
+    {
+      "id": "chief",
+      "name": "Harbor",
+      "role": "Chief of staff",
+      "routines": [
+        {
+          "id": "morning-brief",
+          "name": "Morning brief",
+          "schedule": "Every day 7:03 AM",
+          "runsPerDay": 1,
+          "lastRun": "2026-10-19T07:03:00-05:00",
+          "status": "ok",
+          "evidence": "Brief sent to owner at 7:04 AM"
+        },
+        {
+          "id": "inbox-sweep",
+          "name": "Inbox sweep",
+          "schedule": "Every 30 minutes, 8 AM to 10 PM",
+          "runsPerDay": 29,
+          "lastRun": "2026-10-19T08:30:00-05:00",
+          "status": "ok",
+          "evidence": "Last 3 runs found no new mail; 2 handoffs in 7 days"
+        }
+      ]
+    },
+    {
+      "id": "site-ops",
+      "name": "Lumen",
+      "role": "Site ops",
+      "routines": [
+        {
+          "id": "weekly-site-audit",
+          "name": "Weekly site audit",
+          "schedule": "Mondays 9:07 AM",
+          "runsPerDay": 0.14,
+          "lastRun": "2026-10-13T09:07:00-05:00",
+          "status": "silent-failure",
+          "evidence": "Run says saved, but audits/site-audit-2026-10-13.md is empty"
+        },
+        {
+          "id": "verify-after-ci",
+          "name": "Verify after CI on main",
+          "schedule": "When CI passes on main",
+          "runsPerDay": 2,
+          "lastRun": "2026-10-18T16:41:00-05:00",
+          "status": "ok",
+          "evidence": "Live page checked after deploy at 4:43 PM"
+        }
+      ]
+    },
+    {
+      "id": "growth",
+      "name": "Echo",
+      "role": "Growth and social",
+      "routines": [
+        {
+          "id": "post-scheduler",
+          "name": "Post scheduler",
+          "schedule": "Every day 11:17 AM",
+          "runsPerDay": 1,
+          "lastRun": "2026-10-18T11:17:00-05:00",
+          "status": "no-proof",
+          "evidence": "Run says posted; no link to the live post"
+        },
+        {
+          "id": "mentions-check",
+          "name": "Mentions check",
+          "schedule": "Every hour, 8 AM to 10 PM",
+          "runsPerDay": 15,
+          "lastRun": "2026-10-19T08:00:00-05:00",
+          "status": "ok",
+          "evidence": "3 mentions logged this week"
+        }
+      ]
+    },
+    {
+      "id": "tester",
+      "name": "Scout",
+      "role": "App tester",
+      "routines": [
+        {
+          "id": "nightly-smoke-test",
+          "name": "Nightly smoke test",
+          "schedule": "Every day 2:13 AM",
+          "runsPerDay": 1,
+          "lastRun": "2026-10-16T02:13:00-05:00",
+          "status": "missed",
+          "evidence": "No run since Oct 16; schedule still on"
+        },
+        {
+          "id": "release-check",
+          "name": "Release check",
+          "schedule": "Paused",
+          "runsPerDay": 0,
+          "lastRun": null,
+          "status": "paused",
+          "evidence": "Paused by owner until the next release"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "high",
+      "kind": "missed-run",
+      "bot": "tester",
+      "routine": "nightly-smoke-test",
+      "summary": "The nightly smoke test hasn't run for three nights.",
+      "evidence": "Last run Oct 16 at 2:13 AM; no runs Oct 17 to 19",
+      "fix": "Ask the owner to turn the routine back on and check the tester bot's app sign-in.",
+      "runsSavedPerDay": 0
+    },
+    {
+      "id": "F2",
+      "severity": "high",
+      "kind": "silent-failure",
+      "bot": "site-ops",
+      "routine": "weekly-site-audit",
+      "summary": "The weekly site audit reported success but saved an empty file.",
+      "evidence": "audits/site-audit-2026-10-13.md is 0 bytes",
+      "fix": "Add a step that reads the file back before reporting, using Proof before Done.",
+      "runsSavedPerDay": 0
+    },
+    {
+      "id": "F3",
+      "severity": "medium",
+      "kind": "waste",
+      "bot": "chief",
+      "routine": "inbox-sweep",
+      "summary": "The inbox sweep runs every 30 minutes but found new mail twice in a week.",
+      "evidence": "29 runs a day, 2 handoffs in 7 days",
+      "fix": "Run it every 2 hours from 8 AM to 10 PM instead.",
+      "runsSavedPerDay": 21
+    },
+    {
+      "id": "F4",
+      "severity": "medium",
+      "kind": "no-proof",
+      "bot": "growth",
+      "routine": "post-scheduler",
+      "summary": "The post scheduler says it posted with no link to the live post.",
+      "evidence": "Run log for Oct 18 has no post link",
+      "fix": "Make the routine open the live post and include its link before reporting.",
+      "runsSavedPerDay": 0
+    },
+    {
+      "id": "F5",
+      "severity": "low",
+      "kind": "drift",
+      "bot": "growth",
+      "summary": "The growth bot's description still lists a channel the team stopped using.",
+      "evidence": "Description line 4 names the old channel",
+      "fix": "Remove the old channel from the description.",
+      "runsSavedPerDay": 0
+    }
+  ],
+  "topThree": ["F1", "F2", "F3"]
+}
